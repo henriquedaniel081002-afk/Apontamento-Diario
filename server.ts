@@ -1,7 +1,5 @@
 import express from 'express';
 import dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import pg from 'pg';
 import jwt from 'jsonwebtoken';
 
@@ -477,10 +475,10 @@ app.delete('/api/coordenacao/apontamentos/:id', auth, requireCoordenacao, async 
   }
 });
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, 'dist')));
-  app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
+// No Vercel, o Express é executado como uma Function e não deve abrir uma porta própria.
+// Localmente, o servidor continua funcionando em http://localhost:3001.
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => console.log(`ITAM API em http://localhost:${PORT}`));
 }
 
-app.listen(PORT, () => console.log(`ITAM API em http://localhost:${PORT}`));
+export default app;

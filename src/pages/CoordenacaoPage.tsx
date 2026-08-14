@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Apontamento, Setor, User } from '../types';
 import { coordenacaoService } from '../services/coordenacaoService';
-import { MOCK_USERS } from '../mocks/mockData';
 import { formatDateBR, formatDateShort, formatPotencia } from '../utils/formatters';
 import { exportApontamentosExcel } from '../utils/exportExcel';
 import { DetailModal } from '../components/historico/DetailModal';
@@ -36,10 +35,6 @@ function formatLocalYmd(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-function getTodayYmd(): string {
-  return formatLocalYmd(new Date());
-}
-
 function getPreviousWorkingDayYmd(): string {
   const date = new Date();
   const day = date.getDay();
@@ -50,32 +45,48 @@ function getPreviousWorkingDayYmd(): string {
   return formatLocalYmd(date);
 }
 
-function canonicalSetor(setor: string): string {
-  return setor === 'BOBINA AT' || setor === 'BOBINA BT' ? 'BOBINA AT/BT' : setor;
+type UnidadeApontamento = {
+  id: string;
+  label: string;
+  setor: Setor;
+  linha?: 'MON' | 'TRI' | 'EPO';
+};
+
+// Unidades que precisam apontar separadamente.
+const UNIDADES_APONTAMENTO: UnidadeApontamento[] = [
+  { id: 'BOBINA AT', label: 'Bobina AT', setor: 'BOBINA AT' },
+  { id: 'BOBINA BT', label: 'Bobina BT', setor: 'BOBINA BT' },
+  { id: 'CORTE LASER', label: 'Corte do Laser', setor: 'CORTE LASER' },
+  { id: 'ISOLANTE', label: 'Isolante', setor: 'ISOLANTE' },
+  { id: 'MONTAGEM NUCLEO', label: 'Montagem do Núcleo', setor: 'MONTAGEM NUCLEO' },
+  { id: 'MONTAGEM FINAL MON', label: 'Montagem Final MON', setor: 'MONTAGEM FINAL', linha: 'MON' },
+  { id: 'MONTAGEM FINAL TRI', label: 'Montagem Final TRI', setor: 'MONTAGEM FINAL', linha: 'TRI' },
+  { id: 'MPA MON', label: 'MPA MON', setor: 'MPA', linha: 'MON' },
+  { id: 'MPA TRI', label: 'MPA TRI', setor: 'MPA', linha: 'TRI' },
+  { id: 'PINTURA', label: 'Pintura', setor: 'PINTURA' },
+  { id: 'SOLDA', label: 'Solda', setor: 'SOLDA' },
+  { id: 'EPOXI', label: 'Epóxi', setor: 'EPOXI' },
+];
+
+function apontamentoTemLinha(apontamento: Apontamento, linha: 'MON' | 'TRI' | 'EPO'): boolean {
+  // linhasPermitidas permite identificar o usuário mesmo quando o apontamento
+  // não possui itens de produção, faltas ou observações.
+  if (apontamento.linhasPermitidas?.includes(linha)) return true;
+
+  return (
+    apontamento.producoes.some((item) => item.linha === linha) ||
+    apontamento.faltas.some((item) => item.linha === linha) ||
+    apontamento.observacoes.some((item) => item.linha === linha)
+  );
 }
 
-function setorLabel(setor: string): string {
-  const labels: Record<string, string> = {
-    'BOBINA AT/BT': 'Bobinagem',
-    'CORTE LASER': 'Corte do Laser',
-    'ISOLANTE': 'Isolante',
-    'MONTAGEM NUCLEO': 'Montagem do Núcleo',
-    'MONTAGEM FINAL': 'Montagem Final',
-    'MPA': 'MPA',
-    'PINTURA': 'Pintura',
-    'SOLDA': 'Solda',
-    'EPOXI': 'Epóxi',
-  };
-  return labels[setor] || setor;
+function unidadeFoiApontada(unidade: UnidadeApontamento, apontamentosDoDia: Apontamento[]): boolean {
+  return apontamentosDoDia.some((apontamento) => {
+    if (String(apontamento.setor) !== unidade.setor) return false;
+    if (!unidade.linha) return true;
+    return apontamentoTemLinha(apontamento, unidade.linha);
+  });
 }
-
-const SETORES_APONTADORES: Setor[] = Array.from(
-  new Set(
-    MOCK_USERS
-      .filter((user) => user.perfil === 'APONTADOR' && user.setor)
-      .map((user) => user.setor as Setor),
-  ),
-);
 
 export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
   const [apontamentos, setApontamentos] = useState<Apontamento[]>([]);
@@ -129,17 +140,14 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
   }, [apontamentos]);
 
 
-  const hoje = getTodayYmd();
+  const dataReferenciaPendencias = dataFilter;
 
-  const setoresSemApontamentoHoje = useMemo(() => {
-    const setoresApontadosHoje = new Set(
-      apontamentos
-        .filter((apt) => apt.data === hoje)
-        .map((apt) => canonicalSetor(String(apt.setor))),
-    );
+  const unidadesSemApontamento = useMemo(() => {
+    if (!dataReferenciaPendencias) return [];
 
-    return SETORES_APONTADORES.filter((setor) => !setoresApontadosHoje.has(setor));
-  }, [apontamentos, hoje]);
+    const apontamentosDoDia = apontamentos.filter((apt) => apt.data === dataReferenciaPendencias);
+    return UNIDADES_APONTAMENTO.filter((unidade) => !unidadeFoiApontada(unidade, apontamentosDoDia));
+  }, [apontamentos, dataReferenciaPendencias]);
 
   const filtered = useMemo(() => apontamentos.filter((apt) => {
     if (dataFilter && apt.data !== dataFilter) return false;
@@ -260,40 +268,40 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
         </div>
       </div>
 
-      <div className={`p-4 sm:p-5 rounded-2xl border shadow-2xs ${setoresSemApontamentoHoje.length > 0 ? 'bg-amber-500/[0.06] border-amber-500/20' : 'bg-emerald-500/[0.06] border-emerald-500/20'}`}>
+      <div className={`p-4 sm:p-5 rounded-2xl border shadow-2xs ${unidadesSemApontamento.length > 0 ? 'bg-amber-500/[0.06] border-amber-500/20' : 'bg-emerald-500/[0.06] border-emerald-500/20'}`}>
         <div className="flex items-start gap-3">
-          <div className={`p-2 rounded-xl border ${setoresSemApontamentoHoje.length > 0 ? 'bg-amber-500/10 border-amber-500/20 text-amber-300' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'}`}>
-            {setoresSemApontamentoHoje.length > 0
+          <div className={`p-2 rounded-xl border ${unidadesSemApontamento.length > 0 ? 'bg-amber-500/10 border-amber-500/20 text-amber-300' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'}`}>
+            {unidadesSemApontamento.length > 0
               ? <AlertTriangle className="w-4 h-4" />
               : <CheckCircle2 className="w-4 h-4" />}
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
               <h2 className="text-xs font-black uppercase tracking-wider text-slate-200">
-                Setores sem apontamento hoje
+                Setores sem apontamento na data selecionada
               </h2>
-              <span className="text-[11px] font-bold text-slate-500">{formatDateBR(hoje)}</span>
+              <span className="text-[11px] font-bold text-slate-500">{formatDateBR(dataReferenciaPendencias)}</span>
             </div>
 
-            {setoresSemApontamentoHoje.length > 0 ? (
+            {unidadesSemApontamento.length > 0 ? (
               <>
                 <p className="text-xs text-slate-500 mt-1">
-                  {setoresSemApontamentoHoje.length} setor(es) ainda não registraram nenhum apontamento no dia atual.
+                  {unidadesSemApontamento.length} setor(es)/linha(s) ainda não registraram nenhum apontamento em {formatDateBR(dataReferenciaPendencias)}.
                 </p>
                 <div className="flex flex-wrap gap-2 mt-3">
-                  {setoresSemApontamentoHoje.map((setor) => (
+                  {unidadesSemApontamento.map((unidade) => (
                     <span
-                      key={setor}
+                      key={unidade.id}
                       className="px-2.5 py-1 rounded-lg border border-amber-500/20 bg-amber-500/10 text-[11px] font-bold text-amber-200"
                     >
-                      {setorLabel(setor)}
+                      {unidade.label}
                     </span>
                   ))}
                 </div>
               </>
             ) : (
               <p className="text-xs font-semibold text-emerald-300 mt-1">
-                Todos os setores já registraram pelo menos um apontamento hoje.
+                Todos os setores/linhas esperados já registraram pelo menos um apontamento em {formatDateBR(dataReferenciaPendencias)}.
               </p>
             )}
           </div>

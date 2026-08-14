@@ -11,7 +11,7 @@ export function formatDateBR(dateString: string): string {
 export function formatDateShort(dateString: string): string {
   if (!dateString) return '';
   const date = new Date(dateString + 'T00:00:00');
-  const months = ['AGO', 'JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
+  const months = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
   const day = date.getDate();
   const month = months[date.getMonth()];
   const year = date.getFullYear();

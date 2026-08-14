@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { User, ProducaoItem, FaltaItem, ObservacaoItem } from '../types';
-import { getTodayDateString, formatDateBR } from '../utils/formatters';
+import { User, ProducaoItem, FaltaItem, ObservacaoItem, TipoBobina } from '../types';
+import { getTodayDateString } from '../utils/formatters';
 import { apontamentoService } from '../services/apontamentoService';
 import { ProducaoSection } from '../components/apontamento/ProducaoSection';
 import { FaltasSection } from '../components/apontamento/FaltasSection';
@@ -24,50 +24,25 @@ const steps: Array<{ id: Step; label: string; shortLabel: string }> = [
 
 export const ApontamentoPage: React.FC<ApontamentoPageProps> = ({ user }) => {
   const [selectedDate, setSelectedDate] = useState<string>(getTodayDateString());
-  const [existingRecordId, setExistingRecordId] = useState<string | undefined>(undefined);
   const [currentStep, setCurrentStep] = useState<Step>(1);
+  const [tipoBobina, setTipoBobina] = useState<TipoBobina | ''>('');
 
   const [producoes, setProducoes] = useState<ProducaoItem[]>([]);
   const [faltas, setFaltas] = useState<FaltaItem[]>([]);
   const [observacoes, setObservacoes] = useState<ObservacaoItem[]>([]);
 
-  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
 
   useEffect(() => {
-    let isMounted = true;
-
-    async function loadData() {
-      setIsLoading(true);
-      setCurrentStep(1);
-      try {
-        const record = await apontamentoService.getByDateAndSector(selectedDate, user.setor, user.id);
-        if (!isMounted) return;
-
-        if (record) {
-          setExistingRecordId(record.id);
-          setProducoes(record.producoes || []);
-          setFaltas(record.faltas || []);
-          setObservacoes(record.observacoes || []);
-        } else {
-          setExistingRecordId(undefined);
-          setProducoes([]);
-          setFaltas([]);
-          setObservacoes([]);
-        }
-      } catch (err) {
-        console.error('Error loading daily record:', err);
-      } finally {
-        if (isMounted) setIsLoading(false);
-      }
-    }
-
-    loadData();
-    return () => {
-      isMounted = false;
-    };
-  }, [selectedDate, user]);
+    // A tela de novo apontamento sempre começa vazia. Registros anteriores
+    // continuam disponíveis no Histórico para edição explícita.
+    setCurrentStep(1);
+    setProducoes([]);
+    setFaltas([]);
+    setObservacoes([]);
+    setTipoBobina('');
+  }, [selectedDate, user.id]);
 
   const handleAddProducao = (item: ProducaoItem) => setProducoes((prev) => [...prev, item]);
   const handleUpdateProducao = (updated: ProducaoItem) => setProducoes((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
@@ -91,12 +66,22 @@ export const ApontamentoPage: React.FC<ApontamentoPageProps> = ({ user }) => {
       return;
     }
 
+    const isBobinagem = user.setor === 'BOBINA AT/BT';
+    if (isBobinagem && !tipoBobina) {
+      setToast({
+        id: Date.now().toString(),
+        type: 'error',
+        message: 'Selecione se o apontamento da Bobinagem é AT ou BT.',
+      });
+      return;
+    }
+
     setIsSaving(true);
     try {
-      const saved = await apontamentoService.save({
-        id: existingRecordId,
+      await apontamentoService.save({
         data: selectedDate,
         setor: user.setor,
+        tipoBobina: tipoBobina || undefined,
         userId: user.id,
         userName: user.name,
         producoes,
@@ -104,18 +89,24 @@ export const ApontamentoPage: React.FC<ApontamentoPageProps> = ({ user }) => {
         observacoes,
       });
 
-      setExistingRecordId(saved.id);
+      // Um novo envio deve sempre gerar um novo registro. Após salvar,
+      // limpamos o formulário e mantemos apenas a data selecionada.
+      setProducoes([]);
+      setFaltas([]);
+      setObservacoes([]);
+      setTipoBobina('');
+      setCurrentStep(1);
       setToast({
         id: Date.now().toString(),
         type: 'success',
-        message: 'Apontamento salvo com sucesso!',
+        message: 'Novo apontamento criado com sucesso!',
       });
     } catch (err) {
       console.error('Error saving:', err);
       setToast({
         id: Date.now().toString(),
         type: 'error',
-        message: 'Falha ao salvar apontamento. Tente novamente.',
+        message: err instanceof Error ? err.message : 'Falha ao salvar apontamento. Tente novamente.',
       });
     } finally {
       setIsSaving(false);
@@ -195,6 +186,33 @@ export const ApontamentoPage: React.FC<ApontamentoPageProps> = ({ user }) => {
         </div>
       </div>
 
+      {user.setor === 'BOBINA AT/BT' && (
+        <div className="bg-[#0D120F] border border-white/10 rounded-2xl p-4 sm:p-5">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <p className="text-xs font-black text-slate-200">Tipo de bobina <span className="text-rose-400">*</span></p>
+              <p className="text-[11px] text-slate-500 mt-0.5">Escolha AT ou BT antes de salvar este apontamento.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 sm:w-64">
+              {(['AT', 'BT'] as TipoBobina[]).map((tipo) => (
+                <button
+                  key={tipo}
+                  type="button"
+                  onClick={() => setTipoBobina(tipo)}
+                  className={`px-4 py-2.5 rounded-xl border text-xs font-black transition-all ${
+                    tipoBobina === tipo
+                      ? 'bg-emerald-500 text-[#041007] border-emerald-400 shadow-lg shadow-emerald-950/20'
+                      : 'bg-[#090D0A] text-slate-300 border-white/10 hover:border-emerald-500/40 hover:text-emerald-300'
+                  }`}
+                >
+                  BOBINA {tipo}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="bg-[#0D120F] border border-white/10 rounded-2xl p-4 sm:p-5">
         <div className="grid grid-cols-3 gap-2 sm:gap-4">
           {steps.map((step) => {
@@ -233,13 +251,7 @@ export const ApontamentoPage: React.FC<ApontamentoPageProps> = ({ user }) => {
         totalObservacoes={observacoes.length}
       />
 
-      {isLoading ? (
-        <div className="bg-[#0D120F] border border-white/10 rounded-2xl p-12 text-center text-slate-500">
-          <Loader2 className="w-8 h-8 text-emerald-400 animate-spin mx-auto mb-2" />
-          <p className="text-xs font-semibold">Carregando dados de {formatDateBR(selectedDate)}...</p>
-        </div>
-      ) : (
-        <div className="space-y-5">
+      <div className="space-y-5">
           {currentStep === 1 && (
             <ProducaoSection
               user={user}
@@ -322,8 +334,7 @@ export const ApontamentoPage: React.FC<ApontamentoPageProps> = ({ user }) => {
               )}
             </div>
           </div>
-        </div>
-      )}
+      </div>
 
       <Toast toast={toast} onClose={() => setToast(null)} />
     </div>

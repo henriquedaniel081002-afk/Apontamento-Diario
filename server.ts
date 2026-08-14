@@ -108,7 +108,7 @@ async function getUserAccess(userId: number) {
 
 async function loadApontamento(id: number) {
   const h = await pool.query(
-    `SELECT a.id, a.data, a.usuario_id, a.setor_id, u.login usuario, s.nome setor,
+    `SELECT a.id, a.data, a.usuario_id, a.setor_id, a.tipo_bobina, u.login usuario, s.nome setor,
             a.criado_em, a.atualizado_em
        FROM apontamentos a
        JOIN usuarios u ON u.id = a.usuario_id
@@ -155,10 +155,18 @@ async function loadApontamento(id: number) {
     ),
   ]);
 
+  const tipoBobina = ['AT', 'BT'].includes(String(x.tipo_bobina || '').toUpperCase())
+    ? String(x.tipo_bobina).toUpperCase()
+    : null;
+  const setorExibicao = x.setor === 'BOBINA AT/BT' && tipoBobina
+    ? `BOBINA ${tipoBobina}`
+    : x.setor;
+
   return {
     id: String(x.id),
     data: dateOnly(x.data),
-    setor: x.setor,
+    setor: setorExibicao,
+    tipoBobina: tipoBobina || undefined,
     userId: String(x.usuario_id),
     userName: x.usuario,
     linhasPermitidas: acessos.rows.map((r: any) => r.linha).filter(Boolean),
@@ -229,7 +237,17 @@ app.post('/api/apontamentos', auth, async (req: any, res) => {
     if (!access.length) return res.status(403).json({ error: 'Usuário sem acesso configurado.' });
 
     const setorId = access[0].setor_id;
-    const allowed = new Map(access.map((a: any) => [a.linha, a.linha_id]));
+    const setorNome = String(access[0].setor || '');
+    const isBobinagem = setorNome === 'BOBINA AT/BT';
+    const tipoBobina = String(data.tipoBobina || '').toUpperCase();
+
+    if (isBobinagem && !['AT', 'BT'].includes(tipoBobina)) {
+      return res.status(400).json({ error: 'Selecione o tipo de bobina AT ou BT.' });
+    }
+
+    const allowed = new Map(access
+      .filter((a: any) => Number(a.setor_id) === Number(setorId))
+      .map((a: any) => [a.linha, a.linha_id]));
 
     for (const item of [...(data.producoes || []), ...(data.faltas || []), ...(data.observacoes || [])]) {
       if (item.linha && !allowed.has(item.linha)) {
@@ -238,19 +256,16 @@ app.post('/api/apontamentos', auth, async (req: any, res) => {
     }
 
     await client.query('BEGIN');
-    const up = await client.query(
-      `INSERT INTO apontamentos(data, usuario_id, setor_id)
-       VALUES($1, $2, $3)
-       ON CONFLICT(data, usuario_id, setor_id)
-       DO UPDATE SET atualizado_em = NOW()
+    const inserted = await client.query(
+      `INSERT INTO apontamentos(data, usuario_id, setor_id, tipo_bobina)
+       VALUES($1, $2, $3, $4)
        RETURNING id`,
-      [data.data, req.auth.userId, setorId],
+      [data.data, req.auth.userId, setorId, isBobinagem ? tipoBobina : null],
     );
 
-    const id = up.rows[0].id;
-    await client.query('DELETE FROM producao WHERE apontamento_id = $1', [id]);
-    await client.query('DELETE FROM faltas WHERE apontamento_id = $1', [id]);
-    await client.query('DELETE FROM observacoes WHERE apontamento_id = $1', [id]);
+    // Cada POST representa um novo apontamento. Nunca reaproveitamos nem
+    // substituímos automaticamente um registro anterior da mesma data.
+    const id = inserted.rows[0].id;
 
     for (const p of data.producoes || []) {
       await client.query(
@@ -275,9 +290,14 @@ app.post('/api/apontamentos', auth, async (req: any, res) => {
 
     await client.query('COMMIT');
     res.json(await loadApontamento(id));
-  } catch (e) {
+  } catch (e: any) {
     await client.query('ROLLBACK');
     console.error(e);
+    if (e?.code === '23505') {
+      return res.status(409).json({
+        error: 'O Neon ainda está impedindo múltiplos apontamentos no mesmo dia. Execute o script de migração incluído nesta versão.',
+      });
+    }
     res.status(500).json({ error: 'Falha ao salvar apontamento.' });
   } finally {
     client.release();

@@ -1,7 +1,11 @@
 export type Linha = 'MON' | 'TRI' | 'EPO';
 
+export type TipoBobina = 'AT' | 'BT';
+
 export type Setor = 
   | 'BOBINA AT/BT'
+  | 'BOBINA AT'
+  | 'BOBINA BT'
   | 'CORTE LASER'
   | 'ISOLANTE'
   | 'MONTAGEM NUCLEO'
@@ -50,6 +54,7 @@ export interface Apontamento {
   id: string;
   data: string;
   setor: Setor;
+  tipoBobina?: TipoBobina;
   userId: string;
   userName: string;
   linhasPermitidas?: Linha[];

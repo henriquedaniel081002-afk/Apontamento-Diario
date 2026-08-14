@@ -2,12 +2,14 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Apontamento, User } from '../types';
 import { coordenacaoService } from '../services/coordenacaoService';
 import { formatDateBR, formatDateShort, formatPotencia } from '../utils/formatters';
+import { exportApontamentosExcel } from '../utils/exportExcel';
 import { DetailModal } from '../components/historico/DetailModal';
 import { EditApontamentoModal } from '../components/coordenacao/EditApontamentoModal';
 import { ConfirmModal } from '../components/common/ConfirmModal';
 import { Toast, ToastMessage } from '../components/common/Toast';
 import {
   Calendar,
+  Download,
   Eye,
   Filter,
   ListFilter,
@@ -120,6 +122,23 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
     setToast({ id: Date.now().toString(), type: 'success', message: 'Apontamento atualizado com sucesso.' });
   };
 
+  const handleExport = async () => {
+    try {
+      await exportApontamentosExcel(filtered);
+      setToast({
+        id: Date.now().toString(),
+        type: 'success',
+        message: `Excel gerado com ${filtered.length} apontamento(s).`,
+      });
+    } catch (e) {
+      setToast({
+        id: Date.now().toString(),
+        type: 'error',
+        message: e instanceof Error ? e.message : 'Falha ao gerar o Excel.',
+      });
+    }
+  };
+
   const handleDelete = async () => {
     if (!deleteItem) return;
     try {
@@ -151,10 +170,20 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
           <p className="text-xs text-slate-500 mt-0.5">Consulte, filtre, edite e exclua registros de todos os setores.</p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
           <div className="bg-[#090D0A] border border-white/10 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-300">
             {filtered.length} de {apontamentos.length} registros
           </div>
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={loading || filtered.length === 0}
+            title="Exportar os registros filtrados para Excel"
+            className="px-3 py-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-2 text-xs font-black"
+          >
+            <Download className="w-4 h-4" />
+            <span>Exportar Excel</span>
+          </button>
           <button
             type="button"
             onClick={loadData}

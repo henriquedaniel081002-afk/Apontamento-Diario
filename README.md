@@ -25,3 +25,16 @@ As operações globais da Coordenação também são validadas no backend; não 
 ## Dados
 
 Produção, faltas, observações e histórico são gravados/lidos do Neon. O `localStorage` é usado apenas para manter a sessão/token do navegador.
+
+## Atualização — múltiplos apontamentos, Bobinagem AT/BT e Excel
+
+Antes de publicar esta versão, execute no SQL Editor do Neon o arquivo:
+
+`NEON_AJUSTE_MULTIPLOS_APONTAMENTOS_E_BOBINAGEM.sql`
+
+A atualização faz duas mudanças no banco: adiciona `tipo_bobina` aos apontamentos e remove a restrição que impedia mais de um apontamento do mesmo usuário/setor na mesma data.
+
+- Cada novo clique em **Salvar apontamento** cria um registro independente.
+- Edições continuam alterando apenas o registro selecionado pelo ID.
+- O usuário **Bobinagem** precisa escolher **AT** ou **BT** ao criar o apontamento.
+- A **COORDENAÇÃO** pode exportar os registros exibidos para um arquivo `.xlsx` com as abas `produzido`, `faltas` e `obs`.

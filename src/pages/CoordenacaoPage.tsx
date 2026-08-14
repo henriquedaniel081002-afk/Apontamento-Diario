@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Apontamento, User } from '../types';
+import { Apontamento, Setor, User } from '../types';
 import { coordenacaoService } from '../services/coordenacaoService';
+import { MOCK_USERS } from '../mocks/mockData';
 import { formatDateBR, formatDateShort, formatPotencia } from '../utils/formatters';
 import { exportApontamentosExcel } from '../utils/exportExcel';
 import { DetailModal } from '../components/historico/DetailModal';
@@ -8,7 +9,9 @@ import { EditApontamentoModal } from '../components/coordenacao/EditApontamentoM
 import { ConfirmModal } from '../components/common/ConfirmModal';
 import { Toast, ToastMessage } from '../components/common/Toast';
 import {
+  AlertTriangle,
   Calendar,
+  CheckCircle2,
   Download,
   Eye,
   Filter,
@@ -26,10 +29,58 @@ interface CoordenacaoPageProps {
   user: User;
 }
 
+function formatLocalYmd(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getTodayYmd(): string {
+  return formatLocalYmd(new Date());
+}
+
+function getPreviousWorkingDayYmd(): string {
+  const date = new Date();
+  const day = date.getDay();
+
+  // Segunda-feira volta para sexta. No fim de semana, mantém a referência na sexta-feira.
+  const daysToSubtract = day === 1 ? 3 : day === 0 ? 2 : 1;
+  date.setDate(date.getDate() - daysToSubtract);
+  return formatLocalYmd(date);
+}
+
+function canonicalSetor(setor: string): string {
+  return setor === 'BOBINA AT' || setor === 'BOBINA BT' ? 'BOBINA AT/BT' : setor;
+}
+
+function setorLabel(setor: string): string {
+  const labels: Record<string, string> = {
+    'BOBINA AT/BT': 'Bobinagem',
+    'CORTE LASER': 'Corte do Laser',
+    'ISOLANTE': 'Isolante',
+    'MONTAGEM NUCLEO': 'Montagem do Núcleo',
+    'MONTAGEM FINAL': 'Montagem Final',
+    'MPA': 'MPA',
+    'PINTURA': 'Pintura',
+    'SOLDA': 'Solda',
+    'EPOXI': 'Epóxi',
+  };
+  return labels[setor] || setor;
+}
+
+const SETORES_APONTADORES: Setor[] = Array.from(
+  new Set(
+    MOCK_USERS
+      .filter((user) => user.perfil === 'APONTADOR' && user.setor)
+      .map((user) => user.setor as Setor),
+  ),
+);
+
 export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
   const [apontamentos, setApontamentos] = useState<Apontamento[]>([]);
   const [loading, setLoading] = useState(true);
-  const [dataFilter, setDataFilter] = useState('');
+  const [dataFilter, setDataFilter] = useState(() => getPreviousWorkingDayYmd());
   const [setorFilter, setSetorFilter] = useState('ALL');
   const [linhaFilter, setLinhaFilter] = useState('ALL');
   const [potenciaFilter, setPotenciaFilter] = useState('ALL');
@@ -77,6 +128,19 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
     return Array.from(new Set<number>(values)).sort((a, b) => a - b);
   }, [apontamentos]);
 
+
+  const hoje = getTodayYmd();
+
+  const setoresSemApontamentoHoje = useMemo(() => {
+    const setoresApontadosHoje = new Set(
+      apontamentos
+        .filter((apt) => apt.data === hoje)
+        .map((apt) => canonicalSetor(String(apt.setor))),
+    );
+
+    return SETORES_APONTADORES.filter((setor) => !setoresApontadosHoje.has(setor));
+  }, [apontamentos, hoje]);
+
   const filtered = useMemo(() => apontamentos.filter((apt) => {
     if (dataFilter && apt.data !== dataFilter) return false;
     if (setorFilter !== 'ALL' && apt.setor !== setorFilter) return false;
@@ -101,10 +165,10 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
     return true;
   }), [apontamentos, dataFilter, setorFilter, linhaFilter, potenciaFilter]);
 
-  const hasFilters = Boolean(dataFilter) || setorFilter !== 'ALL' || linhaFilter !== 'ALL' || potenciaFilter !== 'ALL';
+  const hasFilters = dataFilter !== getPreviousWorkingDayYmd() || setorFilter !== 'ALL' || linhaFilter !== 'ALL' || potenciaFilter !== 'ALL';
 
   const clearFilters = () => {
-    setDataFilter('');
+    setDataFilter(getPreviousWorkingDayYmd());
     setSetorFilter('ALL');
     setLinhaFilter('ALL');
     setPotenciaFilter('ALL');
@@ -193,6 +257,46 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
+        </div>
+      </div>
+
+      <div className={`p-4 sm:p-5 rounded-2xl border shadow-2xs ${setoresSemApontamentoHoje.length > 0 ? 'bg-amber-500/[0.06] border-amber-500/20' : 'bg-emerald-500/[0.06] border-emerald-500/20'}`}>
+        <div className="flex items-start gap-3">
+          <div className={`p-2 rounded-xl border ${setoresSemApontamentoHoje.length > 0 ? 'bg-amber-500/10 border-amber-500/20 text-amber-300' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'}`}>
+            {setoresSemApontamentoHoje.length > 0
+              ? <AlertTriangle className="w-4 h-4" />
+              : <CheckCircle2 className="w-4 h-4" />}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+              <h2 className="text-xs font-black uppercase tracking-wider text-slate-200">
+                Setores sem apontamento hoje
+              </h2>
+              <span className="text-[11px] font-bold text-slate-500">{formatDateBR(hoje)}</span>
+            </div>
+
+            {setoresSemApontamentoHoje.length > 0 ? (
+              <>
+                <p className="text-xs text-slate-500 mt-1">
+                  {setoresSemApontamentoHoje.length} setor(es) ainda não registraram nenhum apontamento no dia atual.
+                </p>
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {setoresSemApontamentoHoje.map((setor) => (
+                    <span
+                      key={setor}
+                      className="px-2.5 py-1 rounded-lg border border-amber-500/20 bg-amber-500/10 text-[11px] font-bold text-amber-200"
+                    >
+                      {setorLabel(setor)}
+                    </span>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p className="text-xs font-semibold text-emerald-300 mt-1">
+                Todos os setores já registraram pelo menos um apontamento hoje.
+              </p>
+            )}
+          </div>
         </div>
       </div>
 

@@ -38,3 +38,11 @@ A atualização faz duas mudanças no banco: adiciona `tipo_bobina` aos apontame
 - Edições continuam alterando apenas o registro selecionado pelo ID.
 - O usuário **Bobinagem** precisa escolher **AT** ou **BT** ao criar o apontamento.
 - A **COORDENAÇÃO** pode exportar os registros exibidos para um arquivo `.xlsx` com as abas `produzido`, `faltas` e `obs`.
+
+
+## Atualização — Coordenação: pendências, data padrão e justificativas no Excel
+
+- A tela da **COORDENAÇÃO** mostra quais setores ainda não possuem apontamento no dia atual.
+- O filtro **Dia** inicia no último dia útil anterior: normalmente ontem; na segunda-feira, inicia na sexta-feira anterior.
+- Ao exportar o Excel, as justificativas preenchidas nas faltas também são adicionadas à aba `obs`, junto com as observações normais.
+- Esta atualização não exige mudança adicional no Neon.

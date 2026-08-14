@@ -217,14 +217,22 @@ export function exportApontamentosExcel(apontamentos: Apontamento[]): void {
     })),
   );
 
-  const obs: ExcelRow[] = ordenados.flatMap((apt) =>
-    apt.observacoes.map((item) => ({
+  const obs: ExcelRow[] = ordenados.flatMap((apt) => [
+    ...apt.observacoes.map((item) => ({
       data: formatDataExcel(apt.data),
       obs: item.observacao,
       setor: setorParaExcel(String(apt.setor)),
       linha: item.linha,
     })),
-  );
+    ...apt.faltas
+      .filter((item) => String(item.justificativa || '').trim().length > 0)
+      .map((item) => ({
+        data: formatDataExcel(apt.data),
+        obs: String(item.justificativa).trim(),
+        setor: setorParaExcel(String(apt.setor)),
+        linha: item.linha,
+      })),
+  ]);
 
   const files = [
     {

@@ -1,8 +1,10 @@
-import React, { useId, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import {
   AlertCircle,
   ArrowRight,
+  Check,
   CheckCircle2,
+  ChevronDown,
   Eye,
   EyeOff,
   Factory,
@@ -31,12 +33,75 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [selectedUserId, setSelectedUserId] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [highlightedUserIndex, setHighlightedUserIndex] = useState(0);
+  const [userMenuPlacement, setUserMenuPlacement] = useState<'up' | 'down'>('down');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const userFieldId = useId();
   const passwordFieldId = useId();
   const errorId = useId();
+  const userListboxId = useId();
+  const userSelectorRef = useRef<HTMLDivElement>(null);
   const selectedUser = MOCK_USERS.find((user) => user.id === selectedUserId) ?? null;
+
+  useEffect(() => {
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!userSelectorRef.current?.contains(event.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, []);
+
+  const selectUser = (userId: string) => {
+    setSelectedUserId(userId);
+    setIsUserMenuOpen(false);
+    setErrorMessage(null);
+  };
+
+  const resolveUserMenuPlacement = () => {
+    const rect = userSelectorRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const estimatedMenuHeight = 304;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    setUserMenuPlacement(spaceBelow < estimatedMenuHeight && spaceAbove > spaceBelow ? 'up' : 'down');
+  };
+
+  const handleUserSelectorKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === 'Escape') {
+      setIsUserMenuOpen(false);
+      return;
+    }
+
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (!isUserMenuOpen) {
+        resolveUserMenuPlacement();
+        setIsUserMenuOpen(true);
+      }
+      setHighlightedUserIndex((current) => {
+        const delta = event.key === 'ArrowDown' ? 1 : -1;
+        return (current + delta + MOCK_USERS.length) % MOCK_USERS.length;
+      });
+      return;
+    }
+
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      if (isUserMenuOpen) {
+        const highlightedUser = MOCK_USERS[highlightedUserIndex];
+        if (highlightedUser) selectUser(highlightedUser.id);
+      } else {
+        resolveUserMenuPlacement();
+        setIsUserMenuOpen(true);
+      }
+    }
+  };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -160,28 +225,80 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 <label htmlFor={userFieldId} className="field-label">
                   Usuário ou posto de trabalho
                 </label>
-                <select
-                  id={userFieldId}
-                  value={selectedUserId}
-                  required
-                  autoFocus
-                  aria-invalid={Boolean(errorMessage && !selectedUser) || undefined}
-                  aria-describedby={errorMessage && !selectedUser ? errorId : undefined}
-                  onChange={(event) => {
-                    setSelectedUserId(event.target.value);
-                    setErrorMessage(null);
-                  }}
-                  className="field-control"
-                >
-                  <option value="">Selecione um usuário</option>
-                  {MOCK_USERS.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.perfil === 'COORDENACAO'
-                        ? 'COORDENAÇÃO — Acesso global'
-                        : `${user.name} — ${user.setor}`}
-                    </option>
-                  ))}
-                </select>
+                <div ref={userSelectorRef} className="relative">
+                  <button
+                    id={userFieldId}
+                    type="button"
+                    autoFocus
+                    role="combobox"
+                    aria-haspopup="listbox"
+                    aria-expanded={isUserMenuOpen}
+                    aria-controls={userListboxId}
+                    aria-invalid={Boolean(errorMessage && !selectedUser) || undefined}
+                    aria-describedby={errorMessage && !selectedUser ? errorId : undefined}
+                    onClick={() => {
+                      const selectedIndex = MOCK_USERS.findIndex((user) => user.id === selectedUserId);
+                      setHighlightedUserIndex(selectedIndex >= 0 ? selectedIndex : 0);
+                      if (!isUserMenuOpen) resolveUserMenuPlacement();
+                      setIsUserMenuOpen((current) => !current);
+                    }}
+                    onKeyDown={handleUserSelectorKeyDown}
+                    className="field-control flex cursor-pointer items-center justify-between gap-3 text-left"
+                  >
+                    <span className={selectedUser ? 'truncate text-slate-100' : 'truncate text-slate-500'}>
+                      {selectedUser
+                        ? selectedUser.perfil === 'COORDENACAO'
+                          ? 'COORDENAÇÃO — Acesso global'
+                          : `${selectedUser.name} — ${selectedUser.setor}`
+                        : 'Selecione um usuário'}
+                    </span>
+                    <ChevronDown
+                      className={`size-4 shrink-0 text-slate-400 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`}
+                      aria-hidden="true"
+                    />
+                  </button>
+
+                  {isUserMenuOpen && (
+                    <div
+                      id={userListboxId}
+                      role="listbox"
+                      aria-label="Usuários e postos de trabalho"
+                      className={`absolute z-40 max-h-72 w-full overflow-y-auto rounded-xl border border-emerald-400/20 bg-[#07100B] p-1.5 shadow-[0_20px_55px_rgba(0,0,0,0.62)] ring-1 ring-black/30 ${userMenuPlacement === 'up' ? 'bottom-full mb-2' : 'mt-2'}`}
+                    >
+                      {MOCK_USERS.map((user, index) => {
+                        const isSelected = user.id === selectedUserId;
+                        const isHighlighted = index === highlightedUserIndex;
+                        return (
+                          <button
+                            key={user.id}
+                            type="button"
+                            role="option"
+                            aria-selected={isSelected}
+                            onMouseEnter={() => setHighlightedUserIndex(index)}
+                            onClick={() => selectUser(user.id)}
+                            className={`flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${
+                              isSelected
+                                ? 'bg-emerald-400/12 text-emerald-100'
+                                : isHighlighted
+                                  ? 'bg-white/[0.07] text-white'
+                                  : 'text-slate-200 hover:bg-white/[0.06]'
+                            }`}
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-bold">
+                                {user.perfil === 'COORDENACAO' ? 'COORDENAÇÃO' : user.name}
+                              </span>
+                              <span className="mt-0.5 block truncate text-[11px] font-medium text-slate-500">
+                                {user.perfil === 'COORDENACAO' ? 'Acesso global' : user.setor}
+                              </span>
+                            </span>
+                            {isSelected && <Check className="size-4 shrink-0 text-emerald-400" aria-hidden="true" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
 
                 {selectedUser && (
                   <Surface tone="inset" padding="sm" className="mt-2.5 flex items-center justify-between gap-3 rounded-xl">

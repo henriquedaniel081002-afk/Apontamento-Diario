@@ -1,4 +1,16 @@
-import { CalendarDays, Eye, MessageSquareText, Pencil, Trash2, UserRound, UserX, Zap } from 'lucide-react';
+import type { ReactNode } from 'react';
+import {
+  CalendarDays,
+  Eye,
+  Factory,
+  GitBranch,
+  MessageSquareText,
+  Pencil,
+  Trash2,
+  UserRound,
+  UserX,
+  Zap,
+} from 'lucide-react';
 import { Apontamento } from '../../types';
 import { formatDateBR } from '../../utils/formatters';
 import {
@@ -16,150 +28,197 @@ interface CoordinationRecordsProps {
 
 interface RecordActionsProps extends CoordinationRecordsProps {
   record: Apontamento;
-  compact?: boolean;
 }
 
-function RecordActions({ record, onView, onEdit, onDelete, compact = false }: RecordActionsProps) {
+function RecordActions({ record, onView, onEdit, onDelete }: RecordActionsProps) {
   const accessibleRecordName = `${getOperationalUnitLabel(record)} em ${formatDateBR(record.data)}`;
 
   return (
-    <div className={`flex items-center gap-2 ${compact ? 'justify-end' : ''}`}>
+    <div className="grid grid-cols-3 divide-x divide-white/[0.07] overflow-hidden rounded-xl border border-white/[0.08] bg-black/10">
       <button
         type="button"
         onClick={() => onView(record)}
-        className={`${compact ? 'size-10' : 'min-h-10 flex-1 px-3'} inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] text-xs font-bold text-slate-200 transition-colors hover:bg-white/[0.09] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400`}
+        className="inline-flex min-h-11 items-center justify-center gap-2 px-3 text-xs font-bold text-slate-300 transition-colors hover:bg-white/[0.055] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-400"
         aria-label={`Ver detalhes de ${accessibleRecordName}`}
       >
         <Eye className="size-4" aria-hidden="true" />
-        {!compact && 'Detalhes'}
+        <span>Detalhes</span>
       </button>
       <button
         type="button"
         onClick={() => onEdit(record)}
-        className={`${compact ? 'size-10' : 'min-h-10 flex-1 px-3'} inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-400/10 text-xs font-bold text-emerald-200 transition-colors hover:bg-emerald-400/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400`}
+        className="inline-flex min-h-11 items-center justify-center gap-2 px-3 text-xs font-bold text-slate-300 transition-colors hover:bg-emerald-400/[0.08] hover:text-emerald-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-400"
         aria-label={`Editar ${accessibleRecordName}`}
       >
         <Pencil className="size-4" aria-hidden="true" />
-        {!compact && 'Editar'}
+        <span>Editar</span>
       </button>
       <button
         type="button"
         onClick={() => onDelete(record)}
-        className={`${compact ? 'size-10' : 'min-h-10 px-3'} inline-flex items-center justify-center rounded-xl border border-transparent text-slate-400 transition-colors hover:border-rose-400/20 hover:bg-rose-400/10 hover:text-rose-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400`}
+        className="inline-flex min-h-11 items-center justify-center gap-2 px-3 text-xs font-bold text-slate-400 transition-colors hover:bg-rose-400/[0.08] hover:text-rose-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-rose-400"
         aria-label={`Excluir ${accessibleRecordName}`}
       >
         <Trash2 className="size-4" aria-hidden="true" />
+        <span>Excluir</span>
       </button>
     </div>
   );
 }
 
-function MobileSummary({ record }: { record: Apontamento }) {
-  const totals = getApontamentoTotals(record);
+function getSectorSubtitle(record: Apontamento): string {
+  const labels: Partial<Record<Apontamento['setor'], string>> = {
+    'BOBINA AT/BT': 'BOBINAGEM',
+    'BOBINA AT': 'BOBINAGEM',
+    'BOBINA BT': 'BOBINAGEM',
+    'CORTE LASER': 'CORTE DO LASER',
+    ISOLANTE: 'ISOLANTE',
+    'MONTAGEM NUCLEO': 'MONTAGEM DO NÚCLEO',
+    'MONTAGEM FINAL': 'MONTAGEM FINAL',
+    MPA: 'MPA',
+    PINTURA: 'PINTURA',
+    SOLDA: 'SOLDA',
+    EPOXI: 'EPOXI',
+  };
+
+  return labels[record.setor] ?? String(record.setor);
+}
+
+function getWeekday(dateString: string): string {
+  const [year, month, day] = dateString.split('-').map(Number);
+  if (!year || !month || !day) return '';
+
+  const date = new Date(year, month - 1, day, 12);
+  const weekday = new Intl.DateTimeFormat('pt-BR', { weekday: 'short' })
+    .format(date)
+    .replace('.', '');
+
+  return weekday.charAt(0).toUpperCase() + weekday.slice(1);
+}
+
+interface MetricProps {
+  icon: ReactNode;
+  label: string;
+  value: number;
+  valueClassName: string;
+  iconClassName: string;
+  helper: string;
+}
+
+function Metric({ icon, label, value, valueClassName, iconClassName, helper }: MetricProps) {
   return (
-    <dl className="grid grid-cols-3 gap-2">
-      <div className="rounded-xl border border-emerald-400/15 bg-emerald-400/[0.07] p-2.5">
-        <dt className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wide text-emerald-300">
-          <Zap className="size-3" aria-hidden="true" /> Produção
-        </dt>
-        <dd className="mt-1 text-base font-black text-emerald-100">{totals.producao}</dd>
+    <div className="flex min-w-0 flex-1 items-center gap-3 border-t border-white/[0.07] px-4 py-4 first:border-t-0 sm:border-l sm:border-t-0 sm:px-5 sm:first:border-l-0 lg:py-5 lg:first:border-l">
+      <div className={`flex size-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.035] ${iconClassName}`} aria-hidden="true">
+        {icon}
       </div>
-      <div className="rounded-xl border border-amber-400/15 bg-amber-400/[0.07] p-2.5">
-        <dt className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wide text-amber-300">
-          <UserX className="size-3" aria-hidden="true" /> Faltas
-        </dt>
-        <dd className="mt-1 text-base font-black text-amber-100">{totals.faltas}</dd>
+      <div className="min-w-0">
+        <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">{label}</p>
+        <p className={`mt-0.5 text-xl font-black tracking-tight ${valueClassName}`}>{value}</p>
+        <p className="text-[10px] font-semibold text-slate-600">{helper}</p>
       </div>
-      <div className="rounded-xl border border-white/10 bg-white/[0.035] p-2.5">
-        <dt className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wide text-slate-400">
-          <MessageSquareText className="size-3" aria-hidden="true" /> Obs.
-        </dt>
-        <dd className="mt-1 text-base font-black text-slate-200">{totals.observacoes}</dd>
+    </div>
+  );
+}
+
+function CoordinationRecordCard(props: CoordinationRecordsProps & { record: Apontamento }) {
+  const { record } = props;
+  const totals = getApontamentoTotals(record);
+  const lines = getApontamentoLines(record);
+  const unitLabel = getOperationalUnitLabel(record);
+
+  return (
+    <article className="group overflow-hidden rounded-2xl border border-white/10 bg-[#0D120F] shadow-[0_14px_38px_rgba(0,0,0,0.18)] transition-colors hover:border-white/[0.16]">
+      <div className="grid lg:grid-cols-[minmax(190px,0.95fr)_minmax(250px,1.25fr)_minmax(130px,0.7fr)_minmax(130px,0.7fr)_minmax(130px,0.7fr)]">
+        <section className="flex items-center gap-4 border-b border-white/[0.07] bg-gradient-to-br from-emerald-400/[0.04] to-transparent px-4 py-5 sm:px-5 lg:border-b-0">
+          <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl border border-emerald-400/30 bg-emerald-400/[0.07] text-emerald-300 shadow-[0_0_24px_rgba(52,211,153,0.07)]">
+            <Factory className="size-7" aria-hidden="true" />
+          </div>
+          <div className="min-w-0">
+            <h2 className="truncate text-sm font-black text-slate-100" title={unitLabel}>{unitLabel}</h2>
+            <p className="mt-1 truncate text-[11px] font-semibold uppercase tracking-wide text-slate-500" title={getSectorSubtitle(record)}>
+              {getSectorSubtitle(record)}
+            </p>
+            {record.tipoBobina && (
+              <span className="mt-2 inline-flex rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-2 py-1 text-[10px] font-black text-emerald-300">
+                {record.tipoBobina}
+              </span>
+            )}
+          </div>
+        </section>
+
+        <section className="grid gap-3 border-b border-white/[0.07] px-4 py-4 sm:grid-cols-2 sm:px-5 lg:border-b-0 lg:border-l lg:py-5">
+          <div className="min-w-0">
+            <p className="flex items-center gap-2 text-sm font-black text-slate-100">
+              <CalendarDays className="size-4 shrink-0 text-emerald-400" aria-hidden="true" />
+              {formatDateBR(record.data)}
+            </p>
+            <p className="mt-1 pl-6 text-[11px] font-semibold text-slate-500">{getWeekday(record.data)}</p>
+          </div>
+          <div className="min-w-0">
+            <p className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">
+              <UserRound className="size-3.5 shrink-0" aria-hidden="true" />
+              Responsável
+            </p>
+            <p className="mt-1 truncate text-sm font-bold text-slate-200" title={record.userName}>{record.userName}</p>
+          </div>
+          <div className="sm:col-span-2">
+            <p className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">
+              <GitBranch className="size-3.5" aria-hidden="true" />
+              Linha
+            </p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {lines.length > 0 ? lines.map((line) => (
+                <span key={line} className="rounded-lg border border-white/10 bg-white/[0.045] px-2 py-1 text-[10px] font-black text-slate-300">
+                  {line}
+                </span>
+              )) : (
+                <span className="text-xs font-semibold text-slate-600">—</span>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <div className="grid grid-cols-1 border-b border-white/[0.07] sm:grid-cols-3 lg:contents">
+          <Metric
+            icon={<Zap className="size-4" />}
+            label="Produção"
+            value={totals.producao}
+            valueClassName="text-emerald-300"
+            iconClassName="text-emerald-400"
+            helper="unidades"
+          />
+          <Metric
+            icon={<UserX className="size-4" />}
+            label="Faltas"
+            value={totals.faltas}
+            valueClassName="text-rose-300"
+            iconClassName="text-rose-400"
+            helper="registros"
+          />
+          <Metric
+            icon={<MessageSquareText className="size-4" />}
+            label="Observações"
+            value={totals.observacoes}
+            valueClassName="text-sky-300"
+            iconClassName="text-sky-400"
+            helper="registros"
+          />
+        </div>
       </div>
-    </dl>
+
+      <footer className="border-t border-white/[0.07] bg-black/[0.08] p-2.5 sm:px-4">
+        <RecordActions {...props} record={record} />
+      </footer>
+    </article>
   );
 }
 
 export function CoordinationRecords(props: CoordinationRecordsProps) {
-  const { records } = props;
-
   return (
-    <>
-      <div className="hidden max-h-[600px] overflow-auto rounded-2xl border border-white/10 bg-[#0D120F] shadow-xl lg:block">
-        <table className="w-full min-w-[1080px] border-collapse text-left">
-          <caption className="sr-only">Registros filtrados de todos os setores</caption>
-          <thead className="sticky top-0 z-20 bg-[#111813] text-[11px] font-black uppercase tracking-[0.11em] text-slate-400 shadow-[0_1px_0_rgba(255,255,255,0.08)]">
-            <tr>
-              <th scope="col" className="px-4 py-3.5">Data</th>
-              <th scope="col" className="px-4 py-3.5">Unidade</th>
-              <th scope="col" className="px-4 py-3.5">Responsável</th>
-              <th scope="col" className="px-4 py-3.5">Linhas</th>
-              <th scope="col" className="px-4 py-3.5 text-right">Produção</th>
-              <th scope="col" className="px-4 py-3.5 text-right">Faltas</th>
-              <th scope="col" className="px-4 py-3.5 text-right">Observações</th>
-              <th scope="col" className="sticky right-0 bg-[#111813] px-4 py-3.5 text-right">Ações</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-white/[0.07]">
-            {records.map((record) => {
-              const totals = getApontamentoTotals(record);
-              const lines = getApontamentoLines(record);
-              return (
-                <tr key={record.id} className="group transition-colors hover:bg-white/[0.025]">
-                  <th scope="row" className="whitespace-nowrap px-4 py-4 text-sm font-black text-slate-100">
-                    {formatDateBR(record.data)}
-                  </th>
-                  <td className="px-4 py-4 text-sm font-semibold text-slate-200">{getOperationalUnitLabel(record)}</td>
-                  <td className="max-w-44 px-4 py-4 text-sm text-slate-300">
-                    <span className="block truncate" title={record.userName}>{record.userName}</span>
-                  </td>
-                  <td className="px-4 py-4 text-xs font-black text-slate-400">{lines.length ? lines.join(' / ') : '—'}</td>
-                  <td className="px-4 py-4 text-right text-sm font-black text-emerald-300">{totals.producao}</td>
-                  <td className="px-4 py-4 text-right text-sm font-black text-amber-200">{totals.faltas}</td>
-                  <td className="px-4 py-4 text-right text-sm font-black text-slate-300">{totals.observacoes}</td>
-                  <td className="sticky right-0 bg-[#0D120F] px-4 py-4 group-hover:bg-[#111713]">
-                    <RecordActions {...props} record={record} compact />
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="space-y-3 lg:hidden">
-        {records.map((record) => {
-          const lines = getApontamentoLines(record);
-          return (
-            <article key={record.id} className="rounded-2xl border border-white/10 bg-[#0D120F] p-4 shadow-lg">
-              <header className="flex items-start justify-between gap-3 border-b border-white/[0.07] pb-3">
-                <div className="min-w-0">
-                  <p className="flex items-center gap-2 text-sm font-black text-slate-100">
-                    <CalendarDays className="size-4 shrink-0 text-emerald-400" aria-hidden="true" />
-                    {formatDateBR(record.data)}
-                  </p>
-                  <h2 className="mt-1 text-sm font-semibold text-slate-300">{getOperationalUnitLabel(record)}</h2>
-                  <p className="mt-1 flex items-center gap-1.5 truncate text-xs text-slate-500">
-                    <UserRound className="size-3.5 shrink-0" aria-hidden="true" />
-                    {record.userName}
-                  </p>
-                </div>
-                {lines.length > 0 && (
-                  <span className="shrink-0 rounded-lg border border-white/10 bg-white/[0.05] px-2 py-1 text-[11px] font-black text-slate-300">
-                    {lines.join(' / ')}
-                  </span>
-                )}
-              </header>
-              <div className="py-3">
-                <MobileSummary record={record} />
-              </div>
-              <footer className="border-t border-white/[0.07] pt-3">
-                <RecordActions {...props} record={record} />
-              </footer>
-            </article>
-          );
-        })}
-      </div>
-    </>
+    <div className="space-y-3" aria-label="Registros filtrados de todos os setores">
+      {props.records.map((record) => (
+        <CoordinationRecordCard key={record.id} {...props} record={record} />
+      ))}
+    </div>
   );
 }

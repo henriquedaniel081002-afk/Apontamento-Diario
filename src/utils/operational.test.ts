@@ -3,6 +3,7 @@ import type { Apontamento } from '../types';
 import {
   OPERATIONAL_UNITS,
   filterCoordinationApontamentos,
+  filterHistoryApontamentos,
   getOperationalStatus,
   getPreviousWorkingDayYmd,
   matchesHistoryPeriod,
@@ -88,6 +89,20 @@ describe('filtros preservados', () => {
     const reference = new Date('2026-08-14T15:00:00');
     expect(matchesHistoryPeriod('2026-08-07', '7DAYS', reference)).toBe(false);
     expect(matchesHistoryPeriod('2026-08-08', '7DAYS', reference)).toBe(true);
+  });
+
+  it('filtra o histórico por uma data exata quando o filtro de data está preenchido', () => {
+    const records = [
+      makeApontamento({ id: '1', data: '2026-08-13' }),
+      makeApontamento({ id: '2', data: '2026-08-14' }),
+    ];
+
+    expect(filterHistoryApontamentos(records, {
+      data: '2026-08-14',
+      linha: 'ALL',
+      period: 'ALL',
+      search: '',
+    })).toEqual([expect.objectContaining({ id: '2' })]);
   });
 
   it('exige potência e linha no mesmo item quando ambos os filtros estão ativos', () => {

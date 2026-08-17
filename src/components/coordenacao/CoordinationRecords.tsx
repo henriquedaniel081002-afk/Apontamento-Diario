@@ -24,6 +24,7 @@ interface CoordinationRecordsProps {
   onView: (record: Apontamento) => void;
   onEdit: (record: Apontamento) => void;
   onDelete: (record: Apontamento) => void;
+  ariaLabel?: string;
 }
 
 interface RecordActionsProps extends CoordinationRecordsProps {
@@ -215,7 +216,7 @@ function CoordinationRecordCard(props: CoordinationRecordsProps & { record: Apon
 
 export function CoordinationRecords(props: CoordinationRecordsProps) {
   return (
-    <div className="space-y-3" aria-label="Registros filtrados de todos os setores">
+    <div className="space-y-3" aria-label={props.ariaLabel ?? 'Registros filtrados de todos os setores'}>
       {props.records.map((record) => (
         <CoordinationRecordCard key={record.id} {...props} record={record} />
       ))}

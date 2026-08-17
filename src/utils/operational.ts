@@ -3,6 +3,7 @@ import { Apontamento, Linha, Setor } from '../types';
 export type HistoryPeriod = 'ALL' | '7DAYS' | 'MONTH';
 
 export interface HistoryFilters {
+  data?: string;
   linha: string;
   period: HistoryPeriod;
   search: string;
@@ -181,6 +182,10 @@ export function filterHistoryApontamentos(
   reference = new Date(),
 ): Apontamento[] {
   return apontamentos.filter((apontamento) => {
+    if (filters.data && apontamento.data !== filters.data) {
+      return false;
+    }
+
     if (filters.linha !== 'ALL' && !apontamentoHasRecordedLine(apontamento, filters.linha)) {
       return false;
     }

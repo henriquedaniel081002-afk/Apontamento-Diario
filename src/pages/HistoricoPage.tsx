@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
+  CalendarDays,
   CalendarRange,
   Filter,
   History,
@@ -30,6 +31,7 @@ export const HistoricoPage: React.FC<HistoricoPageProps> = ({ user }) => {
   const [apontamentos, setApontamentos] = useState<Apontamento[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [dateFilter, setDateFilter] = useState('');
   const [selectedLinhaFilter, setSelectedLinhaFilter] = useState('ALL');
   const [periodFilter, setPeriodFilter] = useState<HistoryPeriod>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
@@ -59,18 +61,21 @@ export const HistoricoPage: React.FC<HistoricoPageProps> = ({ user }) => {
 
   const filteredApontamentos = useMemo(
     () => filterHistoryApontamentos(apontamentos, {
+      data: dateFilter,
       linha: selectedLinhaFilter,
       period: periodFilter,
       search: searchTerm,
     }),
-    [apontamentos, periodFilter, searchTerm, selectedLinhaFilter],
+    [apontamentos, dateFilter, periodFilter, searchTerm, selectedLinhaFilter],
   );
 
-  const hasActiveFilters = selectedLinhaFilter !== 'ALL'
+  const hasActiveFilters = dateFilter.length > 0
+    || selectedLinhaFilter !== 'ALL'
     || periodFilter !== 'ALL'
     || searchTerm.length > 0;
 
   const clearFilters = () => {
+    setDateFilter('');
     setSelectedLinhaFilter('ALL');
     setPeriodFilter('ALL');
     setSearchTerm('');
@@ -157,7 +162,21 @@ export const HistoricoPage: React.FC<HistoricoPageProps> = ({ user }) => {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(260px,1fr)_220px_auto] lg:items-end">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[190px_minmax(260px,1fr)_210px_auto] xl:items-end">
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-bold text-slate-400">Data</span>
+            <span className="relative block">
+              <CalendarDays className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-500" aria-hidden="true" />
+              <input
+                type="date"
+                value={dateFilter}
+                onChange={(event) => setDateFilter(event.target.value)}
+                className="min-h-11 w-full rounded-xl border border-white/15 bg-[#080C09] py-2.5 pl-10 pr-3 text-sm font-semibold text-slate-100 [color-scheme:dark] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                aria-label="Filtrar histórico por data"
+              />
+            </span>
+          </label>
+
           <label className="block">
             <span className="mb-1.5 block text-xs font-bold text-slate-400">Buscar no histórico</span>
             <span className="relative block">

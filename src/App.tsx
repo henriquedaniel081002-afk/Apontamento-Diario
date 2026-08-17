@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { LoaderCircle } from 'lucide-react';
 import { User } from './types';
 import { authService } from './services/authService';
 import { LoginPage } from './pages/LoginPage';
@@ -7,32 +8,47 @@ import { HistoricoPage } from './pages/HistoricoPage';
 import { CoordenacaoPage } from './pages/CoordenacaoPage';
 import { Header } from './components/common/Header';
 
+type AppTab = 'apontamento' | 'historico';
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [activeTab, setActiveTab] = useState<'apontamento' | 'historico'>('apontamento');
-  const [isInitializing, setIsInitializing] = useState<boolean>(true);
+  const [activeTab, setActiveTab] = useState<AppTab>('apontamento');
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [loginMessage, setLoginMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    const user = authService.getCurrentUser();
-    setCurrentUser(user);
+    setCurrentUser(authService.getCurrentUser());
     setIsInitializing(false);
+
+    return authService.onSessionExpired(({ message }) => {
+      setCurrentUser(null);
+      setActiveTab('apontamento');
+      setLoginMessage(message);
+    });
   }, []);
 
   const handleLoginSuccess = (user: User) => {
     setCurrentUser(user);
     setActiveTab('apontamento');
+    setLoginMessage(null);
   };
 
   const handleLogout = () => {
     authService.logout();
     setCurrentUser(null);
     setActiveTab('apontamento');
+    setLoginMessage(null);
   };
 
   if (isInitializing) {
     return (
-      <div className="min-h-screen bg-[#050806] flex items-center justify-center text-slate-500 text-xs font-semibold">
-        Carregando sistema ITAM...
+      <div
+        role="status"
+        aria-live="polite"
+        className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#050806] text-sm font-semibold text-slate-400"
+      >
+        <LoaderCircle className="size-6 animate-spin text-emerald-300" aria-hidden="true" />
+        <span>Carregando sistema ITAM...</span>
       </div>
     );
   }
@@ -42,6 +58,7 @@ export default function App() {
       <LoginPage
         onLoginSuccess={handleLoginSuccess}
         authLogin={authService.login}
+        initialMessage={loginMessage}
       />
     );
   }
@@ -49,7 +66,7 @@ export default function App() {
   const isCoordenacao = currentUser.perfil === 'COORDENACAO';
 
   return (
-    <div className="min-h-screen bg-[#050806] text-slate-100 font-sans flex flex-col antialiased selection:bg-emerald-500/15 selection:text-emerald-100">
+    <div className="flex min-h-screen flex-col bg-[#050806] font-sans text-slate-100 antialiased selection:bg-emerald-400/20 selection:text-emerald-50">
       <Header
         user={currentUser}
         activeTab={activeTab}
@@ -57,7 +74,7 @@ export default function App() {
         onLogout={handleLogout}
       />
 
-      <main className="flex-1 pb-12">
+      <main id="conteudo-principal" className="flex-1 pb-12">
         {isCoordenacao ? (
           <CoordenacaoPage user={currentUser} />
         ) : activeTab === 'apontamento' ? (
@@ -70,8 +87,8 @@ export default function App() {
         )}
       </main>
 
-      <footer className="border-t border-white/10 bg-[#070B08] py-4 text-center text-xs text-slate-600">
-        <p>ITAM — Sistema de Apontamento Diário de Produção &copy; {new Date().getFullYear()}</p>
+      <footer className="border-t border-white/[0.08] bg-[#070b08] px-4 py-4 text-center text-xs text-slate-500">
+        <p>ITAM — Sistema de Apontamento Diário de Produção © {new Date().getFullYear()}</p>
       </footer>
     </div>
   );

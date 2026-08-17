@@ -190,7 +190,13 @@ function createZip(files: Array<{ name: string; content: string }>): Uint8Array 
   return concatBytes([localData, centralData, end]);
 }
 
-export function exportApontamentosExcel(apontamentos: Apontamento[]): void {
+export interface ApontamentosWorkbookData {
+  produzido: ExcelRow[];
+  faltas: ExcelRow[];
+  obs: ExcelRow[];
+}
+
+export function buildApontamentosWorkbookData(apontamentos: Apontamento[]): ApontamentosWorkbookData {
   if (!apontamentos.length) throw new Error('Não há registros para exportar.');
 
   const ordenados = [...apontamentos].sort(
@@ -233,6 +239,12 @@ export function exportApontamentosExcel(apontamentos: Apontamento[]): void {
         linha: item.linha,
       })),
   ]);
+
+  return { produzido, faltas, obs };
+}
+
+export function exportApontamentosExcel(apontamentos: Apontamento[]): void {
+  const { produzido, faltas, obs } = buildApontamentosWorkbookData(apontamentos);
 
   const files = [
     {

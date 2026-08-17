@@ -1,171 +1,267 @@
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
+import {
+  AlertCircle,
+  ArrowRight,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  Factory,
+  LockKeyhole,
+  ShieldCheck,
+} from 'lucide-react';
 import { User } from '../types';
 import { MOCK_USERS } from '../mocks/mockData';
-import { Eye, EyeOff, UserCheck, ShieldCheck, ArrowRight, AlertCircle } from 'lucide-react';
 import logoItam from '../assets/logo-itam.png';
+import { Badge, Button, FieldError, Surface } from '../components/common/ui';
 
 interface LoginPageProps {
   onLoginSuccess: (user: User) => void;
-  authLogin: (userId: string, passwordAttempt: string) => Promise<{ success: boolean; user?: User; error?: string }>;
+  authLogin: (
+    userId: string,
+    passwordAttempt: string,
+  ) => Promise<{ success: boolean; user?: User; error?: string }>;
+  initialMessage?: string | null;
 }
 
-export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, authLogin }) => {
-  const [selectedUserId, setSelectedUserId] = useState<string>(MOCK_USERS[5]?.id || MOCK_USERS[0].id);
-  const [password, setPassword] = useState<string>('');
-  const [showPassword, setShowPassword] = useState<boolean>(false);
+export const LoginPage: React.FC<LoginPageProps> = ({
+  onLoginSuccess,
+  authLogin,
+  initialMessage = null,
+}) => {
+  const [selectedUserId, setSelectedUserId] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const userFieldId = useId();
+  const passwordFieldId = useId();
+  const errorId = useId();
+  const selectedUser = MOCK_USERS.find((user) => user.id === selectedUserId) ?? null;
 
-  const selectedUser = MOCK_USERS.find((u) => u.id === selectedUserId) || MOCK_USERS[0];
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setErrorMessage(null);
+
+    if (!selectedUser) {
+      setErrorMessage('Selecione o usuário ou posto de trabalho para continuar.');
+      return;
+    }
+
+    if (!password) {
+      setErrorMessage('Informe sua senha de acesso para continuar.');
+      return;
+    }
+
     setIsSubmitting(true);
 
-    const result = await authLogin(selectedUserId, password);
-    setIsSubmitting(false);
+    try {
+      const result = await authLogin(selectedUser.id, password);
 
-    if (result.success && result.user) {
-      onLoginSuccess(result.user);
-    } else {
+      if (result.success && result.user) {
+        onLoginSuccess(result.user);
+        return;
+      }
+
       setErrorMessage(result.error || 'Usuário ou senha incorretos.');
+    } catch {
+      setErrorMessage('Não foi possível conectar ao servidor. Tente novamente.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#050806] flex items-center justify-center p-4 sm:p-6 lg:p-8 font-sans text-slate-100">
-      <div className="max-w-4xl w-full bg-[#0B100D] rounded-3xl border border-white/10 shadow-2xl shadow-black/40 overflow-hidden grid grid-cols-1 md:grid-cols-12 min-h-[520px]">
-        <div className="md:col-span-5 bg-[#070B08] text-white p-8 sm:p-10 flex flex-col justify-between relative overflow-hidden border-b md:border-b-0 md:border-r border-white/10">
-          <div className="absolute -right-16 -bottom-16 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute -left-16 -top-16 w-64 h-64 bg-green-400/5 rounded-full blur-3xl pointer-events-none" />
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-3 py-6 text-slate-100 sm:px-6 lg:px-8">
+      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+        <div className="absolute -left-40 -top-40 size-[32rem] rounded-full bg-emerald-400/[0.07] blur-3xl" />
+        <div className="absolute -bottom-56 right-[-10rem] size-[38rem] rounded-full bg-lime-300/[0.035] blur-3xl" />
+        <div className="login-grid absolute inset-0 opacity-40" />
+      </div>
 
+      <div className="relative grid w-full max-w-5xl overflow-hidden rounded-[1.75rem] border border-white/10 bg-[#090e0b]/95 shadow-[0_32px_100px_rgba(0,0,0,0.5)] backdrop-blur-xl lg:grid-cols-[0.9fr_1.1fr]">
+        <section className="relative flex min-h-72 flex-col justify-between overflow-hidden border-b border-white/[0.08] bg-[#070b08] p-6 sm:p-8 lg:min-h-[38rem] lg:border-b-0 lg:border-r lg:p-10">
           <div className="relative z-10">
-            <div className="flex items-center">
-              <img
-                src={logoItam}
-                alt="ITAM Transformadores"
-                className="w-[230px] max-w-full h-auto object-contain"
-              />
-            </div>
+            <img
+              src={logoItam}
+              alt="ITAM Transformadores"
+              className="h-auto w-44 object-contain sm:w-52"
+            />
 
-            <div className="mt-12 space-y-3">
-              <h1 className="text-2xl font-extrabold tracking-tight text-white leading-tight">
-                Sistema de Apontamento Diário
+            <div className="mt-9 max-w-md lg:mt-16">
+              <Badge variant="success" className="mb-4 uppercase tracking-[0.16em]">
+                Operação industrial
+              </Badge>
+              <h1 className="text-2xl font-black leading-tight tracking-[-0.03em] text-white sm:text-3xl">
+                Apontamentos confiáveis, todos os dias.
               </h1>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                Plataforma corporativa para lançamento rápido de produção, faltas e observações do setor.
+              <p className="mt-3 text-sm leading-6 text-slate-400 sm:text-base">
+                Registre produção, faltas e observações em um fluxo único, seguro e rastreável.
               </p>
             </div>
           </div>
 
-          <div className="mt-8 relative z-10 pt-6 border-t border-white/10 space-y-3">
-            <div className="flex items-center space-x-2.5 text-xs text-slate-300">
-              <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>Identificação automática de setor e linha</span>
+          <div className="relative z-10 mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+            <div className="flex items-start gap-3 text-sm text-slate-300">
+              <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-400/10 text-emerald-300">
+                <Factory className="size-4" aria-hidden="true" />
+              </div>
+              <div>
+                <p className="font-bold text-slate-200">Contexto automático</p>
+                <p className="mt-0.5 text-xs leading-5 text-slate-500">Setor e linhas vinculados ao seu acesso.</p>
+              </div>
             </div>
-            <div className="flex items-center space-x-2.5 text-xs text-slate-300">
-              <UserCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>Lançamento inteligente por potência (kVA)</span>
+            <div className="flex items-start gap-3 text-sm text-slate-300">
+              <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-400/10 text-emerald-300">
+                <ShieldCheck className="size-4" aria-hidden="true" />
+              </div>
+              <div>
+                <p className="font-bold text-slate-200">Acesso protegido</p>
+                <p className="mt-0.5 text-xs leading-5 text-slate-500">Sessão autenticada para cada perfil.</p>
+              </div>
             </div>
           </div>
-        </div>
+        </section>
 
-        <div className="md:col-span-7 p-8 sm:p-10 flex flex-col justify-center bg-[#0B100D]">
-          <div className="mb-6">
-            <div className="inline-flex items-center rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-400 mb-3">
-              Acesso seguro
+        <section className="flex items-center bg-[#0c120e] p-5 sm:p-8 lg:p-12">
+          <div className="mx-auto w-full max-w-md">
+            <div className="mb-7">
+              <div className="mb-3 flex size-11 items-center justify-center rounded-xl border border-emerald-400/20 bg-emerald-400/10 text-emerald-300">
+                <LockKeyhole className="size-5" aria-hidden="true" />
+              </div>
+              <h2 className="text-2xl font-black tracking-tight text-white">Acessar o sistema</h2>
+              <p className="mt-1.5 text-sm leading-6 text-slate-400">
+                Selecione seu perfil de acesso e informe a senha.
+              </p>
             </div>
-            <h2 className="text-xl font-extrabold text-slate-100 tracking-tight">Acessar Sistema</h2>
-            <p className="text-xs text-slate-500 mt-1">Selecione seu perfil de acesso e informe sua senha.</p>
-          </div>
 
-          {errorMessage && (
-            <div className="mb-5 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-start space-x-2.5 text-rose-200 text-xs animate-in fade-in duration-150">
-              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-              <span className="font-semibold">{errorMessage}</span>
-            </div>
-          )}
+            {initialMessage && !errorMessage && (
+              <div
+                role="status"
+                className="mb-5 flex items-start gap-3 rounded-xl border border-amber-400/20 bg-amber-400/[0.08] p-3.5 text-sm text-amber-100"
+              >
+                <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-300" aria-hidden="true" />
+                <p className="font-semibold leading-5">{initialMessage}</p>
+              </div>
+            )}
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
-                Usuário / Posto de Trabalho
-              </label>
-              <div className="relative">
+            {errorMessage && (
+              <div
+                id={errorId}
+                role="alert"
+                className="mb-5 flex items-start gap-3 rounded-xl border border-rose-400/25 bg-rose-400/[0.08] p-3.5 text-sm text-rose-100"
+              >
+                <AlertCircle className="mt-0.5 size-4 shrink-0 text-rose-300" aria-hidden="true" />
+                <p className="font-semibold leading-5">{errorMessage}</p>
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} noValidate className="space-y-5">
+              <div>
+                <label htmlFor={userFieldId} className="field-label">
+                  Usuário ou posto de trabalho
+                </label>
                 <select
+                  id={userFieldId}
                   value={selectedUserId}
-                  onChange={(e) => {
-                    setSelectedUserId(e.target.value);
+                  required
+                  autoFocus
+                  aria-invalid={Boolean(errorMessage && !selectedUser) || undefined}
+                  aria-describedby={errorMessage && !selectedUser ? errorId : undefined}
+                  onChange={(event) => {
+                    setSelectedUserId(event.target.value);
                     setErrorMessage(null);
                   }}
-                  className="w-full bg-[#070B08] border border-white/15 rounded-xl px-3.5 py-3 text-sm font-bold text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all appearance-none cursor-pointer pr-10"
+                  className="field-control"
                 >
+                  <option value="">Selecione um usuário</option>
                   {MOCK_USERS.map((user) => (
-                    <option key={user.id} value={user.id} className="bg-[#0B100D] text-slate-100">
-                      {user.perfil === 'COORDENACAO' ? 'COORDENAÇÃO (Acesso global)' : `${user.name} (${user.setor})`}
+                    <option key={user.id} value={user.id}>
+                      {user.perfil === 'COORDENACAO'
+                        ? 'COORDENAÇÃO — Acesso global'
+                        : `${user.name} — ${user.setor}`}
                     </option>
                   ))}
                 </select>
-                <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
-                  <ArrowRight className="w-4 h-4 rotate-90" />
+
+                {selectedUser && (
+                  <Surface tone="inset" padding="sm" className="mt-2.5 flex items-center justify-between gap-3 rounded-xl">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Contexto de acesso</p>
+                      <p className="mt-1 truncate text-sm font-bold text-slate-200">
+                        {selectedUser.perfil === 'COORDENACAO' ? 'Acesso global' : selectedUser.setor}
+                      </p>
+                    </div>
+                    {selectedUser.perfil === 'COORDENACAO' ? (
+                      <Badge variant="success">
+                        <ShieldCheck className="size-3.5" aria-hidden="true" />
+                        Coordenação
+                      </Badge>
+                    ) : (
+                      <Badge variant="neutral">
+                        {selectedUser.linhas.length === 1 ? 'Linha ' : 'Linhas '}
+                        {selectedUser.linhas.join(' / ')}
+                      </Badge>
+                    )}
+                  </Surface>
+                )}
+              </div>
+
+              <div>
+                <label htmlFor={passwordFieldId} className="field-label">
+                  Senha de acesso
+                </label>
+                <div className="relative">
+                  <input
+                    id={passwordFieldId}
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    required
+                    autoComplete="current-password"
+                    placeholder="Digite sua senha"
+                    aria-invalid={Boolean(errorMessage && selectedUser && !password) || undefined}
+                    aria-describedby={errorMessage && selectedUser && !password ? errorId : undefined}
+                    onChange={(event) => {
+                      setPassword(event.target.value);
+                      setErrorMessage(null);
+                    }}
+                    className="field-control pr-14"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((current) => !current)}
+                    aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                    aria-pressed={showPassword}
+                    className="absolute right-1.5 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="size-4" aria-hidden="true" />
+                    ) : (
+                      <Eye className="size-4" aria-hidden="true" />
+                    )}
+                  </button>
                 </div>
+                <FieldError className="sr-only">{errorMessage}</FieldError>
               </div>
 
-              <div className="mt-2 p-2.5 bg-emerald-500/5 border border-emerald-500/15 rounded-lg flex items-center justify-between gap-3 text-xs">
-                <span className="text-slate-500 font-medium">
-                  Setor vinculado: <strong className="text-slate-200">{selectedUser.setor}</strong>
-                </span>
-                <span className="font-bold text-emerald-300 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20 shrink-0">
-                  {selectedUser.linhas.length === 1 ? `LINHA ${selectedUser.linhas[0]}` : `LINHAS ${selectedUser.linhas.join(' e ')}`}
-                </span>
-              </div>
+              <Button
+                type="submit"
+                size="lg"
+                fullWidth
+                isLoading={isSubmitting}
+                loadingLabel="Autenticando..."
+                rightIcon={<ArrowRight className="size-4" aria-hidden="true" />}
+              >
+                Entrar no sistema
+              </Button>
+            </form>
+
+            <div className="mt-6 flex items-center justify-center gap-2 text-xs text-slate-500">
+              <CheckCircle2 className="size-3.5 text-emerald-400" aria-hidden="true" />
+              <span>Ambiente corporativo ITAM</span>
             </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
-                Senha de Acesso
-              </label>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    setErrorMessage(null);
-                  }}
-                  placeholder="Digite sua senha"
-                  autoComplete="current-password"
-                  className="w-full bg-[#070B08] border border-white/15 rounded-xl px-3.5 py-3 text-sm font-semibold text-slate-100 placeholder:text-slate-500 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all pr-12"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-emerald-400 p-1 transition-colors"
-                  aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-600 text-[#041007] font-extrabold py-3.5 px-4 rounded-xl transition-all shadow-lg shadow-emerald-950/20 flex items-center justify-center space-x-2 text-sm disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {isSubmitting ? (
-                <span>Autenticando...</span>
-              ) : (
-                <>
-                  <span>Entrar no Sistema</span>
-                  <ArrowRight className="w-4 h-4" />
-                </>
-              )}
-            </button>
-          </form>
-        </div>
+          </div>
+        </section>
       </div>
-    </div>
+    </main>
   );
 };

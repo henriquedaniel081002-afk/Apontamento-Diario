@@ -1,86 +1,108 @@
-import React, { useState, useEffect } from 'react';
-import { User, ProducaoItem, FaltaItem, ObservacaoItem, TipoBobina } from '../types';
+import React, { useId, useRef, useState } from 'react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  CalendarDays,
+  Factory,
+  Info,
+  Save,
+  Sparkles,
+} from 'lucide-react';
+import { FaltaItem, ObservacaoItem, ProducaoItem, TipoBobina, User } from '../types';
 import { getTodayDateString } from '../utils/formatters';
 import { apontamentoService } from '../services/apontamentoService';
-import { ProducaoSection } from '../components/apontamento/ProducaoSection';
 import { FaltasSection } from '../components/apontamento/FaltasSection';
 import { ObservacoesSection } from '../components/apontamento/ObservacoesSection';
+import { ProducaoSection } from '../components/apontamento/ProducaoSection';
+import { ReviewSection } from '../components/apontamento/ReviewSection';
 import { SummaryHeader } from '../components/apontamento/SummaryHeader';
 import { Toast, ToastMessage } from '../components/common/Toast';
-import { Calendar, Save, Loader2, Sparkles, ArrowLeft, ArrowRight, Check } from 'lucide-react';
+import { Badge, Button, FieldError, Stepper, Surface } from '../components/common/ui';
 
 interface ApontamentoPageProps {
   user: User;
   onNavigateToHistory: () => void;
 }
 
-type Step = 1 | 2 | 3;
+type Step = 1 | 2 | 3 | 4;
 
-const steps: Array<{ id: Step; label: string; shortLabel: string }> = [
-  { id: 1, label: 'Produção', shortLabel: 'Produção' },
-  { id: 2, label: 'Faltas e ausências', shortLabel: 'Faltas' },
-  { id: 3, label: 'Observações', shortLabel: 'Observações' },
-];
+interface ContextErrors {
+  date?: string;
+  setor?: string;
+  tipoBobina?: string;
+}
 
-export const ApontamentoPage: React.FC<ApontamentoPageProps> = ({ user }) => {
-  const [selectedDate, setSelectedDate] = useState<string>(getTodayDateString());
+const getYesterdayDateString = (): string => {
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const year = yesterday.getFullYear();
+  const month = String(yesterday.getMonth() + 1).padStart(2, '0');
+  const day = String(yesterday.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const stepLabels = ['Produção', 'Faltas e ausências', 'Observações', 'Revisão e envio'] as const;
+
+export const ApontamentoPage: React.FC<ApontamentoPageProps> = ({ user, onNavigateToHistory }) => {
+  const [selectedDate, setSelectedDate] = useState(getTodayDateString());
   const [currentStep, setCurrentStep] = useState<Step>(1);
   const [tipoBobina, setTipoBobina] = useState<TipoBobina | ''>('');
-
   const [producoes, setProducoes] = useState<ProducaoItem[]>([]);
   const [faltas, setFaltas] = useState<FaltaItem[]>([]);
   const [observacoes, setObservacoes] = useState<ObservacaoItem[]>([]);
-
-  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [contextErrors, setContextErrors] = useState<ContextErrors>({});
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
+  const [draftResetVersion, setDraftResetVersion] = useState(0);
 
-  useEffect(() => {
-    // A tela de novo apontamento sempre começa vazia. Registros anteriores
-    // continuam disponíveis no Histórico para edição explícita.
-    setCurrentStep(1);
-    setProducoes([]);
-    setFaltas([]);
-    setObservacoes([]);
-    setTipoBobina('');
-  }, [selectedDate, user.id]);
+  const dateInputId = useId();
+  const dateErrorId = `${dateInputId}-error`;
+  const bobinaErrorId = `${dateInputId}-bobina-error`;
+  const dateInputRef = useRef<HTMLInputElement>(null);
+  const bobinaGroupRef = useRef<HTMLDivElement>(null);
+  const savingRef = useRef(false);
 
-  const handleAddProducao = (item: ProducaoItem) => setProducoes((prev) => [...prev, item]);
-  const handleUpdateProducao = (updated: ProducaoItem) => setProducoes((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
-  const handleDeleteProducao = (id: string) => setProducoes((prev) => prev.filter((p) => p.id !== id));
+  const totalProducao = producoes.reduce((sum, item) => sum + item.quantidade, 0);
+  const totalFaltas = faltas.reduce((sum, item) => sum + item.quantidade, 0);
+  const isBobinagem = user.setor === 'BOBINA AT/BT';
 
-  const handleAddFalta = (item: FaltaItem) => setFaltas((prev) => [...prev, item]);
-  const handleUpdateFalta = (updated: FaltaItem) => setFaltas((prev) => prev.map((f) => (f.id === updated.id ? updated : f)));
-  const handleDeleteFalta = (id: string) => setFaltas((prev) => prev.filter((f) => f.id !== id));
-
-  const handleAddObservacao = (item: ObservacaoItem) => setObservacoes((prev) => [...prev, item]);
-  const handleUpdateObservacao = (updated: ObservacaoItem) => setObservacoes((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
-  const handleDeleteObservacao = (id: string) => setObservacoes((prev) => prev.filter((o) => o.id !== id));
+  const steps = [
+    { id: 'producao', label: 'Produção', description: 'Potências e quantidades', count: producoes.length },
+    { id: 'faltas', label: 'Faltas', description: 'Ausências por turno', count: faltas.length },
+    { id: 'observacoes', label: 'Observações', description: 'Ocorrências da jornada', count: observacoes.length },
+    { id: 'revisao', label: 'Revisão', description: 'Conferir e enviar' },
+  ];
 
   const handleSave = async () => {
-    if (!selectedDate) {
-      setToast({
-        id: Date.now().toString(),
-        type: 'error',
-        message: 'A data do apontamento é obrigatória.',
-      });
+    if (savingRef.current) return;
+
+    const nextErrors: ContextErrors = {};
+    if (!selectedDate) nextErrors.date = 'Selecione a data do apontamento.';
+    if (!user.setor) nextErrors.setor = 'O usuário atual não possui um setor configurado.';
+    if (isBobinagem && !tipoBobina) nextErrors.tipoBobina = 'Selecione Bobina AT ou Bobina BT antes de salvar.';
+
+    setContextErrors(nextErrors);
+    setSaveError(null);
+
+    if (Object.keys(nextErrors).length > 0) {
+      if (nextErrors.date) {
+        dateInputRef.current?.focus();
+      } else if (nextErrors.tipoBobina) {
+        bobinaGroupRef.current?.focus();
+      }
       return;
     }
 
-    const isBobinagem = user.setor === 'BOBINA AT/BT';
-    if (isBobinagem && !tipoBobina) {
-      setToast({
-        id: Date.now().toString(),
-        type: 'error',
-        message: 'Selecione se o apontamento da Bobinagem é AT ou BT.',
-      });
-      return;
-    }
+    const setor = user.setor;
+    if (!setor) return;
 
+    savingRef.current = true;
     setIsSaving(true);
     try {
       await apontamentoService.save({
         data: selectedDate,
-        setor: user.setor,
+        setor,
         tipoBobina: tipoBobina || undefined,
         userId: user.id,
         userName: user.name,
@@ -89,161 +111,189 @@ export const ApontamentoPage: React.FC<ApontamentoPageProps> = ({ user }) => {
         observacoes,
       });
 
-      // Um novo envio deve sempre gerar um novo registro. Após salvar,
-      // limpamos o formulário e mantemos apenas a data selecionada.
       setProducoes([]);
       setFaltas([]);
       setObservacoes([]);
       setTipoBobina('');
+      setContextErrors({});
+      setSaveError(null);
+      setDraftResetVersion((version) => version + 1);
       setCurrentStep(1);
       setToast({
         id: Date.now().toString(),
         type: 'success',
-        message: 'Novo apontamento criado com sucesso!',
+        message: 'Apontamento salvo com sucesso.',
+        action: {
+          label: 'Ver histórico',
+          onClick: onNavigateToHistory,
+        },
       });
-    } catch (err) {
-      console.error('Error saving:', err);
+    } catch (error) {
+      console.error('Error saving:', error);
+      const message = error instanceof Error ? error.message : 'Não foi possível salvar o apontamento. Tente novamente.';
+      setSaveError(message);
       setToast({
         id: Date.now().toString(),
         type: 'error',
-        message: err instanceof Error ? err.message : 'Falha ao salvar apontamento. Tente novamente.',
+        message,
       });
     } finally {
+      savingRef.current = false;
       setIsSaving(false);
     }
   };
 
-  const totalProducao = producoes.reduce((sum, p) => sum + p.quantidade, 0);
-  const totalFaltas = faltas.reduce((sum, f) => sum + f.quantidade, 0);
-
-  const setToday = () => setSelectedDate(getTodayDateString());
-  const setYesterday = () => {
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yyyy = yesterday.getFullYear();
-    const mm = String(yesterday.getMonth() + 1).padStart(2, '0');
-    const dd = String(yesterday.getDate()).padStart(2, '0');
-    setSelectedDate(`${yyyy}-${mm}-${dd}`);
+  const goToStep = (step: Step) => {
+    if (!isSaving) setCurrentStep(step);
   };
 
   const goNext = () => {
-    if (currentStep < 3) setCurrentStep((currentStep + 1) as Step);
+    if (currentStep < 4) goToStep((currentStep + 1) as Step);
   };
 
   const goBack = () => {
-    if (currentStep > 1) setCurrentStep((currentStep - 1) as Step);
+    if (currentStep > 1) goToStep((currentStep - 1) as Step);
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#0D120F] p-5 sm:p-6 rounded-2xl border border-white/10 shadow-xl shadow-black/10">
-        <div>
-          <div className="flex items-center space-x-2 text-xs font-bold text-emerald-400 uppercase tracking-wider mb-1">
-            <Sparkles className="w-4 h-4" />
-            <span>Posto de Trabalho • {user.setor}</span>
-          </div>
-          <h1 className="text-2xl font-black text-slate-100 tracking-tight">Apontamento Diário</h1>
-          <p className="text-xs text-slate-500 mt-0.5">Preencha o apontamento em três etapas simples.</p>
-        </div>
-
-        <div className="bg-[#080C09] border border-white/10 p-3 rounded-xl flex flex-col sm:flex-row sm:items-center gap-3">
-          <div className="flex items-center space-x-2">
-            <Calendar className="w-4 h-4 text-emerald-400 shrink-0" />
-            <label className="text-xs font-bold text-slate-200 shrink-0">
-              Data do apontamento <span className="text-rose-400">*</span>
-            </label>
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="bg-[#0D120F] border border-white/15 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all cursor-pointer [color-scheme:dark]"
-            />
-
-            <div className="flex items-center space-x-1">
-              <button
-                type="button"
-                onClick={setToday}
-                className={`px-2 py-1 text-[11px] font-semibold rounded-md transition-colors ${
-                  selectedDate === getTodayDateString()
-                    ? 'bg-emerald-500 text-[#041007] font-extrabold'
-                    : 'bg-white/5 border border-white/10 text-slate-500 hover:bg-white/10 hover:text-slate-200'
-                }`}
-              >
-                Hoje
-              </button>
-              <button
-                type="button"
-                onClick={setYesterday}
-                className="px-2 py-1 text-[11px] font-semibold bg-white/5 border border-white/10 text-slate-500 hover:bg-white/10 hover:text-slate-200 rounded-md transition-colors"
-              >
-                Ontem
-              </button>
+    <div className="mx-auto max-w-6xl space-y-5 px-4 py-5 sm:px-6 sm:py-7" aria-busy={isSaving || undefined}>
+      <Surface tone="raised" padding="lg" className="relative overflow-hidden">
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-1/2 bg-[radial-gradient(circle_at_top_right,rgba(52,211,153,0.08),transparent_65%)]" />
+        <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-[var(--accent)]">
+                <Sparkles aria-hidden="true" className="h-4 w-4" /> Novo registro
+              </span>
+              <Badge variant="neutral">{user.setor || 'Setor não definido'}</Badge>
             </div>
+            <h1 className="text-2xl font-extrabold tracking-tight text-[var(--text-primary)] sm:text-3xl">
+              Apontamento diário
+            </h1>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--text-secondary)]">
+              Registre a jornada em quatro etapas. As informações ficam preservadas enquanto você navega ou ajusta a data.
+            </p>
           </div>
-        </div>
-      </div>
 
-      {user.setor === 'BOBINA AT/BT' && (
-        <div className="bg-[#0D120F] border border-white/10 rounded-2xl p-4 sm:p-5">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
-              <p className="text-xs font-black text-slate-200">Tipo de bobina <span className="text-rose-400">*</span></p>
-              <p className="text-[11px] text-slate-500 mt-0.5">Escolha AT ou BT antes de salvar este apontamento.</p>
+          <div className="w-full rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-muted)] p-4 lg:max-w-md">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <label htmlFor={dateInputId} className="flex items-center gap-2 text-sm font-semibold text-[var(--text-primary)]">
+                <CalendarDays aria-hidden="true" className="h-4 w-4 text-[var(--accent)]" />
+                Data do apontamento
+              </label>
+              <span className="text-xs font-medium text-[var(--danger)]">Obrigatória</span>
             </div>
-            <div className="grid grid-cols-2 gap-2 sm:w-64">
-              {(['AT', 'BT'] as TipoBobina[]).map((tipo) => (
-                <button
-                  key={tipo}
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <input
+                ref={dateInputRef}
+                id={dateInputId}
+                type="date"
+                value={selectedDate}
+                onChange={(event) => {
+                  setSelectedDate(event.target.value);
+                  setContextErrors((current) => ({ ...current, date: undefined }));
+                }}
+                aria-invalid={Boolean(contextErrors.date)}
+                aria-describedby={contextErrors.date ? dateErrorId : undefined}
+                className="field-control min-w-0 flex-1 [color-scheme:dark]"
+              />
+              <div className="grid grid-cols-2 gap-2 sm:flex">
+                <Button
                   type="button"
-                  onClick={() => setTipoBobina(tipo)}
-                  className={`px-4 py-2.5 rounded-xl border text-xs font-black transition-all ${
-                    tipoBobina === tipo
-                      ? 'bg-emerald-500 text-[#041007] border-emerald-400 shadow-lg shadow-emerald-950/20'
-                      : 'bg-[#090D0A] text-slate-300 border-white/10 hover:border-emerald-500/40 hover:text-emerald-300'
-                  }`}
+                  size="sm"
+                  variant={selectedDate === getTodayDateString() ? 'primary' : 'secondary'}
+                  onClick={() => {
+                    setSelectedDate(getTodayDateString());
+                    setContextErrors((current) => ({ ...current, date: undefined }));
+                  }}
                 >
-                  BOBINA {tipo}
-                </button>
-              ))}
+                  Hoje
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={selectedDate === getYesterdayDateString() ? 'primary' : 'secondary'}
+                  onClick={() => {
+                    setSelectedDate(getYesterdayDateString());
+                    setContextErrors((current) => ({ ...current, date: undefined }));
+                  }}
+                >
+                  Ontem
+                </Button>
+              </div>
+            </div>
+            {contextErrors.date && <FieldError id={dateErrorId} role="alert">{contextErrors.date}</FieldError>}
+            <p className="mt-2 flex items-start gap-1.5 text-xs leading-5 text-[var(--text-tertiary)]">
+              <Info aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              Alterar a data não apaga o rascunho atual.
+            </p>
+          </div>
+        </div>
+      </Surface>
+
+      {isBobinagem && (
+        <Surface tone="base" padding="md">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--accent-soft)] text-[var(--accent)]">
+                <Factory aria-hidden="true" className="h-5 w-5" />
+              </span>
+              <div>
+                <h2 className="text-sm font-bold text-[var(--text-primary)]">Tipo de bobina</h2>
+                <p className="mt-1 text-sm text-[var(--text-secondary)]">Defina a unidade operacional deste apontamento.</p>
+              </div>
+            </div>
+
+            <div>
+              <div
+                ref={bobinaGroupRef}
+                role="radiogroup"
+                aria-label="Tipo de bobina"
+                aria-invalid={Boolean(contextErrors.tipoBobina)}
+                aria-describedby={contextErrors.tipoBobina ? bobinaErrorId : undefined}
+                tabIndex={-1}
+                className="grid grid-cols-2 gap-2 sm:w-72"
+              >
+                {(['AT', 'BT'] as TipoBobina[]).map((tipo) => (
+                  <button
+                    key={tipo}
+                    type="button"
+                    role="radio"
+                    aria-checked={tipoBobina === tipo}
+                    onClick={() => {
+                      setTipoBobina(tipo);
+                      setContextErrors((current) => ({ ...current, tipoBobina: undefined }));
+                    }}
+                    className={`min-h-11 rounded-xl border px-4 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+                      tipoBobina === tipo
+                        ? 'border-[var(--accent)] bg-[var(--accent)] text-emerald-950'
+                        : 'border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-secondary)] hover:border-[var(--accent-border)] hover:text-[var(--text-primary)]'
+                    }`}
+                  >
+                    Bobina {tipo}
+                  </button>
+                ))}
+              </div>
+              {contextErrors.tipoBobina && <FieldError id={bobinaErrorId} role="alert">{contextErrors.tipoBobina}</FieldError>}
             </div>
           </div>
+        </Surface>
+      )}
+
+      {contextErrors.setor && (
+        <div role="alert" className="rounded-xl border border-[var(--danger-border)] bg-[var(--danger-soft)] px-4 py-3 text-sm font-medium text-[var(--danger)]">
+          {contextErrors.setor}
         </div>
       )}
 
-      <div className="bg-[#0D120F] border border-white/10 rounded-2xl p-4 sm:p-5">
-        <div className="grid grid-cols-3 gap-2 sm:gap-4">
-          {steps.map((step) => {
-            const isActive = currentStep === step.id;
-            const isComplete = currentStep > step.id;
-            return (
-              <div key={step.id} className="relative flex items-center gap-2 sm:gap-3 min-w-0">
-                <div
-                  className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-xs font-black shrink-0 border transition-all ${
-                    isActive
-                      ? 'bg-emerald-500 text-[#041007] border-emerald-400 shadow-lg shadow-emerald-950/20'
-                      : isComplete
-                        ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                        : 'bg-white/5 text-slate-500 border-white/10'
-                  }`}
-                >
-                  {isComplete ? <Check className="w-4 h-4" /> : step.id}
-                </div>
-                <div className="min-w-0">
-                  <span className="hidden sm:block text-[10px] uppercase tracking-wider font-bold text-slate-500">Etapa {step.id}</span>
-                  <span className={`block text-[11px] sm:text-xs font-bold truncate ${isActive ? 'text-slate-100' : isComplete ? 'text-emerald-300' : 'text-slate-500'}`}>
-                    <span className="sm:hidden">{step.shortLabel}</span>
-                    <span className="hidden sm:inline">{step.label}</span>
-                  </span>
-                </div>
-                {step.id < 3 && <div className="hidden sm:block absolute left-[calc(100%-10px)] w-5 h-px bg-white/10" />}
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      <Surface tone="base" padding="sm">
+        <Stepper
+          steps={steps}
+          activeStep={currentStep - 1}
+          onStepChange={(index) => goToStep((index + 1) as Step)}
+          ariaLabel="Etapas do novo apontamento"
+        />
+      </Surface>
 
       <SummaryHeader
         totalProducao={totalProducao}
@@ -251,89 +301,108 @@ export const ApontamentoPage: React.FC<ApontamentoPageProps> = ({ user }) => {
         totalObservacoes={observacoes.length}
       />
 
-      <div className="space-y-5">
-          {currentStep === 1 && (
-            <ProducaoSection
-              user={user}
-              producoes={producoes}
-              onAdd={handleAddProducao}
-              onUpdate={handleUpdateProducao}
-              onDelete={handleDeleteProducao}
-            />
-          )}
+      <div>
+        <div hidden={currentStep !== 1} aria-hidden={currentStep !== 1}>
+          <ProducaoSection
+            key={`producao-${user.id}-${draftResetVersion}`}
+            user={user}
+            producoes={producoes}
+            onAdd={(item) => setProducoes((current) => [...current, item])}
+            onUpdate={(item) => setProducoes((current) => current.map((existing) => existing.id === item.id ? item : existing))}
+            onDelete={(id) => setProducoes((current) => current.filter((item) => item.id !== id))}
+          />
+        </div>
 
-          {currentStep === 2 && (
-            <FaltasSection
-              user={user}
-              faltas={faltas}
-              onAdd={handleAddFalta}
-              onUpdate={handleUpdateFalta}
-              onDelete={handleDeleteFalta}
-            />
-          )}
+        <div hidden={currentStep !== 2} aria-hidden={currentStep !== 2}>
+          <FaltasSection
+            key={`faltas-${user.id}-${draftResetVersion}`}
+            user={user}
+            faltas={faltas}
+            onAdd={(item) => setFaltas((current) => [...current, item])}
+            onUpdate={(item) => setFaltas((current) => current.map((existing) => existing.id === item.id ? item : existing))}
+            onDelete={(id) => setFaltas((current) => current.filter((item) => item.id !== id))}
+          />
+        </div>
 
-          {currentStep === 3 && (
-            <ObservacoesSection
-              user={user}
-              observacoes={observacoes}
-              onAdd={handleAddObservacao}
-              onUpdate={handleUpdateObservacao}
-              onDelete={handleDeleteObservacao}
-            />
-          )}
+        <div hidden={currentStep !== 3} aria-hidden={currentStep !== 3}>
+          <ObservacoesSection
+            key={`observacoes-${user.id}-${draftResetVersion}`}
+            user={user}
+            observacoes={observacoes}
+            onAdd={(item) => setObservacoes((current) => [...current, item])}
+            onUpdate={(item) => setObservacoes((current) => current.map((existing) => existing.id === item.id ? item : existing))}
+            onDelete={(id) => setObservacoes((current) => current.filter((item) => item.id !== id))}
+          />
+        </div>
 
-          <div className="sticky bottom-4 z-20 bg-[#0A0F0C]/95 backdrop-blur-md border border-white/10 rounded-2xl p-4 shadow-2xl shadow-black/30 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="text-xs text-slate-500 font-medium text-center sm:text-left">
-              <span>
-                Etapa {currentStep} de 3 • <strong className="text-slate-300">{steps[currentStep - 1].label}</strong>
-              </span>
-              <span className="hidden sm:inline mx-2 text-slate-300">•</span>
-              <span className="block sm:inline text-[11px] text-slate-500">Dados já adicionados permanecem ao avançar ou voltar.</span>
-            </div>
+        <div hidden={currentStep !== 4} aria-hidden={currentStep !== 4}>
+          <ReviewSection
+            user={user}
+            selectedDate={selectedDate}
+            tipoBobina={tipoBobina}
+            producoes={producoes}
+            faltas={faltas}
+            observacoes={observacoes}
+            onEditStep={goToStep}
+          />
+        </div>
+      </div>
 
-            <div className="w-full sm:w-auto flex items-center gap-2">
-              {currentStep > 1 && (
-                <button
-                  type="button"
-                  onClick={goBack}
-                  className="flex-1 sm:flex-none border border-white/10 bg-white/5 hover:bg-white/10 text-slate-300 font-bold px-4 py-3 rounded-xl transition-all flex items-center justify-center space-x-2 text-sm"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  <span>Voltar</span>
-                </button>
-              )}
+      {saveError && (
+        <div role="alert" className="rounded-xl border border-[var(--danger-border)] bg-[var(--danger-soft)] px-4 py-3 text-sm font-medium text-[var(--danger)]">
+          {saveError}
+        </div>
+      )}
 
-              {currentStep < 3 ? (
-                <button
-                  type="button"
-                  onClick={goNext}
-                  className="flex-1 sm:flex-none bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-600 text-[#041007] font-extrabold px-6 py-3 rounded-xl transition-all shadow-lg shadow-emerald-950/20 flex items-center justify-center space-x-2 text-sm"
-                >
-                  <span>Avançar</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleSave}
-                  disabled={isSaving}
-                  className="flex-1 sm:flex-none bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-600 text-[#041007] font-extrabold px-6 py-3 rounded-xl transition-all shadow-lg shadow-emerald-950/20 flex items-center justify-center space-x-2 text-sm disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {isSaving ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Salvando...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-4 h-4" />
-                      <span>Salvar apontamento</span>
-                    </>
-                  )}
-                </button>
-              )}
-            </div>
+      <div className="sticky bottom-3 z-20 rounded-2xl border border-[var(--border-strong)] bg-[#0c120e]/95 p-3 shadow-[0_20px_55px_rgba(0,0,0,0.38)] backdrop-blur-xl sm:p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-[var(--text-primary)]">
+              Etapa {currentStep} de 4 · {stepLabels[currentStep - 1]}
+            </p>
+            <p className="mt-0.5 hidden text-xs text-[var(--text-tertiary)] sm:block">
+              Itens adicionados e campos em edição permanecem ao avançar ou voltar.
+            </p>
           </div>
+
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0">
+            {currentStep > 1 && (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={isSaving}
+                leftIcon={<ArrowLeft aria-hidden="true" className="h-4 w-4" />}
+                onClick={goBack}
+              >
+                Voltar
+              </Button>
+            )}
+
+            {currentStep < 4 ? (
+              <Button
+                type="button"
+                variant="primary"
+                className={currentStep === 1 ? 'col-span-2 sm:col-span-1' : undefined}
+                rightIcon={<ArrowRight aria-hidden="true" className="h-4 w-4" />}
+                onClick={goNext}
+              >
+                Avançar
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="primary"
+                isLoading={isSaving}
+                loadingLabel="Salvando..."
+                leftIcon={<Save aria-hidden="true" className="h-4 w-4" />}
+                onClick={handleSave}
+              >
+                <span className="sm:hidden">Salvar</span>
+                <span className="hidden sm:inline">Salvar apontamento</span>
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
 
       <Toast toast={toast} onClose={() => setToast(null)} />

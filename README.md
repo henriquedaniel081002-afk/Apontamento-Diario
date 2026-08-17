@@ -1,48 +1,59 @@
 # ITAM — Sistema de Apontamento Diário
 
-Front-end React/TypeScript integrado a PostgreSQL Neon por uma API Express.
+Aplicação React/TypeScript para registro diário de produção, faltas e observações, integrada a PostgreSQL Neon por uma API Express.
 
-## Configuração
+## Execução local
 
-1. Instale as dependências: `npm install`
-2. Configure o arquivo `.env` com `DATABASE_URL` e `SESSION_SECRET`.
-3. Rode `npm run dev`.
+Requisitos: Node.js 20.19 ou mais recente e npm.
+
+1. Instale exatamente as dependências do lockfile: `npm ci`.
+2. Copie `.env.example` para `.env` e preencha `DATABASE_URL` e `SESSION_SECRET`.
+3. Inicie front-end e API: `npm run dev`.
 4. Abra `http://localhost:3000`.
 
-## Segurança
+Para revisar a interface sem acessar o Neon, use `npm run dev:mock`. A API fictícia aceita qualquer senha não vazia para os perfis disponibilizados por ela e mantém os dados apenas em memória enquanto o processo estiver aberto.
 
-A `DATABASE_URL` é usada somente pelo servidor (`server.ts`) e nunca é enviada ao navegador. O arquivo `.env` é ignorado pelo Git.
+A `DATABASE_URL` é utilizada exclusivamente por `server.ts` e não é enviada ao navegador. Arquivos `.env` são ignorados pelo Git.
 
-## Login e perfis
+## Perfis e regras preservadas
 
-Os usuários exibidos na tela são definidos no front-end para facilitar a seleção, mas a senha e as permissões são validadas no Neon pela função `autenticar_usuario`.
+- `APONTADOR`: cria apontamentos independentes e consulta, edita ou exclui somente seus próprios registros.
+- `COORDENACAO`: consulta todos os registros, acompanha pendências, filtra, edita, exclui e exporta os resultados.
+- Cada POST cria um novo apontamento, inclusive quando já existe outro do mesmo usuário e data.
+- Bobinagem mantém `AT` e `BT` separados.
+- Montagem Final e MPA mantêm `MON` e `TRI` separados.
+- O filtro inicial da Coordenação usa o último dia útil anterior e também controla o painel de pendências.
+- O Excel mantém as abas `produzido`, `faltas` e `obs`; justificativas de faltas também entram em `obs`.
 
-- `APONTADOR`: mantém o fluxo normal de apontamento e histórico do próprio acesso.
-- `COORDENACAO`: abre uma única tela de consulta geral, com filtros por dia, setor, linha e potência. Pode visualizar detalhes, editar e excluir qualquer apontamento.
+As permissões são validadas novamente na API. A interface nunca é a única barreira de autorização.
 
-As operações globais da Coordenação também são validadas no backend; não dependem apenas de esconder ou exibir botões no front-end.
+## Migração do Neon
 
-## Dados
+O schema e a migração mencionada na versão anterior não fazem parte deste pacote. Antes de publicar em um banco novo, obtenha a versão autoritativa de `NEON_AJUSTE_MULTIPLOS_APONTAMENTOS_E_BOBINAGEM.sql` e confirme que o banco possui `tipo_bobina` e permite múltiplos apontamentos na mesma data.
 
-Produção, faltas, observações e histórico são gravados/lidos do Neon. O `localStorage` é usado apenas para manter a sessão/token do navegador.
+Não recrie essa migração por inferência a partir do front-end ou de `server.ts`.
 
-## Atualização — múltiplos apontamentos, Bobinagem AT/BT e Excel
+## Verificações
 
-Antes de publicar esta versão, execute no SQL Editor do Neon o arquivo:
+- `npm run typecheck`: valida TypeScript.
+- `npm run test`: executa os testes automatizados com dados fictícios.
+- `npm run build`: valida tipos e gera o bundle Vite.
+- `npm run check`: executa typecheck, testes e build em sequência.
+- `npm audit --omit=dev`: audita dependências de produção.
 
-`NEON_AJUSTE_MULTIPLOS_APONTAMENTOS_E_BOBINAGEM.sql`
+Os testes e a validação visual desta entrega usam respostas fictícias e não acessam o Neon. Login e CRUD reais devem ser verificados posteriormente em um ambiente de teste controlado.
 
-A atualização faz duas mudanças no banco: adiciona `tipo_bobina` aos apontamentos e remove a restrição que impedia mais de um apontamento do mesmo usuário/setor na mesma data.
+### Matriz de QA desta entrega
 
-- Cada novo clique em **Salvar apontamento** cria um registro independente.
-- Edições continuam alterando apenas o registro selecionado pelo ID.
-- O usuário **Bobinagem** precisa escolher **AT** ou **BT** ao criar o apontamento.
-- A **COORDENAÇÃO** pode exportar os registros exibidos para um arquivo `.xlsx` com as abas `produzido`, `faltas` e `obs`.
+- `npm ci`, `npm run check`, `npm run build` e `npm audit --omit=dev` aprovados.
+- 19 testes automatizados aprovados, cobrindo sessão expirada, Bearer token, dia útil anterior, 12 unidades, AT/BT, MON/TRI, filtros, fronteira caracterizada de sete dias e estrutura do XLSX.
+- Fluxos fictícios validados no navegador: login válido e inválido, wizard, rascunho entre etapas, duplicidade, dois POSTs na mesma data, edição, exclusão, filtros, estados vazios e modais por teclado.
+- QA responsivo executado em 1440×900, 1024×768, 768×1024, 390×844 e 320 px, sem overflow global ou erros no console.
 
+## Integridade do backend
 
-## Atualização — Coordenação: pendências, data padrão e justificativas no Excel
+`server.ts` permaneceu integralmente inalterado. Nenhum endpoint, payload, header, código HTTP, regra JWT, permissão ou comportamento de persistência foi modificado pelo redesign.
 
-- A tela da **COORDENAÇÃO** mostra quais setores ainda não possuem apontamento no dia atual.
-- O filtro **Dia** inicia no último dia útil anterior: normalmente ontem; na segunda-feira, inicia na sexta-feira anterior.
-- Ao exportar o Excel, as justificativas preenchidas nas faltas também são adicionadas à aba `obs`, junto com as observações normais.
-- Esta atualização não exige mudança adicional no Neon.
+## Deploy
+
+`vercel.json` mantém o front-end como build estático e encaminha `/api/*` para a função Express em `server.ts`. Configure `DATABASE_URL` e um `SESSION_SECRET` forte no ambiente de deploy.

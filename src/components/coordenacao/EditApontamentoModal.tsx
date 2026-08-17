@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Calendar, Check, Save } from 'lucide-react';
 import { Apontamento, FaltaItem, Linha, ObservacaoItem, ProducaoItem, User } from '../../types';
 import { ProducaoSection } from '../apontamento/ProducaoSection';
 import { FaltasSection } from '../apontamento/FaltasSection';
 import { ObservacoesSection } from '../apontamento/ObservacoesSection';
 import { SummaryHeader } from '../apontamento/SummaryHeader';
-import { Calendar, Check, Loader2, Save, X } from 'lucide-react';
+import { ModalShell } from '../common/ModalShell';
+import { Button, FieldError } from '../common/ui';
 
 interface EditApontamentoModalProps {
   apontamento: Apontamento | null;
@@ -34,9 +36,9 @@ export const EditApontamentoModal: React.FC<EditApontamentoModalProps> = ({
   useEffect(() => {
     if (!apontamento) return;
     setData(apontamento.data);
-    setProducoes(apontamento.producoes.map((x) => ({ ...x })));
-    setFaltas(apontamento.faltas.map((x) => ({ ...x })));
-    setObservacoes(apontamento.observacoes.map((x) => ({ ...x })));
+    setProducoes(apontamento.producoes.map((item) => ({ ...item })));
+    setFaltas(apontamento.faltas.map((item) => ({ ...item })));
+    setObservacoes(apontamento.observacoes.map((item) => ({ ...item })));
     setStep(1);
     setError(null);
   }, [apontamento]);
@@ -44,29 +46,29 @@ export const EditApontamentoModal: React.FC<EditApontamentoModalProps> = ({
   const editorUser = useMemo<User | null>(() => {
     if (!apontamento) return null;
 
-    const usadas = [
-      ...apontamento.producoes.map((x) => x.linha),
-      ...apontamento.faltas.map((x) => x.linha),
-      ...apontamento.observacoes.map((x) => x.linha),
+    const usedLines = [
+      ...apontamento.producoes.map((item) => item.linha),
+      ...apontamento.faltas.map((item) => item.linha),
+      ...apontamento.observacoes.map((item) => item.linha),
     ].filter(Boolean) as Linha[];
 
-    let linhas = apontamento.linhasPermitidas?.filter(Boolean) || [];
-    if (!linhas.length) linhas = [...new Set(usadas)];
-    if (!linhas.length) linhas = apontamento.setor === 'EPOXI' ? ['EPO'] : ['MON', 'TRI'];
+    let lines = apontamento.linhasPermitidas?.filter(Boolean) || [];
+    if (!lines.length) lines = [...new Set(usedLines)];
+    if (!lines.length) lines = apontamento.setor === 'EPOXI' ? ['EPO'] : ['MON', 'TRI'];
 
     return {
       id: apontamento.userId,
       name: apontamento.userName,
       perfil: 'APONTADOR',
       setor: apontamento.setor,
-      linhas,
+      linhas: lines,
     };
   }, [apontamento]);
 
-  if (!isOpen || !apontamento || !editorUser) return null;
+  if (!apontamento || !editorUser) return null;
 
-  const totalProducao = producoes.reduce((sum, item) => sum + item.quantidade, 0);
-  const totalFaltas = faltas.reduce((sum, item) => sum + item.quantidade, 0);
+  const totalProducao = producoes.reduce((sum, item) => sum + Number(item.quantidade || 0), 0);
+  const totalFaltas = faltas.reduce((sum, item) => sum + Number(item.quantidade || 0), 0);
 
   const handleSave = async () => {
     if (!data) {
@@ -77,144 +79,127 @@ export const EditApontamentoModal: React.FC<EditApontamentoModalProps> = ({
     setSaving(true);
     setError(null);
     try {
+      // The update contract intentionally contains only date and the three collections.
       await onSave({ data, producoes, faltas, observacoes });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Falha ao salvar as alterações.');
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Falha ao salvar as alterações.');
     } finally {
       setSaving(false);
     }
   };
 
-  const tabs: Array<{ id: Step; label: string }> = [
-    { id: 1, label: 'Produção' },
-    { id: 2, label: 'Faltas' },
-    { id: 3, label: 'Observações' },
+  const tabs: Array<{ id: Step; label: string; count: number }> = [
+    { id: 1, label: 'Produção', count: producoes.length },
+    { id: 2, label: 'Faltas', count: faltas.length },
+    { id: 3, label: 'Observações', count: observacoes.length },
   ];
 
   return (
-    <div className="fixed inset-0 z-40 bg-black/75 backdrop-blur-sm p-3 sm:p-5 flex items-center justify-center">
-      <div className="w-full max-w-5xl max-h-[94vh] bg-[#090D0A] border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
-        <div className="px-5 py-4 sm:px-6 border-b border-white/10 bg-[#0D120F] flex items-start justify-between gap-4">
-          <div>
-            <p className="text-[10px] uppercase tracking-[0.18em] font-black text-emerald-400">{contextLabel}</p>
-            <h2 className="text-xl font-black text-slate-100 mt-1">Editar apontamento</h2>
-            <p className="text-xs text-slate-500 mt-1">
-              {apontamento.setor} • Responsável: <strong className="text-slate-300">{apontamento.userName}</strong>
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-            className="p-2 rounded-lg text-slate-500 hover:text-slate-100 hover:bg-white/10 transition-colors disabled:opacity-50"
-            title="Fechar edição"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="overflow-y-auto px-4 py-4 sm:px-6 sm:py-5 space-y-5">
-          <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4 items-end">
-            <div>
-              <label className="text-xs font-bold text-slate-300 flex items-center gap-2 mb-1.5">
-                <Calendar className="w-4 h-4 text-emerald-400" />
-                Data do apontamento
-              </label>
-              <input
-                type="date"
-                value={data}
-                onChange={(e) => setData(e.target.value)}
-                className="w-full bg-[#070B08] border border-white/15 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 [color-scheme:dark]"
-              />
-            </div>
-
-            <SummaryHeader
-              totalProducao={totalProducao}
-              totalFaltas={totalFaltas}
-              totalObservacoes={observacoes.length}
-            />
-          </div>
-
-          <div className="bg-[#0D120F] border border-white/10 rounded-xl p-1.5 flex gap-1.5">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setStep(tab.id)}
-                className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                  step === tab.id
-                    ? 'bg-emerald-500 text-[#041007]'
-                    : 'text-slate-500 hover:text-slate-100 hover:bg-white/[0.06]'
-                }`}
-              >
-                {step === tab.id && <Check className="w-3.5 h-3.5" />}
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
-          {step === 1 && (
-            <ProducaoSection
-              user={editorUser}
-              producoes={producoes}
-              onAdd={(item) => setProducoes((prev) => [...prev, item])}
-              onUpdate={(item) => setProducoes((prev) => prev.map((x) => x.id === item.id ? item : x))}
-              onDelete={(id) => setProducoes((prev) => prev.filter((x) => x.id !== id))}
-            />
-          )}
-
-          {step === 2 && (
-            <FaltasSection
-              user={editorUser}
-              faltas={faltas}
-              onAdd={(item) => setFaltas((prev) => [...prev, item])}
-              onUpdate={(item) => setFaltas((prev) => prev.map((x) => x.id === item.id ? item : x))}
-              onDelete={(id) => setFaltas((prev) => prev.filter((x) => x.id !== id))}
-            />
-          )}
-
-          {step === 3 && (
-            <ObservacoesSection
-              user={editorUser}
-              observacoes={observacoes}
-              onAdd={(item) => setObservacoes((prev) => [...prev, item])}
-              onUpdate={(item) => setObservacoes((prev) => prev.map((x) => x.id === item.id ? item : x))}
-              onDelete={(id) => setObservacoes((prev) => prev.filter((x) => x.id !== id))}
-            />
-          )}
-
-          {error && (
-            <div className="border border-rose-500/25 bg-rose-500/10 text-rose-200 rounded-xl px-4 py-3 text-xs font-semibold">
-              {error}
-            </div>
-          )}
-        </div>
-
-        <div className="px-5 py-4 sm:px-6 border-t border-white/10 bg-[#0D120F] flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
-          <p className="text-[11px] text-slate-500">
-            O setor e o responsável original são preservados. Produção, faltas, observações e data podem ser corrigidos.
+    <ModalShell
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Editar apontamento"
+      description={`${contextLabel} • ${apontamento.setor} • Responsável: ${apontamento.userName}`}
+      size="xl"
+      busy={saving}
+      footer={
+        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="max-w-2xl text-xs leading-relaxed text-slate-500">
+            Setor, responsável e tipo de bobina originais são preservados. O envio altera somente data, produção, faltas e observações.
           </p>
-          <div className="flex gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={saving}
-              className="px-4 py-2.5 rounded-xl border border-white/10 bg-white/5 text-slate-300 text-xs font-bold hover:bg-white/10 disabled:opacity-50"
+          <div className="flex shrink-0 gap-2">
+            <Button variant="secondary" onClick={onClose} disabled={saving}>Cancelar</Button>
+            <Button
+              onClick={() => void handleSave()}
+              isLoading={saving}
+              loadingLabel="Salvando…"
+              leftIcon={<Save className="size-4" aria-hidden="true" />}
             >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving}
-              className="px-5 py-2.5 rounded-xl bg-emerald-500 text-[#041007] text-xs font-black hover:bg-emerald-400 disabled:opacity-60 flex items-center gap-2"
-            >
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              {saving ? 'Salvando...' : 'Salvar alterações'}
-            </button>
+              Salvar alterações
+            </Button>
           </div>
         </div>
+      }
+    >
+      <div className="space-y-5">
+        <div className="grid grid-cols-1 items-end gap-4 lg:grid-cols-[260px_1fr]">
+          <label className="block">
+            <span className="mb-1.5 flex items-center gap-2 text-xs font-bold text-slate-300">
+              <Calendar className="size-4 text-emerald-400" aria-hidden="true" />
+              Data do apontamento
+            </span>
+            <input
+              type="date"
+              value={data}
+              onChange={(event) => {
+                setData(event.target.value);
+                if (event.target.value) setError(null);
+              }}
+              aria-invalid={!data || undefined}
+              aria-describedby={error ? 'edit-apontamento-error' : undefined}
+              className="min-h-11 w-full rounded-xl border border-white/15 bg-[#070B08] px-3 py-2.5 text-sm font-bold text-slate-100 [color-scheme:dark] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+            />
+          </label>
+
+          <SummaryHeader
+            totalProducao={totalProducao}
+            totalFaltas={totalFaltas}
+            totalObservacoes={observacoes.length}
+          />
+        </div>
+
+        <nav aria-label="Seções da edição" className="grid grid-cols-3 gap-1.5 rounded-xl border border-white/10 bg-black/15 p-1.5">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setStep(tab.id)}
+              aria-current={step === tab.id ? 'step' : undefined}
+              className={`flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-2 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
+                step === tab.id
+                  ? 'bg-emerald-400 text-[#041007]'
+                  : 'text-slate-400 hover:bg-white/[0.06] hover:text-slate-100'
+              }`}
+            >
+              {step === tab.id && <Check className="hidden size-3.5 sm:block" aria-hidden="true" />}
+              <span className="truncate">{tab.label}</span>
+              <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${step === tab.id ? 'bg-black/15' : 'bg-white/[0.07]'}`}>{tab.count}</span>
+            </button>
+          ))}
+        </nav>
+
+        <div className={step === 1 ? 'block' : 'hidden'} aria-hidden={step !== 1}>
+          <ProducaoSection
+            user={editorUser}
+            producoes={producoes}
+            onAdd={(item) => setProducoes((current) => [...current, item])}
+            onUpdate={(item) => setProducoes((current) => current.map((entry) => entry.id === item.id ? item : entry))}
+            onDelete={(id) => setProducoes((current) => current.filter((entry) => entry.id !== id))}
+          />
+        </div>
+
+        <div className={step === 2 ? 'block' : 'hidden'} aria-hidden={step !== 2}>
+          <FaltasSection
+            user={editorUser}
+            faltas={faltas}
+            onAdd={(item) => setFaltas((current) => [...current, item])}
+            onUpdate={(item) => setFaltas((current) => current.map((entry) => entry.id === item.id ? item : entry))}
+            onDelete={(id) => setFaltas((current) => current.filter((entry) => entry.id !== id))}
+          />
+        </div>
+
+        <div className={step === 3 ? 'block' : 'hidden'} aria-hidden={step !== 3}>
+          <ObservacoesSection
+            user={editorUser}
+            observacoes={observacoes}
+            onAdd={(item) => setObservacoes((current) => [...current, item])}
+            onUpdate={(item) => setObservacoes((current) => current.map((entry) => entry.id === item.id ? item : entry))}
+            onDelete={(id) => setObservacoes((current) => current.filter((entry) => entry.id !== id))}
+          />
+        </div>
+
+        <FieldError id="edit-apontamento-error" role="alert">{error}</FieldError>
       </div>
-    </div>
+    </ModalShell>
   );
 };

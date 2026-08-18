@@ -144,7 +144,7 @@ export const ProducaoSection: React.FC<ProducaoSectionProps> = ({
   };
 
   return (
-    <Surface as="section" className="overflow-hidden" aria-labelledby="producao-title">
+    <Surface as="section" className="record-industrial overflow-hidden" aria-labelledby="producao-title">
       <div className="flex flex-col gap-4 border-b border-[var(--border-subtle)] p-5 sm:flex-row sm:items-start sm:justify-between sm:p-6">
         <div className="flex min-w-0 items-start gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--accent-soft)] text-[var(--accent)]">

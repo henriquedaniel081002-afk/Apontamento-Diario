@@ -128,10 +128,10 @@ function CoordinationRecordCard(props: CoordinationRecordsProps & { record: Apon
   const unitLabel = getOperationalUnitLabel(record);
 
   return (
-    <article className="group overflow-hidden rounded-2xl border border-white/10 bg-[#0D120F] shadow-[0_14px_38px_rgba(0,0,0,0.18)] transition-colors hover:border-white/[0.16]">
+    <article className="record-industrial group overflow-hidden rounded-2xl border transition-colors">
       <div className="grid lg:grid-cols-[minmax(190px,0.95fr)_minmax(250px,1.25fr)_minmax(130px,0.7fr)_minmax(130px,0.7fr)_minmax(130px,0.7fr)]">
         <section className="flex items-center gap-4 border-b border-white/[0.07] bg-gradient-to-br from-emerald-400/[0.04] to-transparent px-4 py-5 sm:px-5 lg:border-b-0">
-          <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl border border-emerald-400/30 bg-emerald-400/[0.07] text-emerald-300 shadow-[0_0_24px_rgba(52,211,153,0.07)]">
+          <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl border border-emerald-400/25 bg-emerald-400/[0.06] text-emerald-300 shadow-[0_0_30px_rgba(0,199,111,0.07)]">
             <Factory className="size-7" aria-hidden="true" />
           </div>
           <div className="min-w-0">

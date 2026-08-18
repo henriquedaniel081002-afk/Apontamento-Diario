@@ -46,7 +46,7 @@ export const SummaryHeader: React.FC<SummaryHeaderProps> = ({
         const Icon = metric.icon;
         const value = values[metric.key];
         return (
-          <Surface key={metric.key} tone="muted" padding="sm" className="flex min-w-0 flex-col items-start gap-2 sm:min-h-20 sm:flex-row sm:items-center sm:gap-3">
+          <Surface key={metric.key} tone="muted" padding="sm" className="kpi-industrial flex min-w-0 flex-col items-start gap-2 sm:min-h-20 sm:flex-row sm:items-center sm:gap-3">
             <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg sm:h-10 sm:w-10 sm:rounded-xl ${metric.iconClassName}`}>
               <Icon aria-hidden="true" className="h-4 w-4 sm:h-5 sm:w-5" />
             </span>

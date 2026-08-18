@@ -136,15 +136,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   };
 
   return (
-    <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-3 py-6 text-slate-100 sm:px-6 lg:px-8">
+    <main className="login-industrial-stage relative flex min-h-screen items-center justify-center overflow-hidden px-3 py-5 text-slate-100 sm:px-6 lg:px-8">
       <div className="pointer-events-none absolute inset-0" aria-hidden="true">
         <div className="absolute -left-40 -top-40 size-[32rem] rounded-full bg-emerald-400/[0.07] blur-3xl" />
         <div className="absolute -bottom-56 right-[-10rem] size-[38rem] rounded-full bg-lime-300/[0.035] blur-3xl" />
         <div className="login-grid absolute inset-0 opacity-40" />
       </div>
 
-      <div className="relative grid w-full max-w-5xl overflow-hidden rounded-[1.75rem] border border-white/10 bg-[#090e0b]/95 shadow-[0_32px_100px_rgba(0,0,0,0.5)] backdrop-blur-xl lg:grid-cols-[0.9fr_1.1fr]">
-        <section className="relative flex min-h-72 flex-col justify-between overflow-hidden border-b border-white/[0.08] bg-[#070b08] p-6 sm:p-8 lg:min-h-[38rem] lg:border-b-0 lg:border-r lg:p-10">
+      <div className="relative grid w-full max-w-6xl overflow-hidden rounded-[1.65rem] border border-emerald-300/[0.12] bg-[#070b08]/96 shadow-[0_38px_120px_rgba(0,0,0,0.62)] backdrop-blur-xl lg:grid-cols-[1.05fr_0.95fr]">
+        <section className="login-showcase relative flex min-h-80 flex-col justify-between overflow-hidden border-b border-emerald-300/[0.08] p-6 sm:p-9 lg:min-h-[40rem] lg:border-b-0 lg:border-r lg:p-11">
           <div className="relative z-10">
             <img
               src={logoItam}
@@ -152,15 +152,17 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               className="h-auto w-44 object-contain sm:w-52"
             />
 
-            <div className="mt-9 max-w-md lg:mt-16">
+            <div className="mt-10 max-w-lg lg:mt-20">
               <Badge variant="success" className="mb-4 uppercase tracking-[0.16em]">
                 Operação industrial
               </Badge>
-              <h1 className="text-2xl font-black leading-tight tracking-[-0.03em] text-white sm:text-3xl">
-                Apontamentos confiáveis, todos os dias.
+              <div className="login-accent-line mb-5" aria-hidden="true" />
+              <h1 className="login-wordmark text-[2rem] font-black uppercase leading-[1.02] text-white sm:text-[2.65rem] lg:text-[3rem]">
+                Produção em foco.<br />
+                <span className="text-[#00c76f]">Apontamentos com clareza.</span>
               </h1>
               <p className="mt-3 text-sm leading-6 text-slate-400 sm:text-base">
-                Registre produção, faltas e observações em um fluxo único, seguro e rastreável.
+                Uma experiência mais clara e objetiva para registrar a rotina diária de produção.
               </p>
             </div>
           </div>
@@ -187,10 +189,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           </div>
         </section>
 
-        <section className="flex items-center bg-[#0c120e] p-5 sm:p-8 lg:p-12">
+        <section className="flex items-center bg-[linear-gradient(180deg,#0b120e,#070b08)] p-5 sm:p-9 lg:p-12">
           <div className="mx-auto w-full max-w-md">
             <div className="mb-7">
-              <div className="mb-3 flex size-11 items-center justify-center rounded-xl border border-emerald-400/20 bg-emerald-400/10 text-emerald-300">
+              <div className="mb-4 flex size-12 items-center justify-center rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.08] text-emerald-300 shadow-[0_0_30px_rgba(0,199,111,.06)]">
                 <LockKeyhole className="size-5" aria-hidden="true" />
               </div>
               <h2 className="text-2xl font-black tracking-tight text-white">Acessar o sistema</h2>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { ClipboardList, History, LogOut, ShieldCheck, UserRound } from 'lucide-react';
+import { ClipboardList, History, LogOut, ShieldCheck } from 'lucide-react';
 import { User } from '../../types';
 import logoItam from '../../assets/logo-itam.png';
 import { Badge, cx } from './ui';
@@ -58,7 +58,7 @@ export const Header: React.FC<HeaderProps> = ({ user, activeTab, onTabChange, on
   const contextLabel = isCoordenacao ? 'Acesso global' : user.setor || 'Setor não informado';
 
   return (
-    <header className="sticky top-0 z-30 border-b border-white/[0.08] bg-[#080d0a]/95 shadow-[0_8px_30px_rgba(0,0,0,0.18)] backdrop-blur-xl">
+    <header className="sticky top-0 z-30 border-b border-emerald-300/[0.08] bg-[#040806]/92 shadow-[0_12px_40px_rgba(0,0,0,0.26)] backdrop-blur-2xl">
       <a
         href="#conteudo-principal"
         className="fixed left-3 top-3 z-[70] -translate-y-20 rounded-lg bg-emerald-300 px-3 py-2 text-sm font-extrabold text-emerald-950 shadow-lg transition-transform focus:translate-y-0 focus:outline-none"
@@ -66,12 +66,12 @@ export const Header: React.FC<HeaderProps> = ({ user, activeTab, onTabChange, on
         Pular para o conteúdo
       </a>
       <div className="mx-auto max-w-7xl px-3 sm:px-6 lg:px-8">
-        <div className="flex min-h-16 items-center gap-3">
+        <div className="flex min-h-[4.35rem] items-center gap-3">
           <div className="flex min-w-0 shrink items-center gap-3 lg:min-w-64">
             <img
               src={logoItam}
               alt="ITAM Transformadores"
-              className="h-9 w-auto max-w-[96px] object-contain sm:h-10 sm:max-w-[112px]"
+              className="h-10 w-auto max-w-[108px] object-contain sm:h-11 sm:max-w-[124px]"
             />
             <span className="hidden h-7 w-px bg-white/10 sm:block" aria-hidden="true" />
             <div className="hidden min-w-0 sm:block">
@@ -96,16 +96,11 @@ export const Header: React.FC<HeaderProps> = ({ user, activeTab, onTabChange, on
           )}
 
           <div className="ml-auto flex shrink-0 items-center gap-2">
-            <div className="hidden items-center gap-2.5 rounded-xl border border-white/[0.08] bg-white/[0.035] px-3 py-1.5 lg:flex">
-              <div className="flex size-8 items-center justify-center rounded-lg bg-white/[0.06] text-slate-400">
-                <UserRound className="size-4" aria-hidden="true" />
-              </div>
-              <div className="max-w-44 min-w-0">
-                <p className="truncate text-xs font-bold text-slate-200">{user.name}</p>
-                <p className="truncate text-[11px] text-slate-500">
-                  {contextLabel}{!isCoordenacao && lineLabel ? ` · ${lineLabel}` : ''}
-                </p>
-              </div>
+            <div className="hidden max-w-56 min-w-0 border-l border-white/[0.08] pl-4 lg:block">
+              <p className="truncate text-xs font-extrabold text-slate-200">{user.name}</p>
+              <p className="mt-0.5 truncate text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-600">
+                {contextLabel}{!isCoordenacao && lineLabel ? ` · ${lineLabel}` : ''}
+              </p>
             </div>
 
             <button

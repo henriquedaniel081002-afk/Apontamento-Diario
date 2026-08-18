@@ -66,7 +66,7 @@ export default function App() {
   const isCoordenacao = currentUser.perfil === 'COORDENACAO';
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#050806] font-sans text-slate-100 antialiased selection:bg-emerald-400/20 selection:text-emerald-50">
+    <div className="flex min-h-screen flex-col bg-transparent font-sans text-slate-100 antialiased selection:bg-emerald-400/20 selection:text-emerald-50">
       <Header
         user={currentUser}
         activeTab={activeTab}
@@ -87,7 +87,7 @@ export default function App() {
         )}
       </main>
 
-      <footer className="border-t border-white/[0.08] bg-[#070b08] px-4 py-4 text-center text-xs text-slate-500">
+      <footer className="border-t border-emerald-300/[0.06] bg-[#030605] px-4 py-4 text-center text-xs text-slate-600">
         <p>ITAM — Sistema de Apontamento Diário de Produção © {new Date().getFullYear()}</p>
       </footer>
     </div>

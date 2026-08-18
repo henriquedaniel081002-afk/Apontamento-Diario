@@ -70,7 +70,7 @@ export const ReviewSection: React.FC<ReviewSectionProps> = ({
   const totalItems = producoes.length + faltas.length + observacoes.length;
 
   return (
-    <Surface className="overflow-hidden" padding="none" role="region" aria-labelledby="revisao-title">
+    <Surface className="record-industrial overflow-hidden" padding="none" role="region" aria-labelledby="revisao-title">
       <div className="border-b border-[var(--border-subtle)] p-5 sm:p-6">
         <div className="flex items-start gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--accent-soft)] text-[var(--accent)]">

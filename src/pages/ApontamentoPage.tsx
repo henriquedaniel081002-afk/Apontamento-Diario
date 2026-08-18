@@ -156,8 +156,8 @@ export const ApontamentoPage: React.FC<ApontamentoPageProps> = ({ user, onNaviga
   };
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5 px-4 py-5 sm:px-6 sm:py-7" aria-busy={isSaving || undefined}>
-      <Surface tone="raised" padding="lg" className="relative overflow-hidden">
+    <div className="app-page mx-auto max-w-6xl space-y-5 px-4 py-6 sm:px-6 sm:py-8" aria-busy={isSaving || undefined}>
+      <Surface tone="raised" padding="lg" className="industrial-hero relative overflow-hidden">
         <div className="pointer-events-none absolute inset-y-0 right-0 w-1/2 bg-[radial-gradient(circle_at_top_right,rgba(52,211,153,0.08),transparent_65%)]" />
         <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
@@ -175,7 +175,7 @@ export const ApontamentoPage: React.FC<ApontamentoPageProps> = ({ user, onNaviga
             </p>
           </div>
 
-          <div className="w-full rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-muted)] p-4 lg:max-w-md">
+          <div className="glass-panel w-full rounded-2xl p-4 lg:max-w-md">
             <div className="mb-2 flex items-center justify-between gap-3">
               <label htmlFor={dateInputId} className="flex items-center gap-2 text-sm font-semibold text-[var(--text-primary)]">
                 <CalendarDays aria-hidden="true" className="h-4 w-4 text-[var(--accent)]" />
@@ -286,7 +286,7 @@ export const ApontamentoPage: React.FC<ApontamentoPageProps> = ({ user, onNaviga
         </div>
       )}
 
-      <Surface tone="base" padding="sm">
+      <Surface tone="base" padding="sm" className="filter-panel">
         <Stepper
           steps={steps}
           activeStep={currentStep - 1}
@@ -354,7 +354,7 @@ export const ApontamentoPage: React.FC<ApontamentoPageProps> = ({ user, onNaviga
         </div>
       )}
 
-      <div className="sticky bottom-3 z-20 rounded-2xl border border-[var(--border-strong)] bg-[#0c120e]/95 p-3 shadow-[0_20px_55px_rgba(0,0,0,0.38)] backdrop-blur-xl sm:p-4">
+      <div className="sticky-action-bar sticky bottom-3 z-20 rounded-2xl border p-3 backdrop-blur-2xl sm:p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <p className="text-sm font-semibold text-[var(--text-primary)]">

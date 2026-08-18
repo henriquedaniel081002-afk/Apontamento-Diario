@@ -20,7 +20,7 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 const buttonVariants: Record<ButtonVariant, string> = {
   primary:
-    'border-emerald-400 bg-emerald-400 text-emerald-950 shadow-[0_8px_24px_rgba(52,211,153,0.14)] hover:border-emerald-300 hover:bg-emerald-300 active:bg-emerald-500',
+    'border-[#00c76f] bg-[#00c76f] text-[#03150d] shadow-[0_10px_30px_rgba(0,199,111,0.16)] hover:border-[#1cdb85] hover:bg-[#1cdb85] active:bg-[#00a85e]',
   secondary:
     'border-white/12 bg-white/[0.06] text-slate-100 hover:border-white/20 hover:bg-white/[0.10] active:bg-white/[0.14]',
   ghost:
@@ -98,9 +98,9 @@ export interface SurfaceProps extends React.HTMLAttributes<HTMLElement> {
 }
 
 const surfaceTones: Record<SurfaceTone, string> = {
-  base: 'border-white/10 bg-[#0c120e]',
-  muted: 'border-white/[0.08] bg-[#090e0b]',
-  raised: 'border-white/12 bg-[#101712] shadow-[0_20px_50px_rgba(0,0,0,0.22)]',
+  base: 'border-[rgba(196,255,222,0.10)] bg-[linear-gradient(180deg,rgba(12,19,15,.98),rgba(7,12,9,.98))] shadow-[inset_0_1px_rgba(255,255,255,.02)]',
+  muted: 'border-[rgba(196,255,222,0.08)] bg-[linear-gradient(180deg,rgba(9,15,12,.96),rgba(5,9,7,.96))]',
+  raised: 'border-[rgba(0,199,111,.16)] bg-[linear-gradient(145deg,rgba(14,23,18,.99),rgba(7,12,9,.99))] shadow-[0_24px_70px_rgba(0,0,0,.28)]',
   inset: 'border-white/[0.08] bg-black/20',
 };
 
@@ -115,7 +115,7 @@ export const Surface = React.forwardRef<HTMLElement, SurfaceProps>(
   ({ as: Component = 'div', tone = 'base', padding = 'none', className, ...props }, ref) => (
     <Component
       ref={ref as React.Ref<never>}
-      className={cx('rounded-2xl border', surfaceTones[tone], surfacePaddings[padding], className)}
+      className={cx('rounded-[1.15rem] border', surfaceTones[tone], surfacePaddings[padding], className)}
       {...props}
     />
   ),
@@ -235,7 +235,7 @@ export function Stepper({
   ariaLabel = 'Etapas do apontamento',
 }: StepperProps) {
   return (
-    <nav className={cx('overflow-x-auto', className)} aria-label={ariaLabel}>
+    <nav className={cx('workflow-stepper overflow-x-auto', className)} aria-label={ariaLabel}>
       <ol className="grid min-w-[36rem] grid-cols-4 gap-2 sm:min-w-0">
         {steps.map((step, index) => {
           const isActive = index === activeStep;
@@ -271,7 +271,7 @@ export function Stepper({
           );
 
           return (
-            <li key={step.id}>
+            <li key={step.id} className="workflow-step">
               {onStepChange ? (
                 <button
                   type="button"

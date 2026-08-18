@@ -49,7 +49,7 @@ function KpiCard({ label, value, helper, icon, tone = 'neutral' }: KpiCardProps)
   };
 
   return (
-    <article className={`rounded-2xl border p-4 shadow-lg ${toneClasses[tone]}`}>
+    <article className={`kpi-industrial rounded-2xl border p-4 shadow-lg ${toneClasses[tone]}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[10px] font-black uppercase tracking-[0.13em] text-slate-500">{label}</p>
@@ -202,8 +202,8 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
   };
 
   return (
-    <div className="mx-auto max-w-[1440px] space-y-5 px-4 py-6 sm:px-6 sm:py-8">
-      <section className="flex flex-col gap-5 rounded-2xl border border-white/10 bg-[#0D120F] p-5 shadow-xl sm:p-6 xl:flex-row xl:items-center xl:justify-between">
+    <div className="app-page mx-auto max-w-[1440px] space-y-5 px-4 py-6 sm:px-6 sm:py-8">
+      <section className="industrial-hero flex flex-col gap-5 rounded-2xl border p-5 sm:p-6 xl:flex-row xl:items-center xl:justify-between">
         <div className="min-w-0">
           <p className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-[0.15em] text-emerald-400">
             <ShieldCheck className="size-4" aria-hidden="true" />
@@ -337,7 +337,7 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
         )
       )}
 
-      <section aria-labelledby="coord-filters-title" className="rounded-2xl border border-white/10 bg-[#0D120F] p-4 shadow-lg sm:p-5">
+      <section aria-labelledby="coord-filters-title" className="filter-panel rounded-2xl border p-4 sm:p-5">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Filter className="size-4 text-emerald-400" aria-hidden="true" />

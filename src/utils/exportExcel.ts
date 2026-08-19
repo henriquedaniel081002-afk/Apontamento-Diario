@@ -300,8 +300,13 @@ export function exportApontamentosExcel(apontamentos: Apontamento[]): void {
   const stamp = [hoje.getFullYear(), String(hoje.getMonth() + 1).padStart(2, '0'), String(hoje.getDate()).padStart(2, '0')].join('-');
   link.href = url;
   link.download = `Apontamento_Diario_${stamp}.xlsx`;
+  link.style.display = 'none';
   document.body.appendChild(link);
+
+  // O clique precisa ocorrer diretamente no fluxo do gesto do usuário. A URL
+  // só é revogada depois, evitando que o navegador cancele o download antes
+  // de consumir o Blob.
   link.click();
   link.remove();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }

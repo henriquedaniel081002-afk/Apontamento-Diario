@@ -1,17 +1,21 @@
 import type { ReactNode } from 'react';
 import {
+  BadgeCheck,
   CalendarDays,
+  CircleDashed,
   Eye,
   Factory,
   GitBranch,
+  Loader2,
   MessageSquareText,
   Pencil,
   Trash2,
+  Undo2,
   UserRound,
   UserX,
   Zap,
 } from 'lucide-react';
-import { Apontamento } from '../../types';
+import { Apontamento, StatusAprovacao } from '../../types';
 import { formatDateBR } from '../../utils/formatters';
 import {
   getApontamentoLines,
@@ -24,6 +28,9 @@ interface CoordinationRecordsProps {
   onView: (record: Apontamento) => void;
   onEdit: (record: Apontamento) => void;
   onDelete: (record: Apontamento) => void;
+  onApprovalChange?: (record: Apontamento, status: StatusAprovacao) => void;
+  approvalBusyId?: string | null;
+  showApprovalActions?: boolean;
   ariaLabel?: string;
 }
 
@@ -31,11 +38,23 @@ interface RecordActionsProps extends CoordinationRecordsProps {
   record: Apontamento;
 }
 
-function RecordActions({ record, onView, onEdit, onDelete }: RecordActionsProps) {
+function RecordActions({
+  record,
+  onView,
+  onEdit,
+  onDelete,
+  onApprovalChange,
+  approvalBusyId,
+  showApprovalActions = false,
+}: RecordActionsProps) {
   const accessibleRecordName = `${getOperationalUnitLabel(record)} em ${formatDateBR(record.data)}`;
+  const isApproved = record.statusAprovacao === 'APROVADO';
+  const isApprovalBusy = approvalBusyId === record.id;
+  const isAnyApprovalBusy = Boolean(approvalBusyId);
+  const columnsClass = showApprovalActions ? 'grid-cols-4' : 'grid-cols-3';
 
   return (
-    <div className="grid grid-cols-3 divide-x divide-white/[0.07] overflow-hidden rounded-xl border border-white/[0.08] bg-black/10">
+    <div className={`grid ${columnsClass} divide-x divide-white/[0.07] overflow-hidden rounded-xl border border-white/[0.08] bg-black/10`}>
       <button
         type="button"
         onClick={() => onView(record)}
@@ -54,6 +73,26 @@ function RecordActions({ record, onView, onEdit, onDelete }: RecordActionsProps)
         <Pencil className="size-4" aria-hidden="true" />
         <span>Editar</span>
       </button>
+      {showApprovalActions && (
+        <button
+          type="button"
+          onClick={() => onApprovalChange?.(record, isApproved ? 'PENDENTE' : 'APROVADO')}
+          disabled={isAnyApprovalBusy || !onApprovalChange}
+          className={`inline-flex min-h-11 items-center justify-center gap-2 px-2 text-xs font-black transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset ${isApproved
+            ? 'text-amber-300 hover:bg-amber-400/[0.08] focus-visible:ring-amber-400'
+            : 'text-emerald-300 hover:bg-emerald-400/[0.08] focus-visible:ring-emerald-400'}`}
+          aria-label={isApproved ? `Desfazer aprovação de ${accessibleRecordName}` : `Aprovar ${accessibleRecordName}`}
+        >
+          {isApprovalBusy ? (
+            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+          ) : isApproved ? (
+            <Undo2 className="size-4" aria-hidden="true" />
+          ) : (
+            <BadgeCheck className="size-4" aria-hidden="true" />
+          )}
+          <span>{isApprovalBusy ? 'Salvando…' : isApproved ? 'Desfazer' : 'Aprovar'}</span>
+        </button>
+      )}
       <button
         type="button"
         onClick={() => onDelete(record)}
@@ -121,8 +160,27 @@ function Metric({ icon, label, value, valueClassName, iconClassName, helper }: M
   );
 }
 
+function ApprovalBadge({ record }: { record: Apontamento }) {
+  const isApproved = record.statusAprovacao === 'APROVADO';
+
+  return isApproved ? (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-400/25 bg-emerald-400/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-300"
+      title={record.aprovadoPorNome ? `Aprovado por ${record.aprovadoPorNome}` : 'Registro aprovado'}
+    >
+      <BadgeCheck className="size-3.5" aria-hidden="true" />
+      Aprovado
+    </span>
+  ) : (
+    <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-400/25 bg-amber-400/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-amber-300">
+      <CircleDashed className="size-3.5" aria-hidden="true" />
+      Pendente
+    </span>
+  );
+}
+
 function CoordinationRecordCard(props: CoordinationRecordsProps & { record: Apontamento }) {
-  const { record } = props;
+  const { record, showApprovalActions = false } = props;
   const totals = getApontamentoTotals(record);
   const lines = getApontamentoLines(record);
   const unitLabel = getOperationalUnitLabel(record);
@@ -139,11 +197,14 @@ function CoordinationRecordCard(props: CoordinationRecordsProps & { record: Apon
             <p className="mt-1 truncate text-[11px] font-semibold uppercase tracking-wide text-slate-500" title={getSectorSubtitle(record)}>
               {getSectorSubtitle(record)}
             </p>
-            {record.tipoBobina && (
-              <span className="mt-2 inline-flex rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-2 py-1 text-[10px] font-black text-emerald-300">
-                {record.tipoBobina}
-              </span>
-            )}
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {record.tipoBobina && (
+                <span className="inline-flex rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-2 py-1 text-[10px] font-black text-emerald-300">
+                  {record.tipoBobina}
+                </span>
+              )}
+              {showApprovalActions && <ApprovalBadge record={record} />}
+            </div>
           </div>
         </section>
 

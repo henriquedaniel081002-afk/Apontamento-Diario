@@ -14,7 +14,7 @@ import {
   ShieldCheck,
   TimerReset,
 } from 'lucide-react';
-import { Apontamento, User } from '../types';
+import { Apontamento, StatusAprovacao, User } from '../types';
 import { coordenacaoService } from '../services/coordenacaoService';
 import { formatDateBR, formatPotencia } from '../utils/formatters';
 import { exportApontamentosExcel } from '../utils/exportExcel';
@@ -68,6 +68,7 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [approvalBusyId, setApprovalBusyId] = useState<string | null>(null);
   const [dataFilter, setDataFilter] = useState(() => getPreviousWorkingDayYmd());
   const [setorFilter, setSetorFilter] = useState('ALL');
   const [linhaFilter, setLinhaFilter] = useState('ALL');
@@ -77,14 +78,25 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
   const [deleteItem, setDeleteItem] = useState<Apontamento | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (showFeedback = false) => {
     setLoading(true);
     setLoadError(null);
     try {
       const data = await coordenacaoService.getAll();
       setApontamentos(data);
+      if (showFeedback) {
+        setToast({
+          id: Date.now().toString(),
+          type: 'success',
+          message: `Registros atualizados. ${data.length} apontamento(s) carregado(s).`,
+        });
+      }
     } catch (error) {
-      setLoadError(error instanceof Error ? error.message : 'Falha ao carregar os apontamentos.');
+      const message = error instanceof Error ? error.message : 'Falha ao carregar os apontamentos.';
+      setLoadError(message);
+      if (showFeedback) {
+        setToast({ id: Date.now().toString(), type: 'error', message });
+      }
     } finally {
       setLoading(false);
     }
@@ -159,10 +171,17 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
   };
 
   const handleExport = async () => {
-    if (exporting || filtered.length === 0) return;
+    if (exporting) return;
+    if (filtered.length === 0) {
+      setToast({
+        id: Date.now().toString(),
+        type: 'warning',
+        message: 'Não há registros nos filtros atuais para exportar.',
+      });
+      return;
+    }
     setExporting(true);
     try {
-      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
       exportApontamentosExcel(filtered);
       setToast({
         id: Date.now().toString(),
@@ -177,6 +196,33 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
       });
     } finally {
       setExporting(false);
+    }
+  };
+
+
+  const handleApprovalChange = async (record: Apontamento, status: StatusAprovacao) => {
+    if (approvalBusyId) return;
+    setApprovalBusyId(record.id);
+    try {
+      const updated = await coordenacaoService.setApproval(record.id, status);
+      setApontamentos((current) => current.map((item) => item.id === updated.id ? updated : item));
+      if (detailItem?.id === updated.id) setDetailItem(updated);
+      if (editItem?.id === updated.id) setEditItem(updated);
+      setToast({
+        id: Date.now().toString(),
+        type: status === 'APROVADO' ? 'success' : 'warning',
+        message: status === 'APROVADO'
+          ? 'Apontamento aprovado com sucesso.'
+          : 'A aprovação foi desfeita. O apontamento voltou para Pendente.',
+      });
+    } catch (error) {
+      setToast({
+        id: Date.now().toString(),
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Falha ao atualizar a aprovação.',
+      });
+    } finally {
+      setApprovalBusyId(null);
     }
   };
 
@@ -220,7 +266,7 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
           <button
             type="button"
             onClick={() => void handleExport()}
-            disabled={loading || !!loadError || exporting || filtered.length === 0}
+            disabled={loading || !!loadError || exporting}
             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-400/25 bg-emerald-400/10 px-4 text-sm font-black text-emerald-200 transition-colors hover:bg-emerald-400/15 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
           >
             {exporting ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Download className="size-4" aria-hidden="true" />}
@@ -228,7 +274,7 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
           </button>
           <button
             type="button"
-            onClick={() => void loadData()}
+            onClick={() => void loadData(true)}
             disabled={loading}
             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-4 text-sm font-bold text-slate-300 transition-colors hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
           >
@@ -253,7 +299,7 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
           <p className="mx-auto mt-2 max-w-xl text-xs text-slate-500">Os indicadores foram ocultados para não apresentar números incompletos.</p>
           <button
             type="button"
-            onClick={() => void loadData()}
+            onClick={() => void loadData(true)}
             className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-400 px-4 text-sm font-black text-[#041007] hover:bg-emerald-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0D120F]"
           >
             <RefreshCw className="size-4" aria-hidden="true" />
@@ -437,6 +483,9 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
               onView={setDetailItem}
               onEdit={setEditItem}
               onDelete={setDeleteItem}
+              onApprovalChange={(record, status) => void handleApprovalChange(record, status)}
+              approvalBusyId={approvalBusyId}
+              showApprovalActions
             />
           </section>
         )

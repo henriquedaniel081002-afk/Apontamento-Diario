@@ -18,20 +18,22 @@ A `DATABASE_URL` é utilizada exclusivamente por `server.ts` e não é enviada a
 ## Perfis e regras preservadas
 
 - `APONTADOR`: cria apontamentos independentes e consulta, edita ou exclui somente seus próprios registros.
-- `COORDENACAO`: consulta todos os registros, acompanha pendências, filtra, edita, exclui e exporta os resultados.
+- `COORDENACAO`: consulta todos os registros, acompanha pendências, filtra, edita, exclui, aprova/desfaz aprovação e exporta os resultados.
 - Cada POST cria um novo apontamento, inclusive quando já existe outro do mesmo usuário e data.
 - Bobinagem mantém `AT` e `BT` separados.
 - Montagem Final e MPA mantêm `MON` e `TRI` separados.
 - O filtro inicial da Coordenação usa o último dia útil anterior e também controla o painel de pendências.
 - O Excel mantém as abas `produzido`, `faltas` e `obs`; justificativas de faltas também entram em `obs`.
+- Novos apontamentos iniciam como `PENDENTE`; a Coordenação pode marcá-los como `APROVADO`. Se um apontamento aprovado for editado, ele volta automaticamente para `PENDENTE` e precisa ser aprovado novamente.
+- O botão `Atualizar` da Coordenação força uma nova consulta à API sem cache.
 
 As permissões são validadas novamente na API. A interface nunca é a única barreira de autorização.
 
 ## Migração do Neon
 
-O schema e a migração mencionada na versão anterior não fazem parte deste pacote. Antes de publicar em um banco novo, obtenha a versão autoritativa de `NEON_AJUSTE_MULTIPLOS_APONTAMENTOS_E_BOBINAGEM.sql` e confirme que o banco possui `tipo_bobina` e permite múltiplos apontamentos na mesma data.
+Esta versão inclui `NEON_APROVACAO_APONTAMENTOS.sql`, que adiciona os campos de aprovação necessários à tabela `apontamentos`. Execute esse arquivo no SQL Editor do Neon **antes de publicar esta versão**.
 
-Não recrie essa migração por inferência a partir do front-end ou de `server.ts`.
+A migração de aprovação não substitui ajustes anteriores do banco. O banco também deve continuar possuindo `tipo_bobina` e permitindo múltiplos apontamentos do mesmo usuário/data conforme a configuração já utilizada pelo sistema.
 
 ## Verificações
 
@@ -52,7 +54,7 @@ Os testes e a validação visual desta entrega usam respostas fictícias e não 
 
 ## Integridade do backend
 
-`server.ts` permaneceu integralmente inalterado. Nenhum endpoint, payload, header, código HTTP, regra JWT, permissão ou comportamento de persistência foi modificado pelo redesign.
+`server.ts` possui o novo endpoint exclusivo da Coordenação para aprovação/desfazer aprovação e cabeçalhos `no-store` nas rotas da API. As regras JWT existentes permanecem; somente usuários com perfil `COORDENACAO` podem alterar o status de aprovação.
 
 ## Deploy
 

@@ -17,6 +17,8 @@ export type Setor =
 
 export type Perfil = 'APONTADOR' | 'COORDENACAO';
 
+export type StatusAprovacao = 'PENDENTE' | 'APROVADO';
+
 export interface User {
   id: string;
   name: string;
@@ -63,6 +65,10 @@ export interface Apontamento {
   observacoes: ObservacaoItem[];
   createdAt: string;
   updatedAt: string;
+  statusAprovacao?: StatusAprovacao;
+  aprovadoEm?: string;
+  aprovadoPorId?: string;
+  aprovadoPorNome?: string;
 }
 
 export interface AuthState {

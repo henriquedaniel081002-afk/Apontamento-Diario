@@ -13,6 +13,12 @@ if (!DATABASE_URL) throw new Error('DATABASE_URL não configurada.');
 
 const pool = new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false } });
 app.use(express.json({ limit: '1mb' }));
+app.use('/api', (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
 
 type Perfil = 'APONTADOR' | 'COORDENACAO';
 type TokenPayload = { userId: number; login: string; perfil?: Perfil };
@@ -109,10 +115,12 @@ async function getUserAccess(userId: number) {
 async function loadApontamento(id: number) {
   const h = await pool.query(
     `SELECT a.id, a.data, a.usuario_id, a.setor_id, a.tipo_bobina, u.login usuario, s.nome setor,
-            a.criado_em, a.atualizado_em
+            a.criado_em, a.atualizado_em, a.status_aprovacao, a.aprovado_em, a.aprovado_por,
+            aprovador.login aprovado_por_nome
        FROM apontamentos a
        JOIN usuarios u ON u.id = a.usuario_id
        JOIN setores s ON s.id = a.setor_id
+       LEFT JOIN usuarios aprovador ON aprovador.id = a.aprovado_por
       WHERE a.id = $1`,
     [id],
   );
@@ -192,6 +200,10 @@ async function loadApontamento(id: number) {
     })),
     createdAt: isoDateTime(x.criado_em),
     updatedAt: isoDateTime(x.atualizado_em),
+    statusAprovacao: String(x.status_aprovacao || 'PENDENTE').toUpperCase() === 'APROVADO' ? 'APROVADO' : 'PENDENTE',
+    aprovadoEm: x.aprovado_em ? isoDateTime(x.aprovado_em) : undefined,
+    aprovadoPorId: x.aprovado_por ? String(x.aprovado_por) : undefined,
+    aprovadoPorNome: x.aprovado_por_nome || undefined,
   };
 }
 
@@ -343,7 +355,13 @@ app.put('/api/apontamentos/:id', auth, async (req: any, res) => {
 
     await client.query('BEGIN');
     await client.query(
-      'UPDATE apontamentos SET data = $1, atualizado_em = NOW() WHERE id = $2 AND usuario_id = $3',
+      `UPDATE apontamentos
+          SET data = $1,
+              atualizado_em = NOW(),
+              status_aprovacao = 'PENDENTE',
+              aprovado_em = NULL,
+              aprovado_por = NULL
+        WHERE id = $2 AND usuario_id = $3`,
       [data.data, id, req.auth.userId],
     );
 
@@ -441,7 +459,13 @@ app.put('/api/coordenacao/apontamentos/:id', auth, requireCoordenacao, async (re
 
     await client.query('BEGIN');
     await client.query(
-      'UPDATE apontamentos SET data = $1, atualizado_em = NOW() WHERE id = $2',
+      `UPDATE apontamentos
+          SET data = $1,
+              atualizado_em = NOW(),
+              status_aprovacao = 'PENDENTE',
+              aprovado_em = NULL,
+              aprovado_por = NULL
+        WHERE id = $2`,
       [data.data, id],
     );
 
@@ -481,6 +505,46 @@ app.put('/api/coordenacao/apontamentos/:id', auth, requireCoordenacao, async (re
     res.status(500).json({ error: 'Falha ao editar apontamento.' });
   } finally {
     client.release();
+  }
+});
+
+app.patch('/api/coordenacao/apontamentos/:id/aprovacao', auth, requireCoordenacao, async (req: any, res) => {
+  const id = Number(req.params.id);
+  const status = String(req.body?.status || '').toUpperCase();
+
+  if (!Number.isFinite(id)) return res.status(400).json({ error: 'Apontamento inválido.' });
+  if (!['PENDENTE', 'APROVADO'].includes(status)) {
+    return res.status(400).json({ error: 'Status de aprovação inválido.' });
+  }
+
+  try {
+    const result = status === 'APROVADO'
+      ? await pool.query(
+        `UPDATE apontamentos
+            SET status_aprovacao = 'APROVADO',
+                aprovado_em = NOW(),
+                aprovado_por = $1,
+                atualizado_em = NOW()
+          WHERE id = $2
+          RETURNING id`,
+        [req.auth.userId, id],
+      )
+      : await pool.query(
+        `UPDATE apontamentos
+            SET status_aprovacao = 'PENDENTE',
+                aprovado_em = NULL,
+                aprovado_por = NULL,
+                atualizado_em = NOW()
+          WHERE id = $1
+          RETURNING id`,
+        [id],
+      );
+
+    if (!result.rowCount) return res.status(404).json({ error: 'Registro não encontrado.' });
+    res.json(await loadApontamento(id));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Falha ao atualizar a aprovação do apontamento.' });
   }
 });
 

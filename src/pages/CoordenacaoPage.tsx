@@ -262,7 +262,7 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
           <p className="mt-2 text-xs font-semibold text-slate-500">Sessão: {user.name}</p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="relative z-10 flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => void handleExport()}

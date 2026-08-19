@@ -304,6 +304,7 @@ input:-webkit-autofill:focus {
 
 .industrial-hero::before {
   position: absolute;
+  pointer-events: none;
   right: -4rem;
   top: -8rem;
   width: 25rem;
@@ -317,6 +318,7 @@ input:-webkit-autofill:focus {
 
 .industrial-hero::after {
   position: absolute;
+  pointer-events: none;
   right: 2rem;
   bottom: 1.1rem;
   width: 5rem;

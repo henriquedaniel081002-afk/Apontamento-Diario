@@ -236,7 +236,7 @@ export function Stepper({
 }: StepperProps) {
   return (
     <nav className={cx('workflow-stepper overflow-x-auto', className)} aria-label={ariaLabel}>
-      <ol className="grid min-w-[36rem] grid-cols-4 gap-2 sm:min-w-0">
+      <ol className="grid min-w-max grid-flow-col auto-cols-[minmax(8.5rem,1fr)] gap-2 sm:min-w-0">
         {steps.map((step, index) => {
           const isActive = index === activeStep;
           const isComplete = index < activeStep;

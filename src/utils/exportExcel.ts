@@ -192,6 +192,9 @@ function createZip(files: Array<{ name: string; content: string }>): Uint8Array 
 
 export interface ApontamentosWorkbookData {
   produzido: ExcelRow[];
+  faltaMaterial: ExcelRow[];
+  maquina: ExcelRow[];
+  naoConformidades: ExcelRow[];
   faltas: ExcelRow[];
   obs: ExcelRow[];
 }
@@ -214,41 +217,62 @@ export function buildApontamentosWorkbookData(apontamentos: Apontamento[]): Apon
     })),
   );
 
+  const faltaMaterial: ExcelRow[] = ordenados.flatMap((apt) =>
+    (apt.paradasFaltaMaterial || []).map((item) => ({
+      data: formatDataExcel(apt.data), causa_motivo: item.causaMotivo, material: item.material,
+      hora_inicio: item.horaInicio, hora_fim: item.horaFim, setor: setorParaExcel(String(apt.setor)),
+      status: apt.statusAprovacao === 'APROVADO' ? 'APROVADO' : 'PENDENTE',
+    })),
+  );
+
+  const maquina: ExcelRow[] = ordenados.flatMap((apt) =>
+    (apt.paradasMaquina || []).map((item) => ({
+      data: formatDataExcel(apt.data), maquina_equipamento: item.maquinaEquipamento,
+      hora_inicio: item.horaInicio, hora_fim: item.horaFim, observacao: item.observacao,
+      setor: setorParaExcel(String(apt.setor)), status: apt.statusAprovacao === 'APROVADO' ? 'APROVADO' : 'PENDENTE',
+    })),
+  );
+
+  const naoConformidades: ExcelRow[] = ordenados.flatMap((apt) =>
+    (apt.naoConformidades || []).map((item) => ({
+      data: formatDataExcel(apt.data), causa: item.causaNaoConformidade, op: item.op,
+      numero_serie: item.numeroSerie, setor: setorParaExcel(String(apt.setor)),
+      status: apt.statusAprovacao === 'APROVADO' ? 'APROVADO' : 'PENDENTE',
+    })),
+  );
+
   const faltas: ExcelRow[] = ordenados.flatMap((apt) =>
-    apt.faltas.map((item) => ({
-      data: formatDataExcel(apt.data),
-      faltas: Number(item.quantidade),
-      turno: turnoNumero(item.turno),
-      setor: setorParaExcel(String(apt.setor)),
-      linha: item.linha,
+    apt.faltas.map((item) => item.nome ? ({
+      data: formatDataExcel(apt.data), nome: item.nome, motivo_justificativa: item.motivoJustificativa || '',
+      atestado: item.atestado ? 'SIM' : 'NÃO', setor: setorParaExcel(String(apt.setor)),
+      status: apt.statusAprovacao === 'APROVADO' ? 'APROVADO' : 'PENDENTE',
+    }) : ({
+      data: formatDataExcel(apt.data), faltas: Number(item.quantidade), turno: turnoNumero(item.turno || ''),
+      setor: setorParaExcel(String(apt.setor)), linha: item.linha || '',
       status: apt.statusAprovacao === 'APROVADO' ? 'APROVADO' : 'PENDENTE',
     })),
   );
 
   const obs: ExcelRow[] = ordenados.flatMap((apt) => [
-    ...apt.observacoes.map((item) => ({
-      data: formatDataExcel(apt.data),
-      obs: item.observacao,
-      setor: setorParaExcel(String(apt.setor)),
-      linha: item.linha,
+    ...apt.observacoes.map((item) => item.justificativaMeta ? ({
+      data: formatDataExcel(apt.data), obs: item.observacao, justificativa_meta: item.justificativaMeta,
+      setor: setorParaExcel(String(apt.setor)), linha: item.linha || '',
       status: apt.statusAprovacao === 'APROVADO' ? 'APROVADO' : 'PENDENTE',
+    }) : ({
+      data: formatDataExcel(apt.data), obs: item.observacao, setor: setorParaExcel(String(apt.setor)),
+      linha: item.linha || '', status: apt.statusAprovacao === 'APROVADO' ? 'APROVADO' : 'PENDENTE',
     })),
-    ...apt.faltas
-      .filter((item) => String(item.justificativa || '').trim().length > 0)
-      .map((item) => ({
-        data: formatDataExcel(apt.data),
-        obs: String(item.justificativa).trim(),
-        setor: setorParaExcel(String(apt.setor)),
-        linha: item.linha,
-        status: apt.statusAprovacao === 'APROVADO' ? 'APROVADO' : 'PENDENTE',
-      })),
+    ...apt.faltas.filter((item) => !item.nome && String(item.justificativa || '').trim().length > 0).map((item) => ({
+      data: formatDataExcel(apt.data), obs: String(item.justificativa).trim(), setor: setorParaExcel(String(apt.setor)),
+      linha: item.linha || '', status: apt.statusAprovacao === 'APROVADO' ? 'APROVADO' : 'PENDENTE',
+    })),
   ]);
 
-  return { produzido, faltas, obs };
+  return { produzido, faltaMaterial, maquina, naoConformidades, faltas, obs };
 }
 
 export function exportApontamentosExcel(apontamentos: Apontamento[]): void {
-  const { produzido, faltas, obs } = buildApontamentosWorkbookData(apontamentos);
+  const { produzido, faltaMaterial, maquina, naoConformidades, faltas, obs } = buildApontamentosWorkbookData(apontamentos);
 
   const files = [
     {
@@ -261,6 +285,9 @@ export function exportApontamentosExcel(apontamentos: Apontamento[]): void {
   <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
   <Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
   <Override PartName="/xl/worksheets/sheet3.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/worksheets/sheet4.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/worksheets/sheet5.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/worksheets/sheet6.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
 </Types>`,
     },
     {
@@ -276,8 +303,11 @@ export function exportApontamentosExcel(apontamentos: Apontamento[]): void {
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <sheets>
     <sheet name="produzido" sheetId="1" r:id="rId1"/>
-    <sheet name="faltas" sheetId="2" r:id="rId2"/>
-    <sheet name="obs" sheetId="3" r:id="rId3"/>
+    <sheet name="falta_material" sheetId="2" r:id="rId2"/>
+    <sheet name="maquina_quebrada" sheetId="3" r:id="rId3"/>
+    <sheet name="nao_conformidade" sheetId="4" r:id="rId4"/>
+    <sheet name="faltas" sheetId="5" r:id="rId5"/>
+    <sheet name="obs" sheetId="6" r:id="rId6"/>
   </sheets>
 </workbook>`,
     },
@@ -288,11 +318,17 @@ export function exportApontamentosExcel(apontamentos: Apontamento[]): void {
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
   <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>
   <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet3.xml"/>
+  <Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet4.xml"/>
+  <Relationship Id="rId5" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet5.xml"/>
+  <Relationship Id="rId6" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet6.xml"/>
 </Relationships>`,
     },
     { name: 'xl/worksheets/sheet1.xml', content: sheetXml(produzido, ['data', 'potencia', 'qtde', 'setor', 'linha', 'status'], [12, 12, 10, 28, 10, 14]) },
-    { name: 'xl/worksheets/sheet2.xml', content: sheetXml(faltas, ['data', 'faltas', 'turno', 'setor', 'linha', 'status'], [12, 10, 10, 28, 10, 14]) },
-    { name: 'xl/worksheets/sheet3.xml', content: sheetXml(obs, ['data', 'obs', 'setor', 'linha', 'status'], [12, 95, 28, 10, 14]) },
+    { name: 'xl/worksheets/sheet2.xml', content: sheetXml(faltaMaterial, ['data', 'causa_motivo', 'material', 'hora_inicio', 'hora_fim', 'setor', 'status'], [12, 45, 30, 14, 14, 28, 14]) },
+    { name: 'xl/worksheets/sheet3.xml', content: sheetXml(maquina, ['data', 'maquina_equipamento', 'hora_inicio', 'hora_fim', 'observacao', 'setor', 'status'], [12, 30, 14, 14, 60, 28, 14]) },
+    { name: 'xl/worksheets/sheet4.xml', content: sheetXml(naoConformidades, ['data', 'causa', 'op', 'numero_serie', 'setor', 'status'], [12, 60, 20, 24, 28, 14]) },
+    { name: 'xl/worksheets/sheet5.xml', content: sheetXml(faltas, ['data', 'nome', 'motivo_justificativa', 'atestado', 'faltas', 'turno', 'setor', 'linha', 'status'], [12, 30, 60, 12, 10, 10, 28, 10, 14]) },
+    { name: 'xl/worksheets/sheet6.xml', content: sheetXml(obs, ['data', 'obs', 'justificativa_meta', 'setor', 'linha', 'status'], [12, 70, 70, 28, 10, 14]) },
   ];
 
   const zip = createZip(files);

@@ -1,141 +1,32 @@
 import React from 'react';
-import { Clock, MessageSquareText, UserRound, UserX, Zap } from 'lucide-react';
-import { Apontamento } from '../../types';
+import { AlertTriangle, Boxes, Clock, MessageSquareText, Settings, UserRound, UserX, Zap } from 'lucide-react';
+import { Apontamento, FaltaItem } from '../../types';
 import { formatDateBR, formatPotencia } from '../../utils/formatters';
 import { getApontamentoTotals, getOperationalUnitLabel } from '../../utils/operational';
 import { ModalShell } from '../common/ModalShell';
-import { Badge, Button, Surface } from '../common/ui';
+import { Badge, Surface } from '../common/ui';
 
-interface DetailModalProps {
-  apontamento: Apontamento | null;
-  isOpen: boolean;
-  onClose: () => void;
-}
+interface Props { apontamento: Apontamento | null; isOpen: boolean; onClose: () => void; }
+const legacyFalta = (item: FaltaItem) => !item.nome && Boolean(item.linha || item.turno || item.quantidade || item.justificativa);
+function Block({ title, icon, count, children }: { title: string; icon: React.ReactNode; count: number; children: React.ReactNode }) { return <section className="overflow-hidden rounded-2xl border border-white/10"><div className="flex items-center gap-2 border-b border-white/10 bg-white/[0.025] px-4 py-3"><span className="text-slate-400">{icon}</span><h3 className="text-sm font-black text-slate-100">{title}</h3><Badge variant={count ? 'success' : 'neutral'}>{count}</Badge></div><div className="p-4">{children}</div></section>; }
+const Empty = ({ text }: { text: string }) => <p className="text-sm text-slate-500">{text}</p>;
 
-export const DetailModal: React.FC<DetailModalProps> = ({ apontamento, isOpen, onClose }) => {
+export const DetailModal: React.FC<Props> = ({ apontamento, isOpen, onClose }) => {
   if (!apontamento) return null;
-
   const totals = getApontamentoTotals(apontamento);
   const updatedAt = new Date(apontamento.updatedAt);
-  const formattedUpdate = Number.isNaN(updatedAt.getTime())
-    ? 'Horário não informado'
-    : updatedAt.toLocaleString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-
-  return (
-    <ModalShell
-      isOpen={isOpen}
-      onClose={onClose}
-      title={`Apontamento de ${formatDateBR(apontamento.data)}`}
-      description={`${getOperationalUnitLabel(apontamento)} • Responsável: ${apontamento.userName}`}
-      size="lg"
-      footer={
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="flex items-center gap-2 text-xs text-slate-500">
-            <Clock className="size-4" aria-hidden="true" />
-            Última atualização: {formattedUpdate}
-          </p>
-          <Button onClick={onClose}>Fechar</Button>
-        </div>
-      }
-    >
-      <div className="space-y-6">
-        <div className="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-black/15 px-3 py-2.5 text-sm text-slate-300">
-          <UserRound className="size-4 shrink-0 text-emerald-400" aria-hidden="true" />
-          <span className="truncate">Registrado por <strong className="text-slate-100">{apontamento.userName}</strong></span>
-        </div>
-
-        <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <Surface tone="inset" padding="sm" className="border-emerald-400/20 bg-emerald-400/[0.07] text-center">
-            <dt className="text-[10px] font-black uppercase tracking-[0.11em] text-emerald-300">Produção total</dt>
-            <dd className="mt-1 text-xl font-black text-emerald-100">{totals.producao} unid.</dd>
-          </Surface>
-          <Surface tone="inset" padding="sm" className="border-amber-400/20 bg-amber-400/[0.07] text-center">
-            <dt className="text-[10px] font-black uppercase tracking-[0.11em] text-amber-300">Faltas</dt>
-            <dd className="mt-1 text-xl font-black text-amber-100">{totals.faltas}</dd>
-          </Surface>
-          <Surface tone="inset" padding="sm" className="text-center">
-            <dt className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">Observações</dt>
-            <dd className="mt-1 text-xl font-black text-slate-100">{totals.observacoes}</dd>
-          </Surface>
-        </dl>
-
-        <section aria-labelledby="detail-production-title">
-          <div className="mb-3 flex items-center gap-2 border-b border-white/[0.08] pb-2">
-            <Zap className="size-4 text-emerald-400" aria-hidden="true" />
-            <h3 id="detail-production-title" className="text-xs font-black uppercase tracking-[0.12em] text-slate-200">Produção por potência</h3>
-          </div>
-          {apontamento.producoes.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-white/10 bg-black/15 p-4 text-center text-sm text-slate-500">Nenhuma produção registrada neste apontamento.</p>
-          ) : (
-            <div className="overflow-hidden rounded-xl border border-white/10">
-              <ul className="divide-y divide-white/[0.07]">
-                {apontamento.producoes.map((item) => (
-                  <li key={item.id} className="flex items-center justify-between gap-3 bg-white/[0.02] p-3 text-sm">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <Badge variant="success">{item.linha}</Badge>
-                      <span className="truncate font-bold text-slate-100">{item.potenciaFormatted || formatPotencia(item.potencia)} kVA</span>
-                    </div>
-                    <strong className="shrink-0 text-emerald-200">{item.quantidade} unid.</strong>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </section>
-
-        <section aria-labelledby="detail-absences-title">
-          <div className="mb-3 flex items-center gap-2 border-b border-white/[0.08] pb-2">
-            <UserX className="size-4 text-amber-400" aria-hidden="true" />
-            <h3 id="detail-absences-title" className="text-xs font-black uppercase tracking-[0.12em] text-slate-200">Faltas</h3>
-          </div>
-          {apontamento.faltas.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-white/10 bg-black/15 p-4 text-center text-sm text-slate-500">Nenhuma falta registrada neste apontamento.</p>
-          ) : (
-            <ul className="space-y-2">
-              {apontamento.faltas.map((item) => (
-                <li key={item.id} className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="success">{item.linha}</Badge>
-                    <Badge variant="warning">{item.turno}</Badge>
-                    <strong className="text-sm text-slate-100">{item.quantidade} {item.quantidade === 1 ? 'falta' : 'faltas'}</strong>
-                  </div>
-                  {item.justificativa && (
-                    <p className="mt-2 text-sm leading-relaxed text-slate-400"><strong className="text-slate-300">Justificativa:</strong> {item.justificativa}</p>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section aria-labelledby="detail-observations-title">
-          <div className="mb-3 flex items-center gap-2 border-b border-white/[0.08] pb-2">
-            <MessageSquareText className="size-4 text-slate-400" aria-hidden="true" />
-            <h3 id="detail-observations-title" className="text-xs font-black uppercase tracking-[0.12em] text-slate-200">Observações operacionais</h3>
-          </div>
-          {apontamento.observacoes.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-white/10 bg-black/15 p-4 text-center text-sm text-slate-500">Nenhuma observação registrada neste apontamento.</p>
-          ) : (
-            <ul className="space-y-2">
-              {apontamento.observacoes.map((item) => (
-                <li key={item.id} className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="success">{item.linha}</Badge>
-                    <Badge>{item.turno}</Badge>
-                  </div>
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-300">{item.observacao}</p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      </div>
-    </ModalShell>
-  );
+  const formattedUpdate = Number.isNaN(updatedAt.getTime()) ? 'Horário não informado' : updatedAt.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const material = apontamento.paradasFaltaMaterial || []; const maquina = apontamento.paradasMaquina || []; const nc = apontamento.naoConformidades || [];
+  return <ModalShell isOpen={isOpen} onClose={onClose} title={`Detalhes • ${formatDateBR(apontamento.data)}`} description={`${getOperationalUnitLabel(apontamento)} • ${apontamento.userName}`} size="xl">
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4"><Surface tone="muted" padding="sm"><p className="text-[10px] font-black uppercase text-slate-500">Produção</p><p className="mt-1 text-xl font-black text-slate-100">{totals.producao}</p></Surface><Surface tone="muted" padding="sm"><p className="text-[10px] font-black uppercase text-slate-500">Ocorrências</p><p className="mt-1 text-xl font-black text-slate-100">{material.length + maquina.length + nc.length + apontamento.faltas.length + apontamento.observacoes.length}</p></Surface><Surface tone="muted" padding="sm"><p className="text-[10px] font-black uppercase text-slate-500">Status</p><p className="mt-1 text-sm font-black text-slate-100">{apontamento.statusAprovacao || 'PENDENTE'}</p></Surface><Surface tone="muted" padding="sm"><p className="text-[10px] font-black uppercase text-slate-500">Atualizado</p><p className="mt-1 text-xs font-bold text-slate-200">{formattedUpdate}</p></Surface></div>
+      <Block title="Produção" icon={<Zap className="h-4 w-4" />} count={apontamento.producoes.length}>{apontamento.producoes.length ? <div className="space-y-2">{apontamento.producoes.map((x) => <div key={x.id} className="flex justify-between gap-3 rounded-xl bg-white/[0.035] px-3 py-2"><span className="text-sm text-slate-200">{x.linha} · {x.potenciaFormatted || formatPotencia(x.potencia)} kVA</span><strong className="text-sm text-emerald-300">{x.quantidade} unid.</strong></div>)}</div> : <Empty text="Sem produção registrada." />}</Block>
+      <Block title="Parada por Falta de Material" icon={<Boxes className="h-4 w-4" />} count={material.length}>{material.length ? <div className="space-y-2">{material.map((x) => <div key={x.id} className="rounded-xl bg-white/[0.035] p-3"><strong className="text-sm text-slate-100">{x.material}</strong><p className="mt-1 text-sm text-slate-300">{x.causaMotivo}</p><p className="mt-1 text-xs text-slate-500">{x.horaInicio} → {x.horaFim}</p></div>)}</div> : <Empty text="Nenhuma ocorrência." />}</Block>
+      <Block title="Parada por Máquina Quebrada" icon={<Settings className="h-4 w-4" />} count={maquina.length}>{maquina.length ? <div className="space-y-2">{maquina.map((x) => <div key={x.id} className="rounded-xl bg-white/[0.035] p-3"><strong className="text-sm text-slate-100">{x.maquinaEquipamento}</strong><p className="mt-1 text-sm text-slate-300">{x.observacao}</p><p className="mt-1 text-xs text-slate-500">{x.horaInicio} → {x.horaFim}</p></div>)}</div> : <Empty text="Nenhuma ocorrência." />}</Block>
+      <Block title="Não Conformidade" icon={<AlertTriangle className="h-4 w-4" />} count={nc.length}>{nc.length ? <div className="space-y-2">{nc.map((x) => <div key={x.id} className="rounded-xl bg-white/[0.035] p-3"><strong className="text-sm text-slate-100">OP {x.op} · Série {x.numeroSerie}</strong><p className="mt-1 text-sm text-slate-300">{x.causaNaoConformidade}</p></div>)}</div> : <Empty text="Nenhuma ocorrência." />}</Block>
+      <Block title="Faltas" icon={<UserX className="h-4 w-4" />} count={apontamento.faltas.length}>{apontamento.faltas.length ? <div className="space-y-2">{apontamento.faltas.map((x) => <div key={x.id} className="rounded-xl bg-white/[0.035] p-3">{legacyFalta(x) ? <><strong className="text-sm text-slate-100">{x.linha} · {x.turno}</strong><p className="mt-1 text-sm text-slate-300">Quantidade: {x.quantidade ?? 0}{x.justificativa ? ` · ${x.justificativa}` : ''}</p></> : <><strong className="text-sm text-slate-100">{x.nome}</strong><p className="mt-1 text-sm text-slate-300">{x.motivoJustificativa}</p><p className="mt-1 text-xs text-slate-500">Atestado: {x.atestado ? 'Sim' : 'Não'}</p></>}</div>)}</div> : <Empty text="Nenhuma falta." />}</Block>
+      <Block title="Observações" icon={<MessageSquareText className="h-4 w-4" />} count={apontamento.observacoes.length}>{apontamento.observacoes.length ? <div className="space-y-2">{apontamento.observacoes.map((x) => <div key={x.id} className="rounded-xl bg-white/[0.035] p-3">{(x.linha || x.turno) && <p className="text-xs font-bold text-slate-500">{x.linha} · {x.turno}</p>}<p className="mt-1 whitespace-pre-wrap text-sm text-slate-200">{x.observacao}</p>{x.justificativaMeta && <p className="mt-2 text-sm text-slate-400"><strong className="text-slate-200">Justificativa da meta:</strong> {x.justificativaMeta}</p>}</div>)}</div> : <Empty text="Nenhuma observação." />}</Block>
+      <div className="grid gap-3 sm:grid-cols-2"><Surface tone="inset" padding="sm"><p className="flex items-center gap-2 text-xs font-bold uppercase text-slate-500"><UserRound className="h-4 w-4" />Responsável</p><p className="mt-2 text-sm font-bold text-slate-100">{apontamento.userName}</p></Surface><Surface tone="inset" padding="sm"><p className="flex items-center gap-2 text-xs font-bold uppercase text-slate-500"><Clock className="h-4 w-4" />Última atualização</p><p className="mt-2 text-sm font-bold text-slate-100">{formattedUpdate}</p></Surface></div>
+    </div>
+  </ModalShell>;
 };

@@ -83,7 +83,7 @@ function RecordActions({
             ? 'text-amber-300 hover:bg-amber-400/[0.08] focus-visible:ring-amber-400'
             : 'text-emerald-300 hover:bg-emerald-400/[0.08] focus-visible:ring-emerald-400'}`}
           aria-label={awaitingComplement && !isApproved ? `${accessibleRecordName} ainda aguarda complemento` : isApproved ? `Desfazer aprovação de ${accessibleRecordName}` : `Aprovar ${accessibleRecordName}`}
-          title={awaitingComplement && !isApproved ? 'Aguarde o apontador adicionar faltas/observações antes de aprovar.' : undefined}
+          title={awaitingComplement && !isApproved ? 'Aguarde o apontador finalizar o complemento das ocorrências antes de aprovar.' : undefined}
         >
           {isApprovalBusy ? (
             <Loader2 className="size-4 animate-spin" aria-hidden="true" />

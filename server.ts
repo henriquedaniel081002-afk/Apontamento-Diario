@@ -273,7 +273,7 @@ async function loadApontamento(id: number) {
   if (!h.rows.length) return null;
   const x = h.rows[0];
 
-  const [p, f, o, acessos] = await Promise.all([
+  const [p, material, maquina, nc, f, o, acessos] = await Promise.all([
     pool.query(
       `SELECT p.id, l.nome linha, p.potencia, p.quantidade
          FROM producao p
@@ -283,15 +283,37 @@ async function loadApontamento(id: number) {
       [id],
     ),
     pool.query(
-      `SELECT f.id, l.nome linha, f.turno, f.quantidade, f.justificativa
+      `SELECT id, causa_motivo, material, hora_inicio, hora_fim
+         FROM paradas_falta_material
+        WHERE apontamento_id = $1
+        ORDER BY id`,
+      [id],
+    ),
+    pool.query(
+      `SELECT id, maquina_equipamento, hora_inicio, hora_fim, observacao
+         FROM paradas_maquina
+        WHERE apontamento_id = $1
+        ORDER BY id`,
+      [id],
+    ),
+    pool.query(
+      `SELECT id, causa_nao_conformidade, op, numero_serie
+         FROM nao_conformidades
+        WHERE apontamento_id = $1
+        ORDER BY id`,
+      [id],
+    ),
+    pool.query(
+      `SELECT f.id, l.nome linha, f.turno, f.quantidade, f.justificativa,
+              f.nome, f.motivo_justificativa, f.atestado
          FROM faltas f
-         JOIN linhas l ON l.id = f.linha_id
+         LEFT JOIN linhas l ON l.id = f.linha_id
         WHERE f.apontamento_id = $1
         ORDER BY f.id`,
       [id],
     ),
     pool.query(
-      `SELECT o.id, l.nome linha, o.turno, o.observacao
+      `SELECT o.id, l.nome linha, o.turno, o.observacao, o.justificativa_meta
          FROM observacoes o
          LEFT JOIN linhas l ON l.id = o.linha_id
         WHERE o.apontamento_id = $1
@@ -311,9 +333,8 @@ async function loadApontamento(id: number) {
   const tipoBobina = ['AT', 'BT'].includes(String(x.tipo_bobina || '').toUpperCase())
     ? String(x.tipo_bobina).toUpperCase()
     : null;
-  const setorExibicao = x.setor === 'BOBINA AT/BT' && tipoBobina
-    ? `BOBINA ${tipoBobina}`
-    : x.setor;
+  const setorExibicao = x.setor === 'BOBINA AT/BT' && tipoBobina ? `BOBINA ${tipoBobina}` : x.setor;
+  const shortTime = (value: any) => String(value || '').slice(0, 5);
 
   return {
     id: String(x.id),
@@ -324,24 +345,34 @@ async function loadApontamento(id: number) {
     userName: x.usuario,
     linhasPermitidas: acessos.rows.map((r: any) => r.linha).filter(Boolean),
     producoes: p.rows.map((r: any) => ({
-      id: String(r.id),
-      linha: r.linha,
-      potencia: Number(r.potencia),
-      potenciaFormatted: String(r.potencia).replace('.', ','),
-      quantidade: r.quantidade,
+      id: String(r.id), linha: r.linha, potencia: Number(r.potencia),
+      potenciaFormatted: String(r.potencia).replace('.', ','), quantidade: r.quantidade,
+    })),
+    paradasFaltaMaterial: material.rows.map((r: any) => ({
+      id: String(r.id), causaMotivo: r.causa_motivo || '', material: r.material || '',
+      horaInicio: shortTime(r.hora_inicio), horaFim: shortTime(r.hora_fim),
+    })),
+    paradasMaquina: maquina.rows.map((r: any) => ({
+      id: String(r.id), maquinaEquipamento: r.maquina_equipamento || '',
+      horaInicio: shortTime(r.hora_inicio), horaFim: shortTime(r.hora_fim), observacao: r.observacao || '',
+    })),
+    naoConformidades: nc.rows.map((r: any) => ({
+      id: String(r.id), causaNaoConformidade: r.causa_nao_conformidade || '', op: r.op || '', numeroSerie: r.numero_serie || '',
     })),
     faltas: f.rows.map((r: any) => ({
       id: String(r.id),
-      linha: r.linha,
-      turno: String(r.turno || '').toLowerCase(),
-      quantidade: r.quantidade ?? 0,
+      nome: r.nome || undefined,
+      motivoJustificativa: r.motivo_justificativa || undefined,
+      atestado: typeof r.atestado === 'boolean' ? r.atestado : undefined,
+      linha: r.linha || undefined,
+      turno: r.turno ? String(r.turno).toLowerCase() : undefined,
+      quantidade: r.quantidade ?? undefined,
       justificativa: r.justificativa || undefined,
     })),
     observacoes: o.rows.map((r: any) => ({
-      id: String(r.id),
-      linha: r.linha,
-      turno: String(r.turno || '').toLowerCase(),
-      observacao: r.observacao || '',
+      id: String(r.id), linha: r.linha || undefined,
+      turno: r.turno ? String(r.turno).toLowerCase() : undefined,
+      observacao: r.observacao || '', justificativaMeta: r.justificativa_meta || undefined,
     })),
     createdAt: isoDateTime(x.criado_em),
     updatedAt: isoDateTime(x.atualizado_em),
@@ -352,6 +383,112 @@ async function loadApontamento(id: number) {
     origemProducao: String(x.origem_producao || 'MANUAL').toUpperCase() === 'IMPORTADO' ? 'IMPORTADO' : 'MANUAL',
     complementado: x.complementado !== false,
   };
+}
+
+function occurrenceList(value: any): any[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function isLegacyFalta(item: any): boolean {
+  return !String(item?.nome || '').trim() && Boolean(item?.linha || item?.turno || item?.quantidade || item?.justificativa);
+}
+
+function isLegacyObservacao(item: any): boolean {
+  return !String(item?.justificativaMeta || '').trim() && Boolean(item?.linha || item?.turno);
+}
+
+function validateOccurrencePayload(data: any): string | null {
+  for (const item of occurrenceList(data.paradasFaltaMaterial)) {
+    if (!String(item?.causaMotivo || '').trim() || !String(item?.material || '').trim() || !String(item?.horaInicio || '').trim() || !String(item?.horaFim || '').trim()) {
+      return 'Preencha causa/motivo, material, hora de início e hora de fim em cada parada por falta de material.';
+    }
+  }
+  for (const item of occurrenceList(data.paradasMaquina)) {
+    if (!String(item?.maquinaEquipamento || '').trim() || !String(item?.horaInicio || '').trim() || !String(item?.horaFim || '').trim() || !String(item?.observacao || '').trim()) {
+      return 'Preencha máquina/equipamento, hora de início, hora de fim e observações em cada parada por máquina quebrada.';
+    }
+  }
+  for (const item of occurrenceList(data.naoConformidades)) {
+    if (!String(item?.causaNaoConformidade || '').trim() || !String(item?.op || '').trim() || !String(item?.numeroSerie || '').trim()) {
+      return 'Preencha causa da não conformidade, OP e número de série em cada não conformidade.';
+    }
+  }
+  for (const item of occurrenceList(data.faltas)) {
+    if (!isLegacyFalta(item) && (!String(item?.nome || '').trim() || !String(item?.motivoJustificativa || '').trim() || typeof item?.atestado !== 'boolean')) {
+      return 'Preencha nome, motivo/justificativa e atestado em cada falta.';
+    }
+  }
+  for (const item of occurrenceList(data.observacoes)) {
+    if (!isLegacyObservacao(item) && (!String(item?.observacao || '').trim() || !String(item?.justificativaMeta || '').trim())) {
+      return 'Preencha observações e justificativa pelo não atingimento da meta em cada registro de observação.';
+    }
+  }
+  return null;
+}
+
+async function deleteOccurrenceCollections(client: any, apontamentoId: number, data: any) {
+  // Substitui apenas coleções explicitamente enviadas. Isso mantém compatibilidade
+  // com uma versão antiga do frontend eventualmente ainda aberta/em cache.
+  const has = (key: string) => Object.prototype.hasOwnProperty.call(data || {}, key);
+  if (has('paradasFaltaMaterial')) await client.query('DELETE FROM paradas_falta_material WHERE apontamento_id = $1', [apontamentoId]);
+  if (has('paradasMaquina')) await client.query('DELETE FROM paradas_maquina WHERE apontamento_id = $1', [apontamentoId]);
+  if (has('naoConformidades')) await client.query('DELETE FROM nao_conformidades WHERE apontamento_id = $1', [apontamentoId]);
+  if (has('faltas')) await client.query('DELETE FROM faltas WHERE apontamento_id = $1', [apontamentoId]);
+  if (has('observacoes')) await client.query('DELETE FROM observacoes WHERE apontamento_id = $1', [apontamentoId]);
+}
+
+async function insertOccurrenceCollections(client: any, apontamentoId: number, data: any, lineMap: Map<any, any>) {
+  for (const item of occurrenceList(data.paradasFaltaMaterial)) {
+    await client.query(
+      `INSERT INTO paradas_falta_material(apontamento_id, causa_motivo, material, hora_inicio, hora_fim)
+       VALUES($1, $2, $3, $4, $5)`,
+      [apontamentoId, String(item.causaMotivo).trim(), String(item.material).trim(), item.horaInicio, item.horaFim],
+    );
+  }
+  for (const item of occurrenceList(data.paradasMaquina)) {
+    await client.query(
+      `INSERT INTO paradas_maquina(apontamento_id, maquina_equipamento, hora_inicio, hora_fim, observacao)
+       VALUES($1, $2, $3, $4, $5)`,
+      [apontamentoId, String(item.maquinaEquipamento).trim(), item.horaInicio, item.horaFim, String(item.observacao).trim()],
+    );
+  }
+  for (const item of occurrenceList(data.naoConformidades)) {
+    await client.query(
+      `INSERT INTO nao_conformidades(apontamento_id, causa_nao_conformidade, op, numero_serie)
+       VALUES($1, $2, $3, $4)`,
+      [apontamentoId, String(item.causaNaoConformidade).trim(), String(item.op).trim(), String(item.numeroSerie).trim()],
+    );
+  }
+  for (const item of occurrenceList(data.faltas)) {
+    if (isLegacyFalta(item)) {
+      await client.query(
+        `INSERT INTO faltas(apontamento_id, linha_id, turno, quantidade, justificativa)
+         VALUES($1, $2, $3, $4, $5)`,
+        [apontamentoId, item.linha ? lineMap.get(item.linha) || null : null, item.turno ? String(item.turno).toUpperCase() : null, item.quantidade ?? null, item.justificativa || null],
+      );
+    } else {
+      await client.query(
+        `INSERT INTO faltas(apontamento_id, linha_id, turno, quantidade, justificativa, nome, motivo_justificativa, atestado)
+         VALUES($1, NULL, NULL, NULL, NULL, $2, $3, $4)`,
+        [apontamentoId, String(item.nome).trim(), String(item.motivoJustificativa).trim(), item.atestado],
+      );
+    }
+  }
+  for (const item of occurrenceList(data.observacoes)) {
+    if (isLegacyObservacao(item)) {
+      await client.query(
+        `INSERT INTO observacoes(apontamento_id, linha_id, turno, observacao)
+         VALUES($1, $2, $3, $4)`,
+        [apontamentoId, item.linha ? lineMap.get(item.linha) || null : null, item.turno ? String(item.turno).toUpperCase() : null, item.observacao || null],
+      );
+    } else {
+      await client.query(
+        `INSERT INTO observacoes(apontamento_id, linha_id, turno, observacao, justificativa_meta)
+         VALUES($1, NULL, NULL, $2, $3)`,
+        [apontamentoId, String(item.observacao).trim(), String(item.justificativaMeta).trim()],
+      );
+    }
+  }
 }
 
 app.get('/api/apontamentos', auth, async (req: any, res) => {
@@ -412,12 +549,12 @@ app.post('/api/apontamentos', auth, async (_req: any, res) => {
   // O novo fluxo não permite criação manual de produção pelo apontador.
   // Mantemos a rota apenas para devolver uma mensagem clara a clientes antigos/em cache.
   return res.status(409).json({
-    error: 'A produção deve ser importada pela Coordenação. Complete apenas faltas e observações do registro disponibilizado.',
+    error: 'A produção deve ser importada pela Coordenação. Complete apenas as ocorrências do registro disponibilizado.',
   });
 });
 
 // Complementa uma produção previamente importada pela Coordenação.
-// O apontador pode alterar somente faltas e observações; produção e data permanecem bloqueadas.
+// O apontador pode alterar somente as ocorrências; produção e data permanecem bloqueadas.
 app.put('/api/apontamentos/:id/complemento', auth, async (req: any, res) => {
   if (req.auth?.perfil === 'COORDENACAO') {
     return res.status(403).json({ error: 'A COORDENAÇÃO não utiliza o fluxo de complemento do apontador.' });
@@ -428,6 +565,9 @@ app.put('/api/apontamentos/:id/complemento', auth, async (req: any, res) => {
   const data = req.body || {};
   try {
     if (!Number.isFinite(id)) return res.status(400).json({ error: 'Apontamento inválido.' });
+    const validation = validateOccurrencePayload(data);
+    if (validation) return res.status(400).json({ error: validation });
+
     const current = await client.query(
       `SELECT id, usuario_id, setor_id, origem_producao
          FROM apontamentos
@@ -442,11 +582,10 @@ app.put('/api/apontamentos/:id/complemento', auth, async (req: any, res) => {
     const access = await getUserAccess(req.auth.userId);
     const setorId = Number(current.rows[0].setor_id);
     const allowed = new Map(
-      access
-        .filter((row: any) => Number(row.setor_id) === setorId)
-        .map((row: any) => [row.linha, row.linha_id]),
+      access.filter((row: any) => Number(row.setor_id) === setorId).map((row: any) => [row.linha, row.linha_id]),
     );
-    for (const item of [...(data.faltas || []), ...(data.observacoes || [])]) {
+    const lineBearingItems = [...occurrenceList(data.faltas), ...occurrenceList(data.observacoes)];
+    for (const item of lineBearingItems) {
       if (item.linha && !allowed.has(item.linha)) {
         return res.status(403).json({ error: `Linha ${item.linha} não permitida para este usuário/setor.` });
       }
@@ -463,31 +602,17 @@ app.put('/api/apontamentos/:id/complemento', auth, async (req: any, res) => {
         WHERE id = $1 AND usuario_id = $2`,
       [id, req.auth.userId],
     );
-    await client.query('DELETE FROM faltas WHERE apontamento_id = $1', [id]);
-    await client.query('DELETE FROM observacoes WHERE apontamento_id = $1', [id]);
-
-    for (const falta of data.faltas || []) {
-      await client.query(
-        'INSERT INTO faltas(apontamento_id, linha_id, turno, quantidade, justificativa) VALUES($1, $2, $3, $4, $5)',
-        [id, allowed.get(falta.linha), String(falta.turno).toUpperCase(), falta.quantidade ?? null, falta.justificativa || null],
-      );
-    }
-    for (const observacao of data.observacoes || []) {
-      await client.query(
-        'INSERT INTO observacoes(apontamento_id, linha_id, turno, observacao) VALUES($1, $2, $3, $4)',
-        [id, observacao.linha ? allowed.get(observacao.linha) : null, String(observacao.turno).toUpperCase(), observacao.observacao || null],
-      );
-    }
-
+    await deleteOccurrenceCollections(client, id, data);
+    await insertOccurrenceCollections(client, id, data, allowed);
     await client.query('COMMIT');
     res.json(await loadApontamento(id));
   } catch (e: any) {
-    await client.query('ROLLBACK');
+    await client.query('ROLLBACK').catch(() => undefined);
     console.error(e);
-    if (e?.code === '42703') {
-      return res.status(500).json({ error: 'Execute o script NEON_IMPORTACAO_PRODUCAO.sql no Neon antes de usar este fluxo.' });
+    if (e?.code === '42P01' || e?.code === '42703') {
+      return res.status(500).json({ error: 'A estrutura de ocorrências do Neon não está atualizada. Execute o SQL de migração das novas ocorrências.' });
     }
-    res.status(500).json({ error: 'Falha ao salvar faltas e observações.' });
+    res.status(500).json({ error: 'Falha ao salvar as ocorrências do apontamento.' });
   } finally {
     client.release();
   }
@@ -502,10 +627,11 @@ app.put('/api/apontamentos/:id', auth, async (req: any, res) => {
   const client = await pool.connect();
   const data = req.body || {};
   const id = Number(req.params.id);
-
   try {
     if (!Number.isFinite(id)) return res.status(400).json({ error: 'Apontamento inválido.' });
     if (!data.data) return res.status(400).json({ error: 'A data é obrigatória.' });
+    const validation = validateOccurrencePayload(data);
+    if (validation) return res.status(400).json({ error: validation });
 
     const current = await client.query(
       'SELECT id, usuario_id, setor_id, data, origem_producao FROM apontamentos WHERE id = $1 AND usuario_id = $2',
@@ -515,19 +641,15 @@ app.put('/api/apontamentos/:id', auth, async (req: any, res) => {
 
     const access = await getUserAccess(req.auth.userId);
     if (!access.length) return res.status(403).json({ error: 'Usuário sem acesso configurado.' });
-
     const setorId = current.rows[0].setor_id;
-    const allowed = new Map(
-      access
-        .filter((a: any) => Number(a.setor_id) === Number(setorId))
-        .map((a: any) => [a.linha, a.linha_id]),
-    );
-
+    const allowed = new Map(access.filter((a: any) => Number(a.setor_id) === Number(setorId)).map((a: any) => [a.linha, a.linha_id]));
     const isImported = String(current.rows[0].origem_producao || '').toUpperCase() === 'IMPORTADO';
-    const allItems = isImported
-      ? [...(data.faltas || []), ...(data.observacoes || [])]
-      : [...(data.producoes || []), ...(data.faltas || []), ...(data.observacoes || [])];
-    for (const item of allItems) {
+    const lineBearingItems = [
+      ...(isImported ? [] : occurrenceList(data.producoes)),
+      ...occurrenceList(data.faltas),
+      ...occurrenceList(data.observacoes),
+    ];
+    for (const item of lineBearingItems) {
       if (item.linha && !allowed.has(item.linha)) {
         return res.status(403).json({ error: `Linha ${item.linha} não permitida para este usuário/setor.` });
       }
@@ -547,41 +669,23 @@ app.put('/api/apontamentos/:id', auth, async (req: any, res) => {
       [nextDate, id, req.auth.userId],
     );
 
-    if (!isImported) await client.query('DELETE FROM producao WHERE apontamento_id = $1', [id]);
-    await client.query('DELETE FROM faltas WHERE apontamento_id = $1', [id]);
-    await client.query('DELETE FROM observacoes WHERE apontamento_id = $1', [id]);
-
     if (!isImported) {
-      for (const p of data.producoes || []) {
+      await client.query('DELETE FROM producao WHERE apontamento_id = $1', [id]);
+      for (const item of occurrenceList(data.producoes)) {
         await client.query(
           'INSERT INTO producao(apontamento_id, linha_id, potencia, quantidade) VALUES($1, $2, $3, $4)',
-          [id, allowed.get(p.linha), p.potencia, p.quantidade],
+          [id, allowed.get(item.linha), item.potencia, item.quantidade],
         );
       }
     }
-
-    for (const f of data.faltas || []) {
-      await client.query(
-        'INSERT INTO faltas(apontamento_id, linha_id, turno, quantidade, justificativa) VALUES($1, $2, $3, $4, $5)',
-        [id, allowed.get(f.linha), String(f.turno).toUpperCase(), f.quantidade ?? null, f.justificativa || null],
-      );
-    }
-
-    for (const o of data.observacoes || []) {
-      await client.query(
-        'INSERT INTO observacoes(apontamento_id, linha_id, turno, observacao) VALUES($1, $2, $3, $4)',
-        [id, o.linha ? allowed.get(o.linha) : null, String(o.turno).toUpperCase(), o.observacao || null],
-      );
-    }
-
+    await deleteOccurrenceCollections(client, id, data);
+    await insertOccurrenceCollections(client, id, data, allowed);
     await client.query('COMMIT');
     res.json(await loadApontamento(id));
   } catch (e: any) {
-    await client.query('ROLLBACK');
+    await client.query('ROLLBACK').catch(() => undefined);
     console.error(e);
-    if (e?.code === '23505') {
-      return res.status(409).json({ error: 'Já existe um apontamento desse usuário/setor para a data informada.' });
-    }
+    if (e?.code === '23505') return res.status(409).json({ error: 'Já existe um apontamento desse usuário/setor para a data informada.' });
     res.status(500).json({ error: 'Falha ao editar apontamento.' });
   } finally {
     client.release();
@@ -669,7 +773,7 @@ app.post('/api/coordenacao/importar-producao', auth, requireCoordenacao, async (
 
     // A importação mais recente substitui integralmente a produção importada da data.
     // Se o apontador já complementou um registro que deixou de existir no novo Excel,
-    // preservamos faltas/observações/aprovação e removemos somente a produção antiga.
+    // preservamos ocorrências/aprovação e removemos somente a produção antiga.
     const previous = await client.query(
       `SELECT id, complementado
          FROM apontamentos
@@ -729,6 +833,8 @@ app.put('/api/coordenacao/apontamentos/:id', auth, requireCoordenacao, async (re
   try {
     if (!Number.isFinite(id)) return res.status(400).json({ error: 'Apontamento inválido.' });
     if (!data.data) return res.status(400).json({ error: 'A data é obrigatória.' });
+    const validation = validateOccurrencePayload(data);
+    if (validation) return res.status(400).json({ error: validation });
 
     const current = await client.query(
       'SELECT id, usuario_id, setor_id, data, origem_producao FROM apontamentos WHERE id = $1',
@@ -737,15 +843,16 @@ app.put('/api/coordenacao/apontamentos/:id', auth, requireCoordenacao, async (re
     if (!current.rows.length) return res.status(404).json({ error: 'Registro não encontrado.' });
 
     const isImported = String(current.rows[0].origem_producao || '').toUpperCase() === 'IMPORTADO';
-    const allItems = isImported
-      ? [...(data.faltas || []), ...(data.observacoes || []), ...(data.producoes || [])]
-      : [...(data.producoes || []), ...(data.faltas || []), ...(data.observacoes || [])];
-    const lineNames = [...new Set(allItems.map((item: any) => item.linha).filter(Boolean))];
+    const lineBearingItems = [
+      ...(isImported ? [] : occurrenceList(data.producoes)),
+      ...occurrenceList(data.faltas),
+      ...occurrenceList(data.observacoes),
+    ];
+    const lineNames = [...new Set(lineBearingItems.map((item: any) => item.linha).filter(Boolean))];
     const lines = lineNames.length
       ? await client.query('SELECT id, nome FROM linhas WHERE nome = ANY($1::text[])', [lineNames])
       : { rows: [] as any[] };
     const lineMap = new Map(lines.rows.map((r: any) => [r.nome, r.id]));
-
     for (const name of lineNames) {
       if (!lineMap.has(name)) return res.status(400).json({ error: `Linha ${name} não encontrada no banco.` });
     }
@@ -763,41 +870,23 @@ app.put('/api/coordenacao/apontamentos/:id', auth, requireCoordenacao, async (re
       [nextDate, id],
     );
 
-    if (!isImported) await client.query('DELETE FROM producao WHERE apontamento_id = $1', [id]);
-    await client.query('DELETE FROM faltas WHERE apontamento_id = $1', [id]);
-    await client.query('DELETE FROM observacoes WHERE apontamento_id = $1', [id]);
-
     if (!isImported) {
-      for (const p of data.producoes || []) {
+      await client.query('DELETE FROM producao WHERE apontamento_id = $1', [id]);
+      for (const item of occurrenceList(data.producoes)) {
         await client.query(
           'INSERT INTO producao(apontamento_id, linha_id, potencia, quantidade) VALUES($1, $2, $3, $4)',
-          [id, lineMap.get(p.linha), p.potencia, p.quantidade],
+          [id, lineMap.get(item.linha), item.potencia, item.quantidade],
         );
       }
     }
-
-    for (const f of data.faltas || []) {
-      await client.query(
-        'INSERT INTO faltas(apontamento_id, linha_id, turno, quantidade, justificativa) VALUES($1, $2, $3, $4, $5)',
-        [id, lineMap.get(f.linha), String(f.turno).toUpperCase(), f.quantidade ?? null, f.justificativa || null],
-      );
-    }
-
-    for (const o of data.observacoes || []) {
-      await client.query(
-        'INSERT INTO observacoes(apontamento_id, linha_id, turno, observacao) VALUES($1, $2, $3, $4)',
-        [id, o.linha ? lineMap.get(o.linha) : null, String(o.turno).toUpperCase(), o.observacao || null],
-      );
-    }
-
+    await deleteOccurrenceCollections(client, id, data);
+    await insertOccurrenceCollections(client, id, data, lineMap);
     await client.query('COMMIT');
     res.json(await loadApontamento(id));
   } catch (e: any) {
-    await client.query('ROLLBACK');
+    await client.query('ROLLBACK').catch(() => undefined);
     console.error(e);
-    if (e?.code === '23505') {
-      return res.status(409).json({ error: 'Já existe um apontamento desse usuário/setor para a data informada.' });
-    }
+    if (e?.code === '23505') return res.status(409).json({ error: 'Já existe um apontamento desse usuário/setor para a data informada.' });
     res.status(500).json({ error: 'Falha ao editar apontamento.' });
   } finally {
     client.release();
@@ -821,7 +910,7 @@ app.patch('/api/coordenacao/apontamentos/:id/aprovacao', auth, requireCoordenaca
       );
       if (!readiness.rows.length) return res.status(404).json({ error: 'Registro não encontrado.' });
       if (String(readiness.rows[0].origem_producao || '').toUpperCase() === 'IMPORTADO' && readiness.rows[0].complementado === false) {
-        return res.status(409).json({ error: 'Este registro ainda aguarda o apontador adicionar faltas/observações.' });
+        return res.status(409).json({ error: 'Este registro ainda aguarda o apontador finalizar o complemento das ocorrências.' });
       }
     }
 

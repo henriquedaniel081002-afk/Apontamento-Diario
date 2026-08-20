@@ -1,4 +1,4 @@
-import { Apontamento, ProductionImportRequest, ProductionImportResult, StatusAprovacao } from '../types';
+import { Apontamento, ApontamentoEditPayload, ProductionImportRequest, ProductionImportResult, StatusAprovacao } from '../types';
 import { apiRequest } from './apiClient';
 
 export const coordenacaoService = {
@@ -20,7 +20,7 @@ export const coordenacaoService = {
 
   async update(
     id: string,
-    data: Pick<Apontamento, 'data' | 'producoes' | 'faltas' | 'observacoes'>,
+    data: ApontamentoEditPayload,
   ): Promise<Apontamento> {
     return apiRequest<Apontamento>(`/api/coordenacao/apontamentos/${encodeURIComponent(id)}`, {
       method: 'PUT',

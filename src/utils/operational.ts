@@ -62,8 +62,8 @@ export function getApontamentoLines(apontamento: Apontamento): Linha[] {
   const values = [
     ...(apontamento.linhasPermitidas || []),
     ...apontamento.producoes.map((item) => item.linha),
-    ...apontamento.faltas.map((item) => item.linha),
-    ...apontamento.observacoes.map((item) => item.linha),
+    ...apontamento.faltas.map((item) => item.linha).filter(Boolean),
+    ...apontamento.observacoes.map((item) => item.linha).filter(Boolean),
   ];
 
   const order: Linha[] = ['MON', 'TRI', 'EPO'];
@@ -83,7 +83,7 @@ function apontamentoHasRecordedLine(apontamento: Apontamento, linha: string): bo
 export function getApontamentoTotals(apontamento: Apontamento) {
   return {
     producao: apontamento.producoes.reduce((sum, item) => sum + Number(item.quantidade || 0), 0),
-    faltas: apontamento.faltas.reduce((sum, item) => sum + Number(item.quantidade || 0), 0),
+    faltas: apontamento.faltas.reduce((sum, item) => sum + (typeof item.quantidade === 'number' ? Number(item.quantidade || 0) : 1), 0),
     observacoes: apontamento.observacoes.length,
   };
 }

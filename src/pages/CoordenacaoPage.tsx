@@ -15,7 +15,7 @@ import {
   ShieldCheck,
   TimerReset,
 } from 'lucide-react';
-import { Apontamento, ProductionImportGroup, StatusAprovacao, User } from '../types';
+import { Apontamento, ApontamentoEditPayload, ProductionImportGroup, StatusAprovacao, User } from '../types';
 import { coordenacaoService } from '../services/coordenacaoService';
 import { formatDateBR, formatPotencia } from '../utils/formatters';
 import { exportApontamentosExcel } from '../utils/exportExcel';
@@ -161,7 +161,7 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
   };
 
   const handleSaveEdit = async (
-    payload: Pick<Apontamento, 'data' | 'producoes' | 'faltas' | 'observacoes'>,
+    payload: ApontamentoEditPayload,
   ) => {
     if (!editItem) return;
     const updated = await coordenacaoService.update(editItem.id, payload);

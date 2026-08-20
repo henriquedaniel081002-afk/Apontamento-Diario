@@ -10,7 +10,7 @@ import {
   RotateCcw,
   Search,
 } from 'lucide-react';
-import { Apontamento, User } from '../types';
+import { Apontamento, ApontamentoEditPayload, User } from '../types';
 import { apontamentoService } from '../services/apontamentoService';
 import { formatDateBR } from '../utils/formatters';
 import {
@@ -82,7 +82,7 @@ export const HistoricoPage: React.FC<HistoricoPageProps> = ({ user }) => {
   };
 
   const handleSaveEdit = async (
-    payload: Pick<Apontamento, 'data' | 'producoes' | 'faltas' | 'observacoes'>,
+    payload: ApontamentoEditPayload,
   ) => {
     if (!editItem) return;
     const updated = await apontamentoService.update(editItem.id, payload);

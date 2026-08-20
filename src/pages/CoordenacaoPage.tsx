@@ -30,6 +30,7 @@ import { ImportProductionModal } from '../components/coordenacao/ImportProductio
 import { CoordinationRecords } from '../components/coordenacao/CoordinationRecords';
 import { ConfirmModal } from '../components/common/ConfirmModal';
 import { Toast, ToastMessage } from '../components/common/Toast';
+import { CustomSelect } from '../components/common/CustomSelect';
 
 interface CoordenacaoPageProps {
   user: User;
@@ -437,43 +438,44 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
             />
           </label>
 
-          <label className="block">
+          <div className="block">
             <span className="mb-1.5 block text-xs font-bold text-slate-400">Setor</span>
-            <select
+            <CustomSelect
               value={setorFilter}
-              onChange={(event) => setSetorFilter(event.target.value)}
-              className="min-h-11 w-full cursor-pointer rounded-xl border border-white/15 bg-[#080C09] px-3 py-2.5 text-sm font-semibold text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
-            >
-              <option value="ALL">Todos os setores</option>
-              {setores.map((setor) => <option key={setor} value={setor}>{setor}</option>)}
-            </select>
-          </label>
+              onChange={setSetorFilter}
+              ariaLabel="Filtrar por setor"
+              options={[
+                { value: 'ALL', label: 'Todos os setores' },
+                ...setores.map((setor) => ({ value: setor, label: setor })),
+              ]}
+            />
+          </div>
 
-          <label className="block">
+          <div className="block">
             <span className="mb-1.5 block text-xs font-bold text-slate-400">Linha</span>
-            <select
+            <CustomSelect
               value={linhaFilter}
-              onChange={(event) => setLinhaFilter(event.target.value)}
-              className="min-h-11 w-full cursor-pointer rounded-xl border border-white/15 bg-[#080C09] px-3 py-2.5 text-sm font-semibold text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
-            >
-              <option value="ALL">Todas as linhas</option>
-              {linhas.map((linha) => <option key={linha} value={linha}>{linha}</option>)}
-            </select>
-          </label>
+              onChange={setLinhaFilter}
+              ariaLabel="Filtrar por linha"
+              options={[
+                { value: 'ALL', label: 'Todas as linhas' },
+                ...linhas.map((linha) => ({ value: linha, label: linha })),
+              ]}
+            />
+          </div>
 
-          <label className="block">
+          <div className="block">
             <span className="mb-1.5 block text-xs font-bold text-slate-400">Potência</span>
-            <select
+            <CustomSelect
               value={potenciaFilter}
-              onChange={(event) => setPotenciaFilter(event.target.value)}
-              className="min-h-11 w-full cursor-pointer rounded-xl border border-white/15 bg-[#080C09] px-3 py-2.5 text-sm font-semibold text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
-            >
-              <option value="ALL">Todas as potências</option>
-              {potencias.map((potencia) => (
-                <option key={potencia} value={String(potencia)}>{formatPotencia(potencia)} kVA</option>
-              ))}
-            </select>
-          </label>
+              onChange={setPotenciaFilter}
+              ariaLabel="Filtrar por potência"
+              options={[
+                { value: 'ALL', label: 'Todas as potências' },
+                ...potencias.map((potencia) => ({ value: String(potencia), label: `${formatPotencia(potencia)} kVA` })),
+              ]}
+            />
+          </div>
         </div>
       </section>
 

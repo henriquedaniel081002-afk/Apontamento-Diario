@@ -19,6 +19,7 @@ import {
 } from '../../utils/importProductionExcel';
 import { ModalShell } from '../common/ModalShell';
 import { Badge, Button, FieldError } from '../common/ui';
+import { CustomSelect } from '../common/CustomSelect';
 
 interface ImportProductionModalProps {
   isOpen: boolean;
@@ -270,18 +271,19 @@ export function ImportProductionModal({ isOpen, onClose, onImport }: ImportProdu
                       <span className="text-xs font-bold text-slate-300">{formatPotencia(issue.potencia)} kVA</span>
                       <span className="text-xs font-bold text-slate-300">{issue.quantidade} un.</span>
                       {issue.kind === 'LINHA' ? (
-                        <select
+                        <CustomSelect
                           value={corrections[issue.id] || ''}
-                          onChange={(event) => setCorrections((current) => ({
+                          onChange={(value) => setCorrections((current) => ({
                             ...current,
-                            [issue.id]: (event.target.value || undefined) as Linha | undefined,
+                            [issue.id]: (value || undefined) as Linha | undefined,
                           }))}
-                          className="min-h-10 w-full cursor-pointer rounded-xl border border-amber-400/25 bg-[#080C09] px-3 text-xs font-black text-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
-                          aria-label={`Corrigir linha de ${issue.setorOriginal}, potência ${formatPotencia(issue.potencia)}`}
-                        >
-                          <option value="">Selecionar linha…</option>
-                          {issue.allowedLines.map((line) => <option key={line} value={line}>{line}</option>)}
-                        </select>
+                          className="min-h-10 text-xs font-black"
+                          ariaLabel={`Corrigir linha de ${issue.setorOriginal}, potência ${formatPotencia(issue.potencia)}`}
+                          options={[
+                            { value: '', label: 'Selecionar linha…' },
+                            ...issue.allowedLines.map((line) => ({ value: line, label: line })),
+                          ]}
+                        />
                       ) : (
                         <span className="text-xs font-bold text-rose-300">Será ignorado</span>
                       )}

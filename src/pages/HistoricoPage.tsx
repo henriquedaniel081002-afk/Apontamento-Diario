@@ -22,6 +22,7 @@ import { HistoryRecords } from '../components/historico/HistoryRecords';
 import { ConfirmModal } from '../components/common/ConfirmModal';
 import { EditApontamentoModal } from '../components/coordenacao/EditApontamentoModal';
 import { Toast, ToastMessage } from '../components/common/Toast';
+import { CustomSelect } from '../components/common/CustomSelect';
 
 interface HistoricoPageProps {
   user: User;
@@ -191,18 +192,19 @@ export const HistoricoPage: React.FC<HistoricoPageProps> = ({ user }) => {
             </span>
           </label>
 
-          <label className="block">
+          <div className="block">
             <span className="mb-1.5 block text-xs font-bold text-slate-400">Período</span>
-            <select
+            <CustomSelect
               value={periodFilter}
-              onChange={(event) => setPeriodFilter(event.target.value as HistoryPeriod)}
-              className="min-h-11 w-full cursor-pointer rounded-xl border border-white/15 bg-[#080C09] px-3 py-2.5 text-sm font-semibold text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
-            >
-              <option value="ALL">Todo o período</option>
-              <option value="7DAYS">Últimos 7 dias</option>
-              <option value="MONTH">Este mês</option>
-            </select>
-          </label>
+              onChange={(value) => setPeriodFilter(value as HistoryPeriod)}
+              ariaLabel="Filtrar período do histórico"
+              options={[
+                { value: 'ALL', label: 'Todo o período' },
+                { value: '7DAYS', label: 'Últimos 7 dias' },
+                { value: 'MONTH', label: 'Este mês' },
+              ]}
+            />
+          </div>
 
           {user.linhas.length > 1 && (
             <fieldset>

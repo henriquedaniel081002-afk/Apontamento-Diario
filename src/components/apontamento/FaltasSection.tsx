@@ -3,6 +3,7 @@ import { Check, Edit2, Plus, Trash2, UserX } from 'lucide-react';
 import { FaltaItem } from '../../types';
 import { ConfirmModal } from '../common/ConfirmModal';
 import { Button, EmptyState, FieldError, Surface } from '../common/ui';
+import { CustomSelect } from '../common/CustomSelect';
 
 interface FaltasSectionProps {
   faltas: FaltaItem[];
@@ -64,7 +65,7 @@ export const FaltasSection: React.FC<FaltasSectionProps> = ({ faltas, onAdd, onU
         <form onSubmit={submit} className="space-y-4 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-muted)] p-4">
           <div className="grid gap-4 md:grid-cols-2">
             <label htmlFor={nomeId}><span className="mb-2 block text-sm font-medium text-[var(--text-primary)]">Nome</span><input id={nomeId} value={nome} onChange={(e) => { setNome(e.target.value); setError(null); }} className="field-control" placeholder="Nome do colaborador" /></label>
-            <label htmlFor={atestadoId}><span className="mb-2 block text-sm font-medium text-[var(--text-primary)]">Atestado</span><select id={atestadoId} value={atestado} onChange={(e) => { setAtestado(e.target.value as 'SIM' | 'NAO' | ''); setError(null); }} className="field-control"><option value="">Selecione</option><option value="SIM">Sim</option><option value="NAO">Não</option></select></label>
+            <div><label htmlFor={atestadoId} className="mb-2 block text-sm font-medium text-[var(--text-primary)]">Atestado</label><CustomSelect id={atestadoId} value={atestado} onChange={(value) => { setAtestado(value as 'SIM' | 'NAO' | ''); setError(null); }} ariaLabel="Atestado" options={[{ value: '', label: 'Selecione' }, { value: 'SIM', label: 'Sim' }, { value: 'NAO', label: 'Não' }]} /></div>
             <label htmlFor={motivoId} className="md:col-span-2"><span className="mb-2 block text-sm font-medium text-[var(--text-primary)]">Motivo / Justificativa</span><textarea id={motivoId} rows={3} value={motivoJustificativa} onChange={(e) => { setMotivo(e.target.value); setError(null); }} className="field-control resize-y" placeholder="Informe o motivo ou justificativa" /></label>
           </div>
           <FieldError role="alert">{error}</FieldError>

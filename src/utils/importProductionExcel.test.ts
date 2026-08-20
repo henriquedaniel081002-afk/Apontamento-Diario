@@ -24,10 +24,10 @@ describe('equivalências da importação de produção', () => {
     });
   });
 
-  it('direciona qualquer registro EPO ao Epóxi', () => {
+  it('direciona somente MONTAGEM FINAL + EPO ao Epóxi', () => {
     expect(classifyRawProductionGroup({
       id: 'epoxi',
-      setorOriginal: 'FERRAGEM',
+      setorOriginal: 'MONTAGEM FINAL',
       linhaOriginal: 'EPO',
       potencia: 150,
       quantidade: 4,
@@ -39,6 +39,20 @@ describe('equivalências da importação de produção', () => {
         quantidade: 4,
       },
     });
+  });
+
+  it('não direciona EPO de outro setor ao Epóxi', () => {
+    const result = classifyRawProductionGroup({
+      id: 'ferragem-epo',
+      setorOriginal: 'FERRAGEM',
+      linhaOriginal: 'EPO',
+      potencia: 150,
+      quantidade: 4,
+    });
+
+    expect(result.issue).toEqual(expect.objectContaining({
+      kind: 'SETOR',
+    }));
   });
 
   it('exige correção manual para BIF/POT em setor reconhecido', () => {

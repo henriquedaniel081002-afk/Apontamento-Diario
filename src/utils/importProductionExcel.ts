@@ -92,9 +92,10 @@ export function classifyRawProductionGroup(group: RawProductionGroup):
   | { group?: never; issue: ProductionImportIssue } {
   const rawLine = normalizeText(group.linhaOriginal);
 
-  // Regra operacional aprovada: qualquer registro cuja LINHA seja EPO é
-  // direcionado ao apontador de EPOXI, independentemente do SETOR de origem.
-  if (rawLine === 'EPO') {
+  // Regra operacional: somente MONTAGEM FINAL + linha EPO pertence ao Epóxi.
+  // Registros EPO de qualquer outro setor seguem as regras normais do setor
+  // (correção de linha quando houver apontador ou setor sem correspondência).
+  if (normalizeText(group.setorOriginal) === 'MONTAGEM FINAL' && rawLine === 'EPO') {
     return {
       group: {
         setor: 'EPOXI',

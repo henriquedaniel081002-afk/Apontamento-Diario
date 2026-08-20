@@ -18,6 +18,7 @@ export type Setor =
 export type Perfil = 'APONTADOR' | 'COORDENACAO';
 
 export type StatusAprovacao = 'PENDENTE' | 'APROVADO';
+export type OrigemProducao = 'MANUAL' | 'IMPORTADO';
 
 export interface User {
   id: string;
@@ -69,9 +70,31 @@ export interface Apontamento {
   aprovadoEm?: string;
   aprovadoPorId?: string;
   aprovadoPorNome?: string;
+  origemProducao?: OrigemProducao;
+  complementado?: boolean;
 }
 
 export interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
+}
+
+export interface ProductionImportGroup {
+  setor: Setor;
+  linha: Linha;
+  potencia: number;
+  quantidade: number;
+  tipoBobina?: TipoBobina;
+}
+
+export interface ProductionImportRequest {
+  data: string;
+  grupos: ProductionImportGroup[];
+}
+
+export interface ProductionImportResult {
+  data: string;
+  registros: Apontamento[];
+  totalQuantidade: number;
+  totalUnidades: number;
 }

@@ -128,6 +128,7 @@ export function operationalUnitWasReported(
   apontamentosDoDia: readonly Apontamento[],
 ): boolean {
   return apontamentosDoDia.some((apontamento) => {
+    if (apontamento.origemProducao === 'IMPORTADO' && apontamento.complementado === false) return false;
     if (!unitMatchesSector(unit, apontamento)) return false;
     if (!unit.linha) return true;
     return apontamentoTemLinha(apontamento, unit.linha);

@@ -6,6 +6,10 @@ export const apontamentoService = {
     return apiRequest<Apontamento[]>('/api/apontamentos');
   },
 
+  async getPendingImported(): Promise<Apontamento[]> {
+    return apiRequest<Apontamento[]>('/api/apontamentos/importados/pendentes');
+  },
+
   async getByUserSector(_userId: string, _setor: string): Promise<Apontamento[]> {
     return apiRequest<Apontamento[]>('/api/apontamentos');
   },
@@ -18,12 +22,13 @@ export const apontamentoService = {
     return apiRequest<Apontamento | null>(`/api/apontamentos/data/${encodeURIComponent(date)}`);
   },
 
-  async save(
-    apontamentoData: Omit<Apontamento, 'id' | 'createdAt' | 'updatedAt'>,
+  async completeImported(
+    id: string,
+    data: Pick<Apontamento, 'faltas' | 'observacoes'>,
   ): Promise<Apontamento> {
-    return apiRequest<Apontamento>('/api/apontamentos', {
-      method: 'POST',
-      body: JSON.stringify(apontamentoData),
+    return apiRequest<Apontamento>(`/api/apontamentos/${encodeURIComponent(id)}/complemento`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
     });
   },
 

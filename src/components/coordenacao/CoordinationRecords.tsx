@@ -51,6 +51,7 @@ function RecordActions({
   const isApproved = record.statusAprovacao === 'APROVADO';
   const isApprovalBusy = approvalBusyId === record.id;
   const isAnyApprovalBusy = Boolean(approvalBusyId);
+  const awaitingComplement = record.origemProducao === 'IMPORTADO' && record.complementado === false;
   const columnsClass = showApprovalActions ? 'grid-cols-4' : 'grid-cols-3';
 
   return (
@@ -77,11 +78,12 @@ function RecordActions({
         <button
           type="button"
           onClick={() => onApprovalChange?.(record, isApproved ? 'PENDENTE' : 'APROVADO')}
-          disabled={isAnyApprovalBusy || !onApprovalChange}
+          disabled={isAnyApprovalBusy || !onApprovalChange || (!isApproved && awaitingComplement)}
           className={`inline-flex min-h-11 items-center justify-center gap-2 px-2 text-xs font-black transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset ${isApproved
             ? 'text-amber-300 hover:bg-amber-400/[0.08] focus-visible:ring-amber-400'
             : 'text-emerald-300 hover:bg-emerald-400/[0.08] focus-visible:ring-emerald-400'}`}
-          aria-label={isApproved ? `Desfazer aprovação de ${accessibleRecordName}` : `Aprovar ${accessibleRecordName}`}
+          aria-label={awaitingComplement && !isApproved ? `${accessibleRecordName} ainda aguarda complemento` : isApproved ? `Desfazer aprovação de ${accessibleRecordName}` : `Aprovar ${accessibleRecordName}`}
+          title={awaitingComplement && !isApproved ? 'Aguarde o apontador adicionar faltas/observações antes de aprovar.' : undefined}
         >
           {isApprovalBusy ? (
             <Loader2 className="size-4 animate-spin" aria-hidden="true" />
@@ -90,7 +92,7 @@ function RecordActions({
           ) : (
             <BadgeCheck className="size-4" aria-hidden="true" />
           )}
-          <span>{isApprovalBusy ? 'Salvando…' : isApproved ? 'Desfazer' : 'Aprovar'}</span>
+          <span>{isApprovalBusy ? 'Salvando…' : isApproved ? 'Desfazer' : awaitingComplement ? 'Aguardando' : 'Aprovar'}</span>
         </button>
       )}
       <button
@@ -162,6 +164,16 @@ function Metric({ icon, label, value, valueClassName, iconClassName, helper }: M
 
 function ApprovalBadge({ record }: { record: Apontamento }) {
   const isApproved = record.statusAprovacao === 'APROVADO';
+  const awaitingComplement = record.origemProducao === 'IMPORTADO' && record.complementado === false;
+
+  if (awaitingComplement && !isApproved) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-lg border border-sky-400/25 bg-sky-400/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-sky-300">
+        <CircleDashed className="size-3.5" aria-hidden="true" />
+        Aguardando complemento
+      </span>
+    );
+  }
 
   return isApproved ? (
     <span

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Calendar, Check, Save } from 'lucide-react';
 import { Apontamento, FaltaItem, Linha, ObservacaoItem, ProducaoItem, User } from '../../types';
 import { ProducaoSection } from '../apontamento/ProducaoSection';
+import { ImportedProductionSection } from '../apontamento/ImportedProductionSection';
 import { FaltasSection } from '../apontamento/FaltasSection';
 import { ObservacoesSection } from '../apontamento/ObservacoesSection';
 import { SummaryHeader } from '../apontamento/SummaryHeader';
@@ -67,6 +68,7 @@ export const EditApontamentoModal: React.FC<EditApontamentoModalProps> = ({
 
   if (!apontamento || !editorUser) return null;
 
+  const isImported = apontamento.origemProducao === 'IMPORTADO';
   const totalProducao = producoes.reduce((sum, item) => sum + Number(item.quantidade || 0), 0);
   const totalFaltas = faltas.reduce((sum, item) => sum + Number(item.quantidade || 0), 0);
 
@@ -105,7 +107,9 @@ export const EditApontamentoModal: React.FC<EditApontamentoModalProps> = ({
       footer={
         <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="max-w-2xl text-xs leading-relaxed text-slate-500">
-            Setor, responsável e tipo de bobina originais são preservados. O envio altera somente data, produção, faltas e observações.
+            {isImported
+              ? 'Produção e data vieram do Excel e ficam bloqueadas. Para corrigi-las, faça uma nova importação da data pela Coordenação.'
+              : 'Setor, responsável e tipo de bobina originais são preservados. O envio altera somente data, produção, faltas e observações.'}
           </p>
           <div className="flex shrink-0 gap-2">
             <Button variant="secondary" onClick={onClose} disabled={saving}>Cancelar</Button>
@@ -131,6 +135,7 @@ export const EditApontamentoModal: React.FC<EditApontamentoModalProps> = ({
             <input
               type="date"
               value={data}
+              disabled={isImported}
               onChange={(event) => {
                 setData(event.target.value);
                 if (event.target.value) setError(null);
@@ -169,13 +174,17 @@ export const EditApontamentoModal: React.FC<EditApontamentoModalProps> = ({
         </nav>
 
         <div className={step === 1 ? 'block' : 'hidden'} aria-hidden={step !== 1}>
-          <ProducaoSection
-            user={editorUser}
-            producoes={producoes}
-            onAdd={(item) => setProducoes((current) => [...current, item])}
-            onUpdate={(item) => setProducoes((current) => current.map((entry) => entry.id === item.id ? item : entry))}
-            onDelete={(id) => setProducoes((current) => current.filter((entry) => entry.id !== id))}
-          />
+          {isImported ? (
+            <ImportedProductionSection producoes={producoes} />
+          ) : (
+            <ProducaoSection
+              user={editorUser}
+              producoes={producoes}
+              onAdd={(item) => setProducoes((current) => [...current, item])}
+              onUpdate={(item) => setProducoes((current) => current.map((entry) => entry.id === item.id ? item : entry))}
+              onDelete={(id) => setProducoes((current) => current.filter((entry) => entry.id !== id))}
+            />
+          )}
         </div>
 
         <div className={step === 2 ? 'block' : 'hidden'} aria-hidden={step !== 2}>

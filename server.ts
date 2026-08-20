@@ -112,11 +112,156 @@ async function getUserAccess(userId: number) {
   return r.rows;
 }
 
+
+type ImportLine = 'MON' | 'TRI' | 'EPO';
+type ImportGroup = {
+  setor: string;
+  linha: ImportLine;
+  potencia: number;
+  quantidade: number;
+  tipoBobina?: 'AT' | 'BT';
+};
+
+type PreparedImportGroup = ImportGroup & {
+  setorId: number;
+  linhaId: number;
+  usuarioId: number;
+};
+
+const IMPORT_SECTORS = new Set([
+  'BOBINA AT/BT',
+  'CORTE LASER',
+  'ISOLANTE',
+  'MONTAGEM NUCLEO',
+  'MONTAGEM FINAL',
+  'MPA',
+  'PINTURA',
+  'SOLDA',
+  'EPOXI',
+]);
+const IMPORT_LINES = new Set<ImportLine>(['MON', 'TRI', 'EPO']);
+
+function importUnitKey(group: Pick<ImportGroup, 'setor' | 'linha' | 'tipoBobina'>): string {
+  if (group.setor === 'BOBINA AT/BT') return `${group.setor}|${group.tipoBobina || ''}`;
+  if (group.setor === 'MONTAGEM FINAL' || group.setor === 'MPA') return `${group.setor}|${group.linha}`;
+  return group.setor;
+}
+
+function validateImportGroups(value: unknown): ImportGroup[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error('A importação não possui grupos de produção válidos.');
+  }
+
+  return value.map((item: any) => {
+    const setor = String(item?.setor || '').trim().toUpperCase();
+    const linha = String(item?.linha || '').trim().toUpperCase() as ImportLine;
+    const potencia = Number(item?.potencia);
+    const quantidade = Number(item?.quantidade);
+    const tipoBobina = String(item?.tipoBobina || '').trim().toUpperCase();
+
+    if (!IMPORT_SECTORS.has(setor)) throw new Error(`Setor de importação inválido: ${setor || 'não informado'}.`);
+    if (!IMPORT_LINES.has(linha)) throw new Error(`Linha de importação inválida: ${linha || 'não informada'}.`);
+    if (!Number.isFinite(potencia) || potencia <= 0) throw new Error('A potência importada precisa ser maior que zero.');
+    if (!Number.isInteger(quantidade) || quantidade <= 0) throw new Error('A quantidade importada precisa ser um inteiro maior que zero.');
+    if (setor === 'EPOXI' && linha !== 'EPO') throw new Error('Epóxi aceita somente registros da linha EPO.');
+    if (setor !== 'EPOXI' && linha === 'EPO') throw new Error('Registros da linha EPO devem ser direcionados ao Epóxi.');
+    if (setor === 'BOBINA AT/BT' && !['AT', 'BT'].includes(tipoBobina)) {
+      throw new Error('A produção de Bobinagem precisa identificar AT ou BT.');
+    }
+
+    return {
+      setor,
+      linha,
+      potencia,
+      quantidade,
+      tipoBobina: setor === 'BOBINA AT/BT' ? tipoBobina as 'AT' | 'BT' : undefined,
+    };
+  });
+}
+
+async function prepareImportGroups(client: any, groups: ImportGroup[]): Promise<PreparedImportGroup[]> {
+  const sectorNames = [...new Set(groups.map((group) => group.setor))];
+  const lineNames = [...new Set(groups.map((group) => group.linha))];
+  const [sectorsResult, linesResult, accessResult] = await Promise.all([
+    client.query('SELECT id, nome FROM setores WHERE nome = ANY($1::text[])', [sectorNames]),
+    client.query('SELECT id, nome FROM linhas WHERE nome = ANY($1::text[])', [lineNames]),
+    client.query(
+      `SELECT ua.usuario_id, u.login, ua.setor_id, s.nome setor, ua.linha_id, l.nome linha
+         FROM usuario_acessos ua
+         JOIN usuarios u ON u.id = ua.usuario_id
+         JOIN setores s ON s.id = ua.setor_id
+         JOIN linhas l ON l.id = ua.linha_id
+        WHERE s.nome = ANY($1::text[])
+        ORDER BY ua.usuario_id, ua.setor_id, l.nome`,
+      [sectorNames],
+    ),
+  ]);
+
+  const sectorMap = new Map<string, number>(sectorsResult.rows.map((row: any) => [String(row.nome), Number(row.id)]));
+  const lineMap = new Map<string, number>(linesResult.rows.map((row: any) => [String(row.nome), Number(row.id)]));
+  for (const sector of sectorNames) if (!sectorMap.has(sector)) throw new Error(`Setor ${sector} não encontrado no Neon.`);
+  for (const line of lineNames) if (!lineMap.has(line)) throw new Error(`Linha ${line} não encontrada no Neon.`);
+
+  const accessByUserSector = new Map<string, { usuarioId: number; setor: string; setorId: number; lines: Map<string, number> }>();
+  for (const row of accessResult.rows) {
+    const key = `${row.usuario_id}|${row.setor_id}`;
+    let access = accessByUserSector.get(key);
+    if (!access) {
+      access = {
+        usuarioId: Number(row.usuario_id),
+        setor: String(row.setor),
+        setorId: Number(row.setor_id),
+        lines: new Map(),
+      };
+      accessByUserSector.set(key, access);
+    }
+    access.lines.set(String(row.linha), Number(row.linha_id));
+  }
+
+  const units = new Map<string, ImportGroup[]>();
+  for (const group of groups) {
+    const key = importUnitKey(group);
+    const bucket = units.get(key) || [];
+    bucket.push(group);
+    units.set(key, bucket);
+  }
+
+  const assignments = new Map<string, { usuarioId: number; setorId: number; lineIds: Map<string, number> }>();
+  for (const [unitKey, unitGroups] of units) {
+    const setor = unitGroups[0].setor;
+    const neededLines = [...new Set(unitGroups.map((group) => group.linha))];
+    const candidates = [...accessByUserSector.values()]
+      .filter((access) => access.setor === setor && neededLines.every((line) => access.lines.has(line)))
+      .sort((a, b) => {
+        const exactA = a.lines.size === neededLines.length ? 0 : 1;
+        const exactB = b.lines.size === neededLines.length ? 0 : 1;
+        return exactA - exactB || a.lines.size - b.lines.size || a.usuarioId - b.usuarioId;
+      });
+
+    const selected = candidates[0];
+    if (!selected) {
+      const label = setor === 'BOBINA AT/BT'
+        ? `BOBINA ${unitGroups[0].tipoBobina || ''}`
+        : (setor === 'MONTAGEM FINAL' || setor === 'MPA') ? `${setor} ${unitGroups[0].linha}` : setor;
+      throw new Error(`Nenhum apontador com acesso compatível foi encontrado para ${label}.`);
+    }
+    assignments.set(unitKey, { usuarioId: selected.usuarioId, setorId: selected.setorId, lineIds: selected.lines });
+  }
+
+  return groups.map((group) => {
+    const assignment = assignments.get(importUnitKey(group));
+    if (!assignment) throw new Error('Falha ao associar a produção importada ao apontador.');
+    const linhaId = assignment.lineIds.get(group.linha) || lineMap.get(group.linha);
+    if (!linhaId) throw new Error(`Linha ${group.linha} não disponível para o apontador selecionado.`);
+    return { ...group, usuarioId: assignment.usuarioId, setorId: assignment.setorId, linhaId };
+  });
+}
+
 async function loadApontamento(id: number) {
   const h = await pool.query(
     `SELECT a.id, a.data, a.usuario_id, a.setor_id, a.tipo_bobina, u.login usuario, s.nome setor,
             a.criado_em, a.atualizado_em, a.status_aprovacao, a.aprovado_em, a.aprovado_por,
-            aprovador.login aprovado_por_nome
+            a.origem_producao, a.complementado, aprovador.login aprovado_por_nome
        FROM apontamentos a
        JOIN usuarios u ON u.id = a.usuario_id
        JOIN setores s ON s.id = a.setor_id
@@ -204,13 +349,19 @@ async function loadApontamento(id: number) {
     aprovadoEm: x.aprovado_em ? isoDateTime(x.aprovado_em) : undefined,
     aprovadoPorId: x.aprovado_por ? String(x.aprovado_por) : undefined,
     aprovadoPorNome: x.aprovado_por_nome || undefined,
+    origemProducao: String(x.origem_producao || 'MANUAL').toUpperCase() === 'IMPORTADO' ? 'IMPORTADO' : 'MANUAL',
+    complementado: x.complementado !== false,
   };
 }
 
 app.get('/api/apontamentos', auth, async (req: any, res) => {
   try {
     const ids = await pool.query(
-      'SELECT id FROM apontamentos WHERE usuario_id = $1 ORDER BY data DESC, id DESC',
+      `SELECT id
+         FROM apontamentos
+        WHERE usuario_id = $1
+          AND NOT (origem_producao = 'IMPORTADO' AND complementado = FALSE)
+        ORDER BY data DESC, id DESC`,
       [req.auth.userId],
     );
     const registros = await Promise.all(ids.rows.map((r: any) => loadApontamento(r.id)));
@@ -218,6 +369,29 @@ app.get('/api/apontamentos', auth, async (req: any, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Falha ao carregar histórico.' });
+  }
+});
+
+app.get('/api/apontamentos/importados/pendentes', auth, async (req: any, res) => {
+  if (req.auth?.perfil === 'COORDENACAO') return res.json([]);
+  try {
+    const ids = await pool.query(
+      `SELECT id
+         FROM apontamentos
+        WHERE usuario_id = $1
+          AND origem_producao = 'IMPORTADO'
+          AND complementado = FALSE
+        ORDER BY data DESC, id DESC`,
+      [req.auth.userId],
+    );
+    const registros = await Promise.all(ids.rows.map((row: any) => loadApontamento(row.id)));
+    res.json(registros.filter(Boolean));
+  } catch (e: any) {
+    console.error(e);
+    if (e?.code === '42703') {
+      return res.status(500).json({ error: 'Execute o script NEON_IMPORTACAO_PRODUCAO.sql no Neon antes de usar a importação.' });
+    }
+    res.status(500).json({ error: 'Falha ao carregar produções aguardando complemento.' });
   }
 });
 
@@ -234,69 +408,74 @@ app.get('/api/apontamentos/data/:data', auth, async (req: any, res) => {
   }
 });
 
-app.post('/api/apontamentos', auth, async (req: any, res) => {
+app.post('/api/apontamentos', auth, async (_req: any, res) => {
+  // O novo fluxo não permite criação manual de produção pelo apontador.
+  // Mantemos a rota apenas para devolver uma mensagem clara a clientes antigos/em cache.
+  return res.status(409).json({
+    error: 'A produção deve ser importada pela Coordenação. Complete apenas faltas e observações do registro disponibilizado.',
+  });
+});
+
+// Complementa uma produção previamente importada pela Coordenação.
+// O apontador pode alterar somente faltas e observações; produção e data permanecem bloqueadas.
+app.put('/api/apontamentos/:id/complemento', auth, async (req: any, res) => {
   if (req.auth?.perfil === 'COORDENACAO') {
-    return res.status(403).json({ error: 'A COORDENAÇÃO deve editar registros pela tela de consulta geral.' });
+    return res.status(403).json({ error: 'A COORDENAÇÃO não utiliza o fluxo de complemento do apontador.' });
   }
 
-  const data = req.body;
   const client = await pool.connect();
-
+  const id = Number(req.params.id);
+  const data = req.body || {};
   try {
-    if (!data?.data) return res.status(400).json({ error: 'A data é obrigatória.' });
-
-    const access = await getUserAccess(req.auth.userId);
-    if (!access.length) return res.status(403).json({ error: 'Usuário sem acesso configurado.' });
-
-    const setorId = access[0].setor_id;
-    const setorNome = String(access[0].setor || '');
-    const isBobinagem = setorNome === 'BOBINA AT/BT';
-    const tipoBobina = String(data.tipoBobina || '').toUpperCase();
-
-    if (isBobinagem && !['AT', 'BT'].includes(tipoBobina)) {
-      return res.status(400).json({ error: 'Selecione o tipo de bobina AT ou BT.' });
+    if (!Number.isFinite(id)) return res.status(400).json({ error: 'Apontamento inválido.' });
+    const current = await client.query(
+      `SELECT id, usuario_id, setor_id, origem_producao
+         FROM apontamentos
+        WHERE id = $1 AND usuario_id = $2`,
+      [id, req.auth.userId],
+    );
+    if (!current.rows.length) return res.status(404).json({ error: 'Produção importada não encontrada.' });
+    if (String(current.rows[0].origem_producao || '').toUpperCase() !== 'IMPORTADO') {
+      return res.status(400).json({ error: 'Este registro não foi criado por importação de produção.' });
     }
 
-    const allowed = new Map(access
-      .filter((a: any) => Number(a.setor_id) === Number(setorId))
-      .map((a: any) => [a.linha, a.linha_id]));
-
-    for (const item of [...(data.producoes || []), ...(data.faltas || []), ...(data.observacoes || [])]) {
+    const access = await getUserAccess(req.auth.userId);
+    const setorId = Number(current.rows[0].setor_id);
+    const allowed = new Map(
+      access
+        .filter((row: any) => Number(row.setor_id) === setorId)
+        .map((row: any) => [row.linha, row.linha_id]),
+    );
+    for (const item of [...(data.faltas || []), ...(data.observacoes || [])]) {
       if (item.linha && !allowed.has(item.linha)) {
-        return res.status(403).json({ error: `Linha ${item.linha} não permitida.` });
+        return res.status(403).json({ error: `Linha ${item.linha} não permitida para este usuário/setor.` });
       }
     }
 
     await client.query('BEGIN');
-    const inserted = await client.query(
-      `INSERT INTO apontamentos(data, usuario_id, setor_id, tipo_bobina)
-       VALUES($1, $2, $3, $4)
-       RETURNING id`,
-      [data.data, req.auth.userId, setorId, isBobinagem ? tipoBobina : null],
+    await client.query(
+      `UPDATE apontamentos
+          SET complementado = TRUE,
+              atualizado_em = NOW(),
+              status_aprovacao = 'PENDENTE',
+              aprovado_em = NULL,
+              aprovado_por = NULL
+        WHERE id = $1 AND usuario_id = $2`,
+      [id, req.auth.userId],
     );
+    await client.query('DELETE FROM faltas WHERE apontamento_id = $1', [id]);
+    await client.query('DELETE FROM observacoes WHERE apontamento_id = $1', [id]);
 
-    // Cada POST representa um novo apontamento. Nunca reaproveitamos nem
-    // substituímos automaticamente um registro anterior da mesma data.
-    const id = inserted.rows[0].id;
-
-    for (const p of data.producoes || []) {
-      await client.query(
-        'INSERT INTO producao(apontamento_id, linha_id, potencia, quantidade) VALUES($1, $2, $3, $4)',
-        [id, allowed.get(p.linha), p.potencia, p.quantidade],
-      );
-    }
-
-    for (const f of data.faltas || []) {
+    for (const falta of data.faltas || []) {
       await client.query(
         'INSERT INTO faltas(apontamento_id, linha_id, turno, quantidade, justificativa) VALUES($1, $2, $3, $4, $5)',
-        [id, allowed.get(f.linha), String(f.turno).toUpperCase(), f.quantidade ?? null, f.justificativa || null],
+        [id, allowed.get(falta.linha), String(falta.turno).toUpperCase(), falta.quantidade ?? null, falta.justificativa || null],
       );
     }
-
-    for (const o of data.observacoes || []) {
+    for (const observacao of data.observacoes || []) {
       await client.query(
         'INSERT INTO observacoes(apontamento_id, linha_id, turno, observacao) VALUES($1, $2, $3, $4)',
-        [id, o.linha ? allowed.get(o.linha) : null, String(o.turno).toUpperCase(), o.observacao || null],
+        [id, observacao.linha ? allowed.get(observacao.linha) : null, String(observacao.turno).toUpperCase(), observacao.observacao || null],
       );
     }
 
@@ -305,12 +484,10 @@ app.post('/api/apontamentos', auth, async (req: any, res) => {
   } catch (e: any) {
     await client.query('ROLLBACK');
     console.error(e);
-    if (e?.code === '23505') {
-      return res.status(409).json({
-        error: 'O Neon ainda está impedindo múltiplos apontamentos no mesmo dia. Execute o script de migração incluído nesta versão.',
-      });
+    if (e?.code === '42703') {
+      return res.status(500).json({ error: 'Execute o script NEON_IMPORTACAO_PRODUCAO.sql no Neon antes de usar este fluxo.' });
     }
-    res.status(500).json({ error: 'Falha ao salvar apontamento.' });
+    res.status(500).json({ error: 'Falha ao salvar faltas e observações.' });
   } finally {
     client.release();
   }
@@ -331,7 +508,7 @@ app.put('/api/apontamentos/:id', auth, async (req: any, res) => {
     if (!data.data) return res.status(400).json({ error: 'A data é obrigatória.' });
 
     const current = await client.query(
-      'SELECT id, usuario_id, setor_id FROM apontamentos WHERE id = $1 AND usuario_id = $2',
+      'SELECT id, usuario_id, setor_id, data, origem_producao FROM apontamentos WHERE id = $1 AND usuario_id = $2',
       [id, req.auth.userId],
     );
     if (!current.rows.length) return res.status(404).json({ error: 'Registro não encontrado ou sem permissão para edição.' });
@@ -346,7 +523,10 @@ app.put('/api/apontamentos/:id', auth, async (req: any, res) => {
         .map((a: any) => [a.linha, a.linha_id]),
     );
 
-    const allItems = [...(data.producoes || []), ...(data.faltas || []), ...(data.observacoes || [])];
+    const isImported = String(current.rows[0].origem_producao || '').toUpperCase() === 'IMPORTADO';
+    const allItems = isImported
+      ? [...(data.faltas || []), ...(data.observacoes || [])]
+      : [...(data.producoes || []), ...(data.faltas || []), ...(data.observacoes || [])];
     for (const item of allItems) {
       if (item.linha && !allowed.has(item.linha)) {
         return res.status(403).json({ error: `Linha ${item.linha} não permitida para este usuário/setor.` });
@@ -354,26 +534,30 @@ app.put('/api/apontamentos/:id', auth, async (req: any, res) => {
     }
 
     await client.query('BEGIN');
+    const nextDate = isImported ? dateOnly(current.rows[0].data) : data.data;
     await client.query(
       `UPDATE apontamentos
           SET data = $1,
+              complementado = CASE WHEN origem_producao = 'IMPORTADO' THEN TRUE ELSE complementado END,
               atualizado_em = NOW(),
               status_aprovacao = 'PENDENTE',
               aprovado_em = NULL,
               aprovado_por = NULL
         WHERE id = $2 AND usuario_id = $3`,
-      [data.data, id, req.auth.userId],
+      [nextDate, id, req.auth.userId],
     );
 
-    await client.query('DELETE FROM producao WHERE apontamento_id = $1', [id]);
+    if (!isImported) await client.query('DELETE FROM producao WHERE apontamento_id = $1', [id]);
     await client.query('DELETE FROM faltas WHERE apontamento_id = $1', [id]);
     await client.query('DELETE FROM observacoes WHERE apontamento_id = $1', [id]);
 
-    for (const p of data.producoes || []) {
-      await client.query(
-        'INSERT INTO producao(apontamento_id, linha_id, potencia, quantidade) VALUES($1, $2, $3, $4)',
-        [id, allowed.get(p.linha), p.potencia, p.quantidade],
-      );
+    if (!isImported) {
+      for (const p of data.producoes || []) {
+        await client.query(
+          'INSERT INTO producao(apontamento_id, linha_id, potencia, quantidade) VALUES($1, $2, $3, $4)',
+          [id, allowed.get(p.linha), p.potencia, p.quantidade],
+        );
+      }
     }
 
     for (const f of data.faltas || []) {
@@ -418,6 +602,112 @@ app.delete('/api/apontamentos/:id', auth, async (req: any, res) => {
   }
 });
 
+// Importa a produção agregada no navegador e associa cada unidade ao apontador correto.
+app.post('/api/coordenacao/importar-producao', auth, requireCoordenacao, async (req: any, res) => {
+  const client = await pool.connect();
+  const data = String(req.body?.data || '').trim();
+  try {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return res.status(400).json({ error: 'Informe uma data válida para a importação.' });
+
+    let groups: ImportGroup[];
+    try {
+      groups = validateImportGroups(req.body?.grupos);
+    } catch (validationError) {
+      return res.status(400).json({ error: validationError instanceof Error ? validationError.message : 'Dados de importação inválidos.' });
+    }
+
+    await client.query('BEGIN');
+    const prepared = await prepareImportGroups(client, groups);
+    const unitGroups = new Map<string, PreparedImportGroup[]>();
+    for (const group of prepared) {
+      const key = `${group.usuarioId}|${group.setorId}|${importUnitKey(group)}`;
+      const bucket = unitGroups.get(key) || [];
+      bucket.push(group);
+      unitGroups.set(key, bucket);
+    }
+
+    const usedIds = new Set<number>();
+    for (const unit of unitGroups.values()) {
+      const first = unit[0];
+      const tipoBobina = first.setor === 'BOBINA AT/BT' ? first.tipoBobina || null : null;
+      const existing = await client.query(
+        `SELECT id, complementado
+           FROM apontamentos
+          WHERE data = $1
+            AND usuario_id = $2
+            AND setor_id = $3
+            AND origem_producao = 'IMPORTADO'
+            AND (($4::text IS NULL AND tipo_bobina IS NULL) OR tipo_bobina = $4)
+          ORDER BY id DESC
+          LIMIT 1`,
+        [data, first.usuarioId, first.setorId, tipoBobina],
+      );
+
+      let apontamentoId: number;
+      if (existing.rows.length) {
+        apontamentoId = Number(existing.rows[0].id);
+        await client.query('UPDATE apontamentos SET atualizado_em = NOW() WHERE id = $1', [apontamentoId]);
+      } else {
+        const inserted = await client.query(
+          `INSERT INTO apontamentos(data, usuario_id, setor_id, tipo_bobina, origem_producao, complementado)
+           VALUES($1, $2, $3, $4, 'IMPORTADO', FALSE)
+           RETURNING id`,
+          [data, first.usuarioId, first.setorId, tipoBobina],
+        );
+        apontamentoId = Number(inserted.rows[0].id);
+      }
+
+      usedIds.add(apontamentoId);
+      await client.query('DELETE FROM producao WHERE apontamento_id = $1', [apontamentoId]);
+      for (const group of unit) {
+        await client.query(
+          'INSERT INTO producao(apontamento_id, linha_id, potencia, quantidade) VALUES($1, $2, $3, $4)',
+          [apontamentoId, group.linhaId, group.potencia, group.quantidade],
+        );
+      }
+    }
+
+    // A importação mais recente substitui integralmente a produção importada da data.
+    // Se o apontador já complementou um registro que deixou de existir no novo Excel,
+    // preservamos faltas/observações/aprovação e removemos somente a produção antiga.
+    const previous = await client.query(
+      `SELECT id, complementado
+         FROM apontamentos
+        WHERE data = $1 AND origem_producao = 'IMPORTADO'`,
+      [data],
+    );
+    for (const row of previous.rows) {
+      const id = Number(row.id);
+      if (usedIds.has(id)) continue;
+      if (row.complementado === false) {
+        await client.query('DELETE FROM apontamentos WHERE id = $1', [id]);
+      } else {
+        await client.query('DELETE FROM producao WHERE apontamento_id = $1', [id]);
+        await client.query('UPDATE apontamentos SET atualizado_em = NOW() WHERE id = $1', [id]);
+      }
+    }
+
+    await client.query('COMMIT');
+    const ids = [...usedIds];
+    const registros = await Promise.all(ids.map((id) => loadApontamento(id)));
+    res.json({
+      data,
+      registros: registros.filter(Boolean),
+      totalQuantidade: groups.reduce((sum, group) => sum + group.quantidade, 0),
+      totalUnidades: unitGroups.size,
+    });
+  } catch (e: any) {
+    await client.query('ROLLBACK');
+    console.error(e);
+    if (e?.code === '42703') {
+      return res.status(500).json({ error: 'Execute o script NEON_IMPORTACAO_PRODUCAO.sql no Neon antes da primeira importação.' });
+    }
+    res.status(500).json({ error: e instanceof Error ? e.message : 'Falha ao importar a produção.' });
+  } finally {
+    client.release();
+  }
+});
+
 // Painel exclusivo da COORDENAÇÃO: consulta global.
 app.get('/api/coordenacao/apontamentos', auth, requireCoordenacao, async (_req: any, res) => {
   try {
@@ -441,12 +731,15 @@ app.put('/api/coordenacao/apontamentos/:id', auth, requireCoordenacao, async (re
     if (!data.data) return res.status(400).json({ error: 'A data é obrigatória.' });
 
     const current = await client.query(
-      'SELECT id, usuario_id, setor_id FROM apontamentos WHERE id = $1',
+      'SELECT id, usuario_id, setor_id, data, origem_producao FROM apontamentos WHERE id = $1',
       [id],
     );
     if (!current.rows.length) return res.status(404).json({ error: 'Registro não encontrado.' });
 
-    const allItems = [...(data.producoes || []), ...(data.faltas || []), ...(data.observacoes || [])];
+    const isImported = String(current.rows[0].origem_producao || '').toUpperCase() === 'IMPORTADO';
+    const allItems = isImported
+      ? [...(data.faltas || []), ...(data.observacoes || []), ...(data.producoes || [])]
+      : [...(data.producoes || []), ...(data.faltas || []), ...(data.observacoes || [])];
     const lineNames = [...new Set(allItems.map((item: any) => item.linha).filter(Boolean))];
     const lines = lineNames.length
       ? await client.query('SELECT id, nome FROM linhas WHERE nome = ANY($1::text[])', [lineNames])
@@ -458,6 +751,7 @@ app.put('/api/coordenacao/apontamentos/:id', auth, requireCoordenacao, async (re
     }
 
     await client.query('BEGIN');
+    const nextDate = isImported ? dateOnly(current.rows[0].data) : data.data;
     await client.query(
       `UPDATE apontamentos
           SET data = $1,
@@ -466,18 +760,20 @@ app.put('/api/coordenacao/apontamentos/:id', auth, requireCoordenacao, async (re
               aprovado_em = NULL,
               aprovado_por = NULL
         WHERE id = $2`,
-      [data.data, id],
+      [nextDate, id],
     );
 
-    await client.query('DELETE FROM producao WHERE apontamento_id = $1', [id]);
+    if (!isImported) await client.query('DELETE FROM producao WHERE apontamento_id = $1', [id]);
     await client.query('DELETE FROM faltas WHERE apontamento_id = $1', [id]);
     await client.query('DELETE FROM observacoes WHERE apontamento_id = $1', [id]);
 
-    for (const p of data.producoes || []) {
-      await client.query(
-        'INSERT INTO producao(apontamento_id, linha_id, potencia, quantidade) VALUES($1, $2, $3, $4)',
-        [id, lineMap.get(p.linha), p.potencia, p.quantidade],
-      );
+    if (!isImported) {
+      for (const p of data.producoes || []) {
+        await client.query(
+          'INSERT INTO producao(apontamento_id, linha_id, potencia, quantidade) VALUES($1, $2, $3, $4)',
+          [id, lineMap.get(p.linha), p.potencia, p.quantidade],
+        );
+      }
     }
 
     for (const f of data.faltas || []) {
@@ -518,6 +814,17 @@ app.patch('/api/coordenacao/apontamentos/:id/aprovacao', auth, requireCoordenaca
   }
 
   try {
+    if (status === 'APROVADO') {
+      const readiness = await pool.query(
+        'SELECT origem_producao, complementado FROM apontamentos WHERE id = $1',
+        [id],
+      );
+      if (!readiness.rows.length) return res.status(404).json({ error: 'Registro não encontrado.' });
+      if (String(readiness.rows[0].origem_producao || '').toUpperCase() === 'IMPORTADO' && readiness.rows[0].complementado === false) {
+        return res.status(409).json({ error: 'Este registro ainda aguarda o apontador adicionar faltas/observações.' });
+      }
+    }
+
     const result = status === 'APROVADO'
       ? await pool.query(
         `UPDATE apontamentos

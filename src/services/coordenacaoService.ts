@@ -1,4 +1,4 @@
-import { Apontamento, StatusAprovacao } from '../types';
+import { Apontamento, ProductionImportRequest, ProductionImportResult, StatusAprovacao } from '../types';
 import { apiRequest } from './apiClient';
 
 export const coordenacaoService = {
@@ -6,6 +6,15 @@ export const coordenacaoService = {
     const cacheBust = Date.now();
     return apiRequest<Apontamento[]>(`/api/coordenacao/apontamentos?_=${cacheBust}`, {
       cache: 'no-store',
+    });
+  },
+
+
+
+  async importProduction(payload: ProductionImportRequest): Promise<ProductionImportResult> {
+    return apiRequest<ProductionImportResult>('/api/coordenacao/importar-producao', {
+      method: 'POST',
+      body: JSON.stringify(payload),
     });
   },
 

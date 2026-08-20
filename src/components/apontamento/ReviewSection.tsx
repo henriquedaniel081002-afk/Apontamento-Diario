@@ -22,6 +22,7 @@ interface ReviewSectionProps {
   faltas: FaltaItem[];
   observacoes: ObservacaoItem[];
   onEditStep: (step: EditableApontamentoStep) => void;
+  productionReadOnly?: boolean;
 }
 
 interface ReviewCardProps {
@@ -30,9 +31,10 @@ interface ReviewCardProps {
   icon: React.ReactNode;
   onEdit: () => void;
   children: React.ReactNode;
+  actionLabel?: string;
 }
 
-function ReviewCard({ title, count, icon, onEdit, children }: ReviewCardProps) {
+function ReviewCard({ title, count, icon, onEdit, children, actionLabel = 'Editar' }: ReviewCardProps) {
   return (
     <section className="overflow-hidden rounded-2xl border border-[var(--border-subtle)]" aria-label={title}>
       <div className="flex min-h-14 items-center justify-between gap-3 border-b border-[var(--border-subtle)] bg-[var(--surface-muted)] px-4 py-3">
@@ -48,7 +50,7 @@ function ReviewCard({ title, count, icon, onEdit, children }: ReviewCardProps) {
           leftIcon={<Pencil aria-hidden="true" className="h-3.5 w-3.5" />}
           onClick={onEdit}
         >
-          Editar
+          {actionLabel}
         </Button>
       </div>
       <div className="p-4">{children}</div>
@@ -64,6 +66,7 @@ export const ReviewSection: React.FC<ReviewSectionProps> = ({
   faltas,
   observacoes,
   onEditStep,
+  productionReadOnly = false,
 }) => {
   const totalProducao = producoes.reduce((sum, item) => sum + item.quantidade, 0);
   const totalFaltas = faltas.reduce((sum, item) => sum + item.quantidade, 0);
@@ -128,6 +131,7 @@ export const ReviewSection: React.FC<ReviewSectionProps> = ({
           count={producoes.length}
           icon={<Zap aria-hidden="true" className="h-4 w-4" />}
           onEdit={() => onEditStep(1)}
+          actionLabel={productionReadOnly ? 'Ver' : 'Editar'}
         >
           {producoes.length === 0 ? (
             <p className="text-sm text-[var(--text-tertiary)]">Nenhum registro de produção.</p>

@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ClipboardCheck,
   Download,
+  FileUp,
   Filter,
   Inbox,
   ListFilter,
@@ -14,7 +15,7 @@ import {
   ShieldCheck,
   TimerReset,
 } from 'lucide-react';
-import { Apontamento, StatusAprovacao, User } from '../types';
+import { Apontamento, ProductionImportGroup, StatusAprovacao, User } from '../types';
 import { coordenacaoService } from '../services/coordenacaoService';
 import { formatDateBR, formatPotencia } from '../utils/formatters';
 import { exportApontamentosExcel } from '../utils/exportExcel';
@@ -25,6 +26,7 @@ import {
 } from '../utils/operational';
 import { DetailModal } from '../components/historico/DetailModal';
 import { EditApontamentoModal } from '../components/coordenacao/EditApontamentoModal';
+import { ImportProductionModal } from '../components/coordenacao/ImportProductionModal';
 import { CoordinationRecords } from '../components/coordenacao/CoordinationRecords';
 import { ConfirmModal } from '../components/common/ConfirmModal';
 import { Toast, ToastMessage } from '../components/common/Toast';
@@ -67,6 +69,7 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [approvalBusyId, setApprovalBusyId] = useState<string | null>(null);
   const [dataFilter, setDataFilter] = useState(() => getPreviousWorkingDayYmd());
@@ -170,6 +173,20 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
     setToast({ id: Date.now().toString(), type: 'success', message: 'Apontamento atualizado com sucesso.' });
   };
 
+  const handleImportProduction = async (data: string, groups: ProductionImportGroup[]) => {
+    const result = await coordenacaoService.importProduction({ data, grupos: groups });
+    setDataFilter(data);
+    setSetorFilter('ALL');
+    setLinhaFilter('ALL');
+    setPotenciaFilter('ALL');
+    await loadData(false);
+    setToast({
+      id: Date.now().toString(),
+      type: 'success',
+      message: `Produção de ${formatDateBR(data)} importada: ${result.totalQuantidade.toLocaleString('pt-BR')} unidades em ${result.totalUnidades} unidade(s) operacional(is).`,
+    });
+  };
+
   const handleExport = async () => {
     if (exporting) return;
     if (filtered.length === 0) {
@@ -263,6 +280,15 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
         </div>
 
         <div className="relative z-10 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setImportOpen(true)}
+            disabled={loading}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-400/35 bg-emerald-400 px-4 text-sm font-black text-[#041007] transition-colors hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+          >
+            <FileUp className="size-4" aria-hidden="true" />
+            Importar produção
+          </button>
           <button
             type="button"
             onClick={() => void handleExport()}
@@ -490,6 +516,12 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
           </section>
         )
       )}
+
+      <ImportProductionModal
+        isOpen={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImport={handleImportProduction}
+      />
 
       <DetailModal apontamento={detailItem} isOpen={!!detailItem} onClose={() => setDetailItem(null)} />
 

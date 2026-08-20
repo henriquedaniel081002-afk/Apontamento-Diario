@@ -73,6 +73,19 @@ describe('unidades operacionais', () => {
     expect(status.pendingUnits.map((unit) => unit.id)).toContain('MONTAGEM FINAL TRI');
   });
 
+  it('não considera produção importada como apontada antes do complemento', () => {
+    const status = getOperationalStatus([
+      makeApontamento({
+        setor: 'SOLDA',
+        origemProducao: 'IMPORTADO',
+        complementado: false,
+        producoes: [{ id: 'p1', linha: 'TRI', potencia: 150, quantidade: 12 }],
+      }),
+    ], '2026-08-13');
+
+    expect(status.pendingUnits.map((unit) => unit.id)).toContain('SOLDA');
+  });
+
   it('usa somente a data selecionada para calcular pendências', () => {
     const status = getOperationalStatus([
       makeApontamento({ data: '2026-08-12', setor: 'PINTURA' }),

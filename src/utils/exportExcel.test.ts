@@ -36,7 +36,7 @@ const apontamento: Apontamento = {
 };
 
 describe('estrutura da exportação Excel', () => {
-  it('mantém as três coleções e inclui justificativas na aba de observações', () => {
+  it('mantém faltas separadas e não envia justificativas de falta para observações', () => {
     const workbook = buildApontamentosWorkbookData([apontamento]);
 
     expect(workbook.produzido).toEqual([
@@ -47,7 +47,6 @@ describe('estrutura da exportação Excel', () => {
     ]);
     expect(workbook.obs).toEqual([
       { data: '13/ago', obs: 'Parada programada', setor: 'BOBINA AT', linha: 'MON', status: 'APROVADO' },
-      { data: '13/ago', obs: 'Atestado médico', setor: 'BOBINA AT', linha: 'TRI', status: 'APROVADO' },
     ]);
   });
 

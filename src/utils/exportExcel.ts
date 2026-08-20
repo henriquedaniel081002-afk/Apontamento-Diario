@@ -262,10 +262,6 @@ export function buildApontamentosWorkbookData(apontamentos: Apontamento[]): Apon
       data: formatDataExcel(apt.data), obs: item.observacao, setor: setorParaExcel(String(apt.setor)),
       linha: item.linha || '', status: apt.statusAprovacao === 'APROVADO' ? 'APROVADO' : 'PENDENTE',
     })),
-    ...apt.faltas.filter((item) => !item.nome && String(item.justificativa || '').trim().length > 0).map((item) => ({
-      data: formatDataExcel(apt.data), obs: String(item.justificativa).trim(), setor: setorParaExcel(String(apt.setor)),
-      linha: item.linha || '', status: apt.statusAprovacao === 'APROVADO' ? 'APROVADO' : 'PENDENTE',
-    })),
   ]);
 
   return { produzido, faltaMaterial, maquina, naoConformidades, faltas, obs };

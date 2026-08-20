@@ -210,6 +210,7 @@ export function buildApontamentosWorkbookData(apontamentos: Apontamento[]): Apon
       qtde: Number(item.quantidade),
       setor: setorParaExcel(String(apt.setor)),
       linha: item.linha,
+      status: apt.statusAprovacao === 'APROVADO' ? 'APROVADO' : 'PENDENTE',
     })),
   );
 
@@ -220,6 +221,7 @@ export function buildApontamentosWorkbookData(apontamentos: Apontamento[]): Apon
       turno: turnoNumero(item.turno),
       setor: setorParaExcel(String(apt.setor)),
       linha: item.linha,
+      status: apt.statusAprovacao === 'APROVADO' ? 'APROVADO' : 'PENDENTE',
     })),
   );
 
@@ -229,6 +231,7 @@ export function buildApontamentosWorkbookData(apontamentos: Apontamento[]): Apon
       obs: item.observacao,
       setor: setorParaExcel(String(apt.setor)),
       linha: item.linha,
+      status: apt.statusAprovacao === 'APROVADO' ? 'APROVADO' : 'PENDENTE',
     })),
     ...apt.faltas
       .filter((item) => String(item.justificativa || '').trim().length > 0)
@@ -237,6 +240,7 @@ export function buildApontamentosWorkbookData(apontamentos: Apontamento[]): Apon
         obs: String(item.justificativa).trim(),
         setor: setorParaExcel(String(apt.setor)),
         linha: item.linha,
+        status: apt.statusAprovacao === 'APROVADO' ? 'APROVADO' : 'PENDENTE',
       })),
   ]);
 
@@ -286,9 +290,9 @@ export function exportApontamentosExcel(apontamentos: Apontamento[]): void {
   <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet3.xml"/>
 </Relationships>`,
     },
-    { name: 'xl/worksheets/sheet1.xml', content: sheetXml(produzido, ['data', 'potencia', 'qtde', 'setor', 'linha'], [12, 12, 10, 28, 10]) },
-    { name: 'xl/worksheets/sheet2.xml', content: sheetXml(faltas, ['data', 'faltas', 'turno', 'setor', 'linha'], [12, 10, 10, 28, 10]) },
-    { name: 'xl/worksheets/sheet3.xml', content: sheetXml(obs, ['data', 'obs', 'setor', 'linha'], [12, 95, 28, 10]) },
+    { name: 'xl/worksheets/sheet1.xml', content: sheetXml(produzido, ['data', 'potencia', 'qtde', 'setor', 'linha', 'status'], [12, 12, 10, 28, 10, 14]) },
+    { name: 'xl/worksheets/sheet2.xml', content: sheetXml(faltas, ['data', 'faltas', 'turno', 'setor', 'linha', 'status'], [12, 10, 10, 28, 10, 14]) },
+    { name: 'xl/worksheets/sheet3.xml', content: sheetXml(obs, ['data', 'obs', 'setor', 'linha', 'status'], [12, 95, 28, 10, 14]) },
   ];
 
   const zip = createZip(files);

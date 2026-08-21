@@ -1,4 +1,5 @@
 import React, { useEffect, useId, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cx } from './ui';
 
@@ -14,6 +15,7 @@ export interface ModalShellProps {
   busy?: boolean;
   initialFocusRef?: React.RefObject<HTMLElement | null>;
   className?: string;
+  renderInPortal?: boolean;
 }
 
 const sizeClasses: Record<NonNullable<ModalShellProps['size']>, string> = {
@@ -46,6 +48,7 @@ export function ModalShell({
   busy = false,
   initialFocusRef,
   className,
+  renderInPortal = false,
 }: ModalShellProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
@@ -120,9 +123,9 @@ export function ModalShell({
 
   if (!isOpen) return null;
 
-  return (
+  const modal = (
     <div
-      className="ui-fade-in fixed inset-0 z-50 flex items-end justify-center bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+      className="ui-fade-in fixed inset-0 z-50 flex h-[100dvh] max-h-[100dvh] items-end justify-center overflow-hidden bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-4"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !busy) onClose();
       }}
@@ -173,4 +176,10 @@ export function ModalShell({
       </div>
     </div>
   );
+
+  if (renderInPortal && typeof document !== 'undefined') {
+    return createPortal(modal, document.body);
+  }
+
+  return modal;
 }

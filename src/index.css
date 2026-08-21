@@ -279,6 +279,25 @@ input:-webkit-autofill:focus {
 }
 
 
+
+/* O modal de detalhes usa o viewport real para não ficar escondido atrás do cabeçalho
+   em monitores com menor altura. O cabeçalho do modal permanece fixo e somente o
+   conteúdo interno rola. */
+.detail-modal-responsive {
+  width: min(64rem, calc(100vw - 2rem));
+  max-width: 64rem;
+  max-height: min(56rem, calc(100dvh - 2rem));
+}
+
+@media (max-width: 639px) {
+  .detail-modal-responsive {
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    max-height: 100dvh;
+  }
+}
+
 /* ITAM redesign 2026 — visual only, without changing product features */
 .app-page {
   position: relative;

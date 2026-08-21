@@ -65,7 +65,7 @@ export const FaltasSection: React.FC<FaltasSectionProps> = ({ faltas, onAdd, onU
             <label htmlFor={motivoId} className="md:col-span-2"><span className="mb-2 block text-sm font-medium text-[var(--text-primary)]">Motivo / Justificativa</span><textarea id={motivoId} rows={3} value={motivoJustificativa} onChange={(e) => { setMotivo(e.target.value); setError(null); }} className="field-control resize-y" placeholder="Informe o motivo ou justificativa" /></label>
           </div>
           <FieldError role="alert">{error}</FieldError>
-          <div className="flex justify-end gap-2 border-t border-[var(--border-subtle)] pt-4">{editingId && <Button variant="ghost" onClick={() => { setEditingId(null); clear(); }}>Cancelar edição</Button>}<Button type="submit" leftIcon={editingId ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}>{editingId ? 'Salvar falta' : 'Adicionar falta'}</Button></div>
+          <div className="flex flex-col-reverse gap-2 border-t border-[var(--border-subtle)] pt-4 min-[420px]:flex-row min-[420px]:justify-end">{editingId && <Button variant="ghost" onClick={() => { setEditingId(null); clear(); }}>Cancelar edição</Button>}<Button type="submit" leftIcon={editingId ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}>{editingId ? 'Salvar falta' : 'Adicionar falta'}</Button></div>
         </form>
 
         {faltas.length === 0 ? <EmptyState icon={<UserX className="h-6 w-6" />} title="Nenhuma falta registrada" description="Não é necessário adicionar nada quando não houver ausência." /> : (

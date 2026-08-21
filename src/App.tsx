@@ -147,7 +147,7 @@ export default function App() {
       <div
         role="status"
         aria-live="polite"
-        className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#050806] text-sm font-semibold text-slate-400"
+        className="flex min-h-[100dvh] flex-col items-center justify-center gap-3 bg-[#050806] text-sm font-semibold text-slate-400"
       >
         <LoaderCircle className="size-6 animate-spin text-emerald-300" aria-hidden="true" />
         <span>Carregando sistema ITAM...</span>
@@ -168,7 +168,7 @@ export default function App() {
   const isCoordenacao = currentUser.perfil === 'COORDENACAO';
 
   return (
-    <div className="flex min-h-screen flex-col bg-transparent font-sans text-slate-100 antialiased selection:bg-emerald-400/20 selection:text-emerald-50">
+    <div className="flex min-h-[100dvh] flex-col bg-transparent font-sans text-slate-100 antialiased selection:bg-emerald-400/20 selection:text-emerald-50">
       <Header
         user={currentUser}
         activeTab={activeTab}

@@ -42,6 +42,7 @@ export function CustomSelect({
   const [open, setOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [placement, setPlacement] = useState<'up' | 'down'>('down');
+  const [menuMaxHeight, setMenuMaxHeight] = useState(288);
 
   const selectedIndex = options.findIndex((option) => option.value === value);
   const selectedOption = selectedIndex >= 0 ? options[selectedIndex] : null;
@@ -60,13 +61,36 @@ export function CustomSelect({
     optionRefs.current[highlightedIndex]?.scrollIntoView({ block: 'nearest' });
   }, [highlightedIndex, open]);
 
+  useEffect(() => {
+    if (!open) return undefined;
+    const handleViewportChange = () => resolvePlacement();
+    window.addEventListener('resize', handleViewportChange);
+    return () => window.removeEventListener('resize', handleViewportChange);
+  }, [open, options.length]);
+
   const resolvePlacement = () => {
-    const rect = rootRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const estimatedMenuHeight = Math.min(304, Math.max(52, options.length * 46 + 12));
-    const spaceBelow = window.innerHeight - rect.bottom;
-    const spaceAbove = rect.top;
-    setPlacement(spaceBelow < estimatedMenuHeight && spaceAbove > spaceBelow ? 'up' : 'down');
+    const root = rootRef.current;
+    const rect = root?.getBoundingClientRect();
+    if (!root || !rect) return;
+
+    let clippingAncestor: HTMLElement | null = root.parentElement;
+    while (clippingAncestor && clippingAncestor !== document.body) {
+      const styles = window.getComputedStyle(clippingAncestor);
+      if (/(auto|scroll|hidden|clip)/.test(`${styles.overflowY} ${styles.overflow}`)) break;
+      clippingAncestor = clippingAncestor.parentElement;
+    }
+    const fallbackScroll = root.closest<HTMLElement>('[data-modal-scroll="true"]');
+    const clippingBounds = (clippingAncestor && clippingAncestor !== document.body ? clippingAncestor : fallbackScroll)?.getBoundingClientRect();
+    const topBoundary = Math.max(8, clippingBounds?.top ?? 8);
+    const bottomBoundary = Math.min(window.innerHeight - 8, clippingBounds?.bottom ?? window.innerHeight - 8);
+    const spaceBelow = Math.max(0, bottomBoundary - rect.bottom - 8);
+    const spaceAbove = Math.max(0, rect.top - topBoundary - 8);
+    const estimatedMenuHeight = Math.min(288, Math.max(52, options.length * 46 + 12));
+    const openUp = spaceBelow < estimatedMenuHeight && spaceAbove > spaceBelow;
+    const available = openUp ? spaceAbove : spaceBelow;
+
+    setPlacement(openUp ? 'up' : 'down');
+    setMenuMaxHeight(Math.max(72, Math.min(288, available || 72)));
   };
 
   const getNextEnabledIndex = (start: number, direction: 1 | -1) => {
@@ -181,8 +205,9 @@ export function CustomSelect({
           role="listbox"
           aria-label={ariaLabel}
           aria-labelledby={ariaLabelledBy}
+          style={{ maxHeight: `${menuMaxHeight}px` }}
           className={cx(
-            'absolute z-[70] max-h-72 w-full overflow-y-auto rounded-xl border border-emerald-400/20 bg-[#07100B] p-1.5 shadow-[0_20px_55px_rgba(0,0,0,0.62)] ring-1 ring-black/30',
+            'absolute z-[70] w-full overflow-y-auto rounded-xl border border-emerald-400/20 bg-[#07100B] p-1.5 shadow-[0_20px_55px_rgba(0,0,0,0.62)] ring-1 ring-black/30',
             placement === 'up' ? 'bottom-full mb-2' : 'mt-2',
             menuClassName,
           )}

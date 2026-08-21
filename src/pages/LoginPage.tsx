@@ -136,14 +136,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   };
 
   return (
-    <main className="login-industrial-stage relative flex min-h-screen items-center justify-center overflow-hidden px-3 py-5 text-slate-100 sm:px-6 lg:px-8">
+    <main className="login-industrial-stage relative flex min-h-[100dvh] items-start justify-center overflow-x-hidden overflow-y-auto px-3 py-5 text-slate-100 sm:px-6 lg:px-8">
       <div className="pointer-events-none absolute inset-0" aria-hidden="true">
         <div className="absolute -left-40 -top-40 size-[32rem] rounded-full bg-emerald-400/[0.07] blur-3xl" />
         <div className="absolute -bottom-56 right-[-10rem] size-[38rem] rounded-full bg-lime-300/[0.035] blur-3xl" />
         <div className="login-grid absolute inset-0 opacity-40" />
       </div>
 
-      <div className="relative grid w-full max-w-6xl overflow-hidden rounded-[1.65rem] border border-emerald-300/[0.12] bg-[#070b08]/96 shadow-[0_38px_120px_rgba(0,0,0,0.62)] backdrop-blur-xl lg:grid-cols-[1.05fr_0.95fr]">
+      <div className="relative my-auto grid w-full max-w-6xl overflow-hidden rounded-[1.65rem] border border-emerald-300/[0.12] bg-[#070b08]/96 shadow-[0_38px_120px_rgba(0,0,0,0.62)] backdrop-blur-xl lg:grid-cols-[1.05fr_0.95fr]">
         <section className="login-showcase relative flex min-h-80 flex-col justify-between overflow-hidden border-b border-emerald-300/[0.08] p-6 sm:p-9 lg:min-h-[40rem] lg:border-b-0 lg:border-r lg:p-11">
           <div className="relative z-10">
             <img
@@ -265,7 +265,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       id={userListboxId}
                       role="listbox"
                       aria-label="Usuários e postos de trabalho"
-                      className={`absolute z-40 max-h-72 w-full overflow-y-auto rounded-xl border border-emerald-400/20 bg-[#07100B] p-1.5 shadow-[0_20px_55px_rgba(0,0,0,0.62)] ring-1 ring-black/30 ${userMenuPlacement === 'up' ? 'bottom-full mb-2' : 'mt-2'}`}
+                      className={`absolute z-40 max-h-[min(18rem,calc(100dvh-2rem))] w-full overflow-y-auto rounded-xl border border-emerald-400/20 bg-[#07100B] p-1.5 shadow-[0_20px_55px_rgba(0,0,0,0.62)] ring-1 ring-black/30 ${userMenuPlacement === 'up' ? 'bottom-full mb-2' : 'mt-2'}`}
                     >
                       {MOCK_USERS.map((user, index) => {
                         const isSelected = user.id === selectedUserId;

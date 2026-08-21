@@ -328,7 +328,7 @@ export const ProducaoSection: React.FC<ProducaoSectionProps> = ({
         description="Escolha como tratar a nova quantidade sem criar uma linha duplicada."
         size="sm"
         footer={duplicatePending ? (
-          <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <div className="flex w-full flex-col-reverse gap-2">
             <Button type="button" variant="ghost" onClick={() => setDuplicatePending(null)}>
               Cancelar
             </Button>

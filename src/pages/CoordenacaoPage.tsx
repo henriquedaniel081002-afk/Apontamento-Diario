@@ -411,7 +411,7 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
       )}
 
       <section aria-labelledby="coord-filters-title" className="filter-panel rounded-2xl border p-4 sm:p-5">
-        <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="mb-4 flex flex-col items-stretch gap-2 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between min-[420px]:gap-3">
           <div className="flex items-center gap-2">
             <Filter className="size-4 text-emerald-400" aria-hidden="true" />
             <h2 id="coord-filters-title" className="text-xs font-black uppercase tracking-[0.14em] text-slate-200">Filtros dos registros</h2>

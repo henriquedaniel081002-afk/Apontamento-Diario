@@ -280,21 +280,61 @@ input:-webkit-autofill:focus {
 
 
 
-/* O modal de detalhes usa o viewport real para não ficar escondido atrás do cabeçalho
-   em monitores com menor altura. O cabeçalho do modal permanece fixo e somente o
-   conteúdo interno rola. */
+/* Responsividade global de overlays e modais. Todos os modais são renderizados
+   diretamente no body e dimensionados pelo viewport real, evitando que cabeçalhos
+   sticky ou containers internos cubram partes da janela. */
+.modal-overlay {
+  padding-top: env(safe-area-inset-top);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+}
+
+.modal-dialog {
+  max-width: min(100%, calc(100vw - env(safe-area-inset-left) - env(safe-area-inset-right)));
+}
+
+.modal-scroll,
+.modal-footer {
+  scrollbar-gutter: stable;
+}
+
 .detail-modal-responsive {
-  width: min(64rem, calc(100vw - 2rem));
   max-width: 64rem;
-  max-height: min(56rem, calc(100dvh - 2rem));
 }
 
 @media (max-width: 639px) {
-  .detail-modal-responsive {
-    width: 100%;
-    max-width: none;
+  .modal-dialog {
     height: 100dvh;
     max-height: 100dvh;
+    border-right-width: 0;
+    border-bottom-width: 0;
+    border-left-width: 0;
+  }
+}
+
+@media (min-width: 640px) and (max-height: 700px) {
+  .modal-overlay {
+    padding: 0.375rem;
+  }
+
+  .modal-dialog {
+    max-height: calc(100dvh - 0.75rem) !important;
+  }
+
+  .modal-header {
+    padding-top: 0.65rem;
+    padding-bottom: 0.65rem;
+  }
+
+  .modal-scroll {
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+  }
+
+  .modal-footer {
+    padding-top: 0.65rem;
+    padding-bottom: 0.65rem;
   }
 }
 
@@ -304,6 +344,7 @@ input:-webkit-autofill:focus {
   width: 100%;
   min-width: 0;
   isolation: isolate;
+  overflow-wrap: anywhere;
 }
 
 .app-page::before {
@@ -505,6 +546,25 @@ input:-webkit-autofill:focus {
   border-color: rgba(0,199,111,.16) !important;
   background: linear-gradient(180deg, rgba(11,18,14,.96), rgba(5,9,7,.97)) !important;
   box-shadow: 0 22px 70px rgba(0,0,0,.48), 0 0 35px rgba(0,199,111,.035) !important;
+}
+
+
+/* Em telas baixas, a tela de login precisa rolar em vez de cortar o cartão. */
+.login-industrial-stage {
+  min-height: 100dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+@media (max-height: 760px) {
+  .login-industrial-stage {
+    align-items: flex-start !important;
+  }
+
+  .login-industrial-stage > div:last-child {
+    margin-top: auto;
+    margin-bottom: auto;
+  }
 }
 
 @media (max-width: 640px) {

@@ -294,7 +294,7 @@ export function ImportProductionModal({ isOpen, onClose, onImport }: ImportProdu
             )}
 
             <section className="overflow-hidden rounded-2xl border border-emerald-400/20" aria-labelledby="import-summary-title">
-              <div className="flex items-center justify-between gap-3 border-b border-emerald-400/15 bg-emerald-400/[0.06] px-4 py-3">
+              <div className="flex flex-col items-stretch gap-2 border-b border-emerald-400/15 bg-emerald-400/[0.06] px-4 py-3 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between">
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="size-4 text-emerald-300" aria-hidden="true" />
                   <h3 id="import-summary-title" className="text-sm font-black text-emerald-100">Resumo que será importado</h3>

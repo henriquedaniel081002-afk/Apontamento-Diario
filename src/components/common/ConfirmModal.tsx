@@ -49,7 +49,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
       busy={modalIsBusy}
       initialFocusRef={cancelButtonRef}
       footer={
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <div className="grid w-full grid-cols-1 gap-2 min-[420px]:grid-cols-2">
           <Button ref={cancelButtonRef} variant="secondary" onClick={onCancel} disabled={modalIsBusy}>
             {cancelLabel}
           </Button>

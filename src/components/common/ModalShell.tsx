@@ -48,7 +48,7 @@ export function ModalShell({
   busy = false,
   initialFocusRef,
   className,
-  renderInPortal = false,
+  renderInPortal = true,
 }: ModalShellProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
@@ -125,7 +125,7 @@ export function ModalShell({
 
   const modal = (
     <div
-      className="ui-fade-in fixed inset-0 z-50 flex h-[100dvh] max-h-[100dvh] items-end justify-center overflow-hidden bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+      className="modal-overlay ui-fade-in fixed inset-0 z-[100] flex h-[100dvh] min-h-0 w-screen max-w-full items-end justify-center overflow-hidden bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-3 lg:p-4"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !busy) onClose();
       }}
@@ -139,18 +139,18 @@ export function ModalShell({
         aria-busy={busy || undefined}
         tabIndex={-1}
         className={cx(
-          'ui-slide-up flex max-h-[min(92vh,56rem)] w-full flex-col overflow-hidden rounded-t-2xl border border-white/12 bg-[#0c120e] shadow-[0_30px_90px_rgba(0,0,0,0.55)] outline-none sm:rounded-2xl',
+          'modal-dialog ui-slide-up flex h-auto max-h-[100dvh] w-full min-w-0 flex-col overflow-hidden rounded-t-2xl border border-white/12 bg-[#0c120e] shadow-[0_30px_90px_rgba(0,0,0,0.55)] outline-none sm:max-h-[calc(100dvh-1.5rem)] sm:rounded-2xl lg:max-h-[calc(100dvh-2rem)]',
           sizeClasses[size],
           className,
         )}
       >
-        <div className="flex shrink-0 items-start gap-4 border-b border-white/[0.08] px-5 py-4 sm:px-6">
+        <div className="modal-header flex shrink-0 items-start gap-3 border-b border-white/[0.08] px-4 py-3.5 min-[420px]:px-5 sm:gap-4 sm:px-6 sm:py-4">
           <div className="min-w-0 flex-1">
-            <h2 id={titleId} className="text-base font-extrabold tracking-tight text-white sm:text-lg">
+            <h2 id={titleId} className="break-words text-base font-extrabold tracking-tight text-white sm:text-lg">
               {title}
             </h2>
             {description && (
-              <p id={descriptionId} className="mt-1 text-sm leading-5 text-slate-400">
+              <p id={descriptionId} className="mt-1 break-words text-sm leading-5 text-slate-400 [overflow-wrap:anywhere]">
                 {description}
               </p>
             )}
@@ -160,16 +160,21 @@ export function ModalShell({
             onClick={onClose}
             disabled={busy}
             aria-label={closeLabel}
-            className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-transparent text-slate-400 transition-colors hover:border-white/10 hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-transparent text-slate-400 transition-colors hover:border-white/10 hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 disabled:cursor-not-allowed disabled:opacity-40 sm:size-11"
           >
             <X className="size-5" aria-hidden="true" />
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">{children}</div>
+        <div
+          className="modal-scroll min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 py-4 min-[420px]:px-5 sm:px-6 sm:py-5"
+          data-modal-scroll="true"
+        >
+          {children}
+        </div>
 
         {footer && (
-          <div className="shrink-0 border-t border-white/[0.08] bg-black/10 px-5 py-4 sm:px-6">
+          <div className="modal-footer max-h-[45dvh] shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain border-t border-white/[0.08] bg-black/10 px-4 py-3 min-[420px]:px-5 sm:px-6 sm:py-4">
             {footer}
           </div>
         )}

@@ -13,9 +13,10 @@ import { LoginPage } from './pages/LoginPage';
 import { ApontamentoPage } from './pages/ApontamentoPage';
 import { HistoricoPage } from './pages/HistoricoPage';
 import { CoordenacaoPage } from './pages/CoordenacaoPage';
+import { DashboardPage } from './pages/DashboardPage';
 import { Header } from './components/common/Header';
 
-type AppTab = 'apontamento' | 'historico';
+type AppTab = 'apontamento' | 'historico' | 'dashboard';
 
 const INACTIVITY_MESSAGE = 'Sessão encerrada após 1 hora sem atividade. Entre novamente.';
 
@@ -178,7 +179,7 @@ export default function App() {
 
       <main id="conteudo-principal" className="flex-1 pb-12">
         {isCoordenacao ? (
-          <CoordenacaoPage user={currentUser} />
+          activeTab === 'dashboard' ? <DashboardPage /> : <CoordenacaoPage user={currentUser} />
         ) : activeTab === 'apontamento' ? (
           <ApontamentoPage
             user={currentUser}

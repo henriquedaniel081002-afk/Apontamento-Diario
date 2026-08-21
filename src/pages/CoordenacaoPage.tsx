@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ClipboardCheck,
   Download,
+  FileSpreadsheet,
   FileUp,
   Filter,
   Inbox,
@@ -27,6 +28,8 @@ import {
 import { DetailModal } from '../components/historico/DetailModal';
 import { EditApontamentoModal } from '../components/coordenacao/EditApontamentoModal';
 import { ImportProductionModal } from '../components/coordenacao/ImportProductionModal';
+import { ImportProgramacaoModal } from '../components/coordenacao/ImportProgramacaoModal';
+import type { ProgramacaoImportGroup } from '../utils/importProgramacaoExcel';
 import { CoordinationRecords } from '../components/coordenacao/CoordinationRecords';
 import { ConfirmModal } from '../components/common/ConfirmModal';
 import { Toast, ToastMessage } from '../components/common/Toast';
@@ -71,6 +74,7 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [programacaoImportOpen, setProgramacaoImportOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [approvalBusyId, setApprovalBusyId] = useState<string | null>(null);
   const [dataFilter, setDataFilter] = useState(() => getPreviousWorkingDayYmd());
@@ -188,6 +192,16 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
     });
   };
 
+  const handleImportProgramacao = async (mesReferencia: string, grupos: ProgramacaoImportGroup[]) => {
+    const result = await coordenacaoService.importProgramacao({ mesReferencia, grupos });
+    const [ano, mes] = result.mesReferencia.split('-');
+    setToast({
+      id: Date.now().toString(),
+      type: 'success',
+      message: `Programação de ${mes}/${ano} substituída com sucesso: ${result.totalQuantidade.toLocaleString('pt-BR')} unidades em ${result.grupos.toLocaleString('pt-BR')} combinações consolidadas.`,
+    });
+  };
+
   const handleExport = async () => {
     if (exporting) return;
     if (filtered.length === 0) {
@@ -289,6 +303,15 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
           >
             <FileUp className="size-4" aria-hidden="true" />
             Importar produção
+          </button>
+          <button
+            type="button"
+            onClick={() => setProgramacaoImportOpen(true)}
+            disabled={loading}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-sky-400/25 bg-sky-400/10 px-4 text-sm font-black text-sky-200 transition-colors hover:bg-sky-400/15 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+          >
+            <FileSpreadsheet className="size-4" aria-hidden="true" />
+            Importar programação
           </button>
           <button
             type="button"
@@ -523,6 +546,11 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
         isOpen={importOpen}
         onClose={() => setImportOpen(false)}
         onImport={handleImportProduction}
+      />
+      <ImportProgramacaoModal
+        isOpen={programacaoImportOpen}
+        onClose={() => setProgramacaoImportOpen(false)}
+        onImport={handleImportProgramacao}
       />
 
       <DetailModal apontamento={detailItem} isOpen={!!detailItem} onClose={() => setDetailItem(null)} />

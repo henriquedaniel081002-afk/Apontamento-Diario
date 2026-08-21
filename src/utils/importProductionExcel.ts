@@ -52,17 +52,17 @@ function normalizeText(value: unknown): string {
 function sectorRule(rawSector: string): SectorRule | null {
   const sector = normalizeText(rawSector);
   const rules: Record<string, SectorRule> = {
-    'BOBINA AT': { setor: 'BOBINA AT/BT', tipoBobina: 'AT', allowedLines: ['MON', 'TRI'] },
-    'BOBINA BT': { setor: 'BOBINA AT/BT', tipoBobina: 'BT', allowedLines: ['MON', 'TRI'] },
-    'CORTE DO LASER': { setor: 'CORTE LASER', allowedLines: ['MON', 'TRI'] },
-    'CORTE LASER': { setor: 'CORTE LASER', allowedLines: ['MON', 'TRI'] },
-    'ISOLANTE': { setor: 'ISOLANTE', allowedLines: ['MON', 'TRI'] },
-    'MONTAGEM DO NUCLEO': { setor: 'MONTAGEM NUCLEO', allowedLines: ['MON', 'TRI'] },
-    'MONTAGEM NUCLEO': { setor: 'MONTAGEM NUCLEO', allowedLines: ['MON', 'TRI'] },
-    'MONTAGEM FINAL': { setor: 'MONTAGEM FINAL', allowedLines: ['MON', 'TRI'] },
-    'MPA': { setor: 'MPA', allowedLines: ['MON', 'TRI'] },
-    'PINTURA': { setor: 'PINTURA', allowedLines: ['MON', 'TRI'] },
-    'SOLDA': { setor: 'SOLDA', allowedLines: ['MON', 'TRI'] },
+    'BOBINA AT': { setor: 'BOBINA AT/BT', tipoBobina: 'AT', allowedLines: ['MON', 'TRI', 'EPO'] },
+    'BOBINA BT': { setor: 'BOBINA AT/BT', tipoBobina: 'BT', allowedLines: ['MON', 'TRI', 'EPO'] },
+    'CORTE DO LASER': { setor: 'CORTE LASER', allowedLines: ['MON', 'TRI', 'EPO'] },
+    'CORTE LASER': { setor: 'CORTE LASER', allowedLines: ['MON', 'TRI', 'EPO'] },
+    'ISOLANTE': { setor: 'ISOLANTE', allowedLines: ['MON', 'TRI', 'EPO'] },
+    'MONTAGEM DO NUCLEO': { setor: 'MONTAGEM NUCLEO', allowedLines: ['MON', 'TRI', 'EPO'] },
+    'MONTAGEM NUCLEO': { setor: 'MONTAGEM NUCLEO', allowedLines: ['MON', 'TRI', 'EPO'] },
+    'MONTAGEM FINAL': { setor: 'MONTAGEM FINAL', allowedLines: ['MON', 'TRI', 'EPO'] },
+    'MPA': { setor: 'MPA', allowedLines: ['MON', 'TRI', 'EPO'] },
+    'PINTURA': { setor: 'PINTURA', allowedLines: ['MON', 'TRI', 'EPO'] },
+    'SOLDA': { setor: 'SOLDA', allowedLines: ['MON', 'TRI', 'EPO'] },
   };
   return rules[sector] || null;
 }
@@ -92,9 +92,8 @@ export function classifyRawProductionGroup(group: RawProductionGroup):
   | { group?: never; issue: ProductionImportIssue } {
   const rawLine = normalizeText(group.linhaOriginal);
 
-  // Regra operacional: somente MONTAGEM FINAL + linha EPO pertence ao Epóxi.
-  // Registros EPO de qualquer outro setor seguem as regras normais do setor
-  // (correção de linha quando houver apontador ou setor sem correspondência).
+  // MONTAGEM FINAL + EPO continua direcionado ao apontador específico de Epóxi.
+  // Nos demais setores, EPO é uma linha válida e permanece EPO, sem conversão para TRI.
   if (normalizeText(group.setorOriginal) === 'MONTAGEM FINAL' && rawLine === 'EPO') {
     return {
       group: {

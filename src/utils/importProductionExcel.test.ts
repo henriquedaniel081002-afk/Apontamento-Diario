@@ -24,6 +24,24 @@ describe('equivalências da importação de produção', () => {
     });
   });
 
+
+  it('mantém EPO em setores produtivos reconhecidos sem converter para TRI', () => {
+    expect(classifyRawProductionGroup({
+      id: 'bobina-epo',
+      setorOriginal: 'BOBINA AT',
+      linhaOriginal: 'EPO',
+      potencia: 75,
+      quantidade: 6,
+    })).toEqual({
+      group: {
+        setor: 'BOBINA AT/BT',
+        tipoBobina: 'AT',
+        linha: 'EPO',
+        potencia: 75,
+        quantidade: 6,
+      },
+    });
+  });
   it('direciona somente MONTAGEM FINAL + EPO ao Epóxi', () => {
     expect(classifyRawProductionGroup({
       id: 'epoxi',
@@ -66,7 +84,7 @@ describe('equivalências da importação de produção', () => {
 
     expect(result.issue).toEqual(expect.objectContaining({
       kind: 'LINHA',
-      allowedLines: ['MON', 'TRI'],
+      allowedLines: ['MON', 'TRI', 'EPO'],
     }));
   });
 
@@ -85,7 +103,7 @@ describe('equivalências da importação de produção', () => {
         potencia: 75,
         quantidade: 12,
         kind: 'LINHA',
-        allowedLines: ['MON', 'TRI'],
+        allowedLines: ['MON', 'TRI', 'EPO'],
         message: 'corrigir',
       }],
     };

@@ -1,4 +1,4 @@
-import { Apontamento, ApontamentoEditPayload, ProductionImportRequest, ProductionImportResult, StatusAprovacao } from '../types';
+import { Apontamento, ApontamentoEditPayload, ProductionImportRequest, ProductionImportResult, ProgramacaoImportRequest, ProgramacaoImportResult, StatusAprovacao } from '../types';
 import { apiRequest } from './apiClient';
 
 export const coordenacaoService = {
@@ -13,6 +13,13 @@ export const coordenacaoService = {
 
   async importProduction(payload: ProductionImportRequest): Promise<ProductionImportResult> {
     return apiRequest<ProductionImportResult>('/api/coordenacao/importar-producao', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async importProgramacao(payload: ProgramacaoImportRequest): Promise<ProgramacaoImportResult> {
+    return apiRequest<ProgramacaoImportResult>('/api/coordenacao/importar-programacao', {
       method: 'POST',
       body: JSON.stringify(payload),
     });

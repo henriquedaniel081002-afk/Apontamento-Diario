@@ -1,13 +1,13 @@
 import React from 'react';
-import { ClipboardList, History, LogOut, ShieldCheck } from 'lucide-react';
+import { BarChart3, ClipboardList, History, LogOut, ShieldCheck } from 'lucide-react';
 import { User } from '../../types';
 import logoItam from '../../assets/logo-itam.png';
-import { Badge, cx } from './ui';
+import { cx } from './ui';
 
 interface HeaderProps {
   user: User;
-  activeTab: 'apontamento' | 'historico';
-  onTabChange: (tab: 'apontamento' | 'historico') => void;
+  activeTab: 'apontamento' | 'historico' | 'dashboard';
+  onTabChange: (tab: 'apontamento' | 'historico' | 'dashboard') => void;
   onLogout: () => void;
 }
 
@@ -52,6 +52,38 @@ function Navigation({ activeTab, onTabChange, compact = false }: NavigationProps
   );
 }
 
+function CoordinationNavigation({ activeTab, onTabChange, compact = false }: NavigationProps) {
+  const items = [
+    { id: 'apontamento' as const, label: 'Registros', icon: ShieldCheck },
+    { id: 'dashboard' as const, label: 'Dashboard', icon: BarChart3 },
+  ];
+
+  return (
+    <nav aria-label="Navegação da coordenação" className={cx('flex items-center gap-1', compact && 'min-w-0 flex-1')}>
+      {items.map((item) => {
+        const Icon = item.icon;
+        const isActive = activeTab === item.id;
+        return (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => onTabChange(item.id)}
+            aria-current={isActive ? 'page' : undefined}
+            className={cx(
+              'flex min-h-10 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300',
+              compact && 'min-w-0 flex-1 px-2',
+              isActive ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-200' : 'border-transparent text-slate-400 hover:border-white/10 hover:bg-white/[0.05] hover:text-white',
+            )}
+          >
+            <Icon className="size-4 shrink-0" aria-hidden="true" />
+            <span className="truncate">{item.label}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
 export const Header: React.FC<HeaderProps> = ({ user, activeTab, onTabChange, onLogout }) => {
   const isCoordenacao = user.perfil === 'COORDENACAO';
   const lineLabel = user.linhas.join(' / ');
@@ -76,7 +108,7 @@ export const Header: React.FC<HeaderProps> = ({ user, activeTab, onTabChange, on
             <span className="hidden h-7 w-px bg-white/10 sm:block" aria-hidden="true" />
             <div className="hidden min-w-0 sm:block">
               <p className="truncate text-sm font-extrabold tracking-tight text-white">
-                {isCoordenacao ? 'Coordenação' : activeTab === 'apontamento' ? 'Apontamento diário' : 'Histórico'}
+                {isCoordenacao ? (activeTab === 'dashboard' ? 'Dashboard de Aderência' : 'Coordenação') : activeTab === 'apontamento' ? 'Apontamento diário' : 'Histórico'}
               </p>
               <p className="truncate text-[11px] font-medium text-slate-500">Operação industrial</p>
             </div>
@@ -88,10 +120,7 @@ export const Header: React.FC<HeaderProps> = ({ user, activeTab, onTabChange, on
             </div>
           ) : (
             <div className="hidden flex-1 justify-center md:flex">
-              <Badge variant="success" className="min-h-8 px-3">
-                <ShieldCheck className="size-4" aria-hidden="true" />
-                Acesso global
-              </Badge>
+              <CoordinationNavigation activeTab={activeTab} onTabChange={onTabChange} />
             </div>
           )}
 
@@ -120,10 +149,7 @@ export const Header: React.FC<HeaderProps> = ({ user, activeTab, onTabChange, on
           {!isCoordenacao ? (
             <Navigation activeTab={activeTab} onTabChange={onTabChange} compact />
           ) : (
-            <div className="flex min-w-0 items-center gap-2">
-              <ShieldCheck className="size-4 shrink-0 text-emerald-300" aria-hidden="true" />
-              <span className="truncate text-xs font-bold text-slate-200">Painel da Coordenação</span>
-            </div>
+            <CoordinationNavigation activeTab={activeTab} onTabChange={onTabChange} compact />
           )}
 
           <div

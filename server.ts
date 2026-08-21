@@ -164,7 +164,6 @@ function validateImportGroups(value: unknown): ImportGroup[] {
     if (!Number.isFinite(potencia) || potencia <= 0) throw new Error('A potência importada precisa ser maior que zero.');
     if (!Number.isInteger(quantidade) || quantidade <= 0) throw new Error('A quantidade importada precisa ser um inteiro maior que zero.');
     if (setor === 'EPOXI' && linha !== 'EPO') throw new Error('Epóxi aceita somente registros da linha EPO.');
-    if (setor !== 'EPOXI' && linha === 'EPO') throw new Error('Registros da linha EPO devem ser direcionados ao Epóxi.');
     if (setor === 'BOBINA AT/BT' && !['AT', 'BT'].includes(tipoBobina)) {
       throw new Error('A produção de Bobinagem precisa identificar AT ou BT.');
     }
@@ -230,8 +229,14 @@ async function prepareImportGroups(client: any, groups: ImportGroup[]): Promise<
   for (const [unitKey, unitGroups] of units) {
     const setor = unitGroups[0].setor;
     const neededLines = [...new Set(unitGroups.map((group) => group.linha))];
-    const candidates = [...accessByUserSector.values()]
-      .filter((access) => access.setor === setor && neededLines.every((line) => access.lines.has(line)))
+    const sectorCandidates = [...accessByUserSector.values()].filter((access) => access.setor === setor);
+    const exactCandidates = sectorCandidates.filter((access) => neededLines.every((line) => access.lines.has(line)));
+    // EPO pode aparecer em qualquer setor. Bancos já existentes podem ainda não ter EPO
+    // cadastrado no acesso do apontador daquele setor; nesse caso, preservamos a linha EPO
+    // e usamos o apontador compatível com as demais linhas da mesma unidade operacional.
+    const fallbackLines = neededLines.filter((line) => line !== 'EPO');
+    const fallbackCandidates = sectorCandidates.filter((access) => fallbackLines.every((line) => access.lines.has(line)));
+    const candidates = (exactCandidates.length ? exactCandidates : fallbackCandidates)
       .sort((a, b) => {
         const exactA = a.lines.size === neededLines.length ? 0 : 1;
         const exactB = b.lines.size === neededLines.length ? 0 : 1;
@@ -803,6 +808,262 @@ app.post('/api/coordenacao/importar-producao', auth, requireCoordenacao, async (
 });
 
 // Painel exclusivo da COORDENAÇÃO: consulta global.
+
+
+type ProgramacaoImportGroup = {
+  dataProgramada: string;
+  setor: string;
+  linha: string;
+  potencia: string;
+  quantidade: number;
+};
+
+function validateProgramacaoImport(body: any): { mesReferencia: string; monthDate: string; grupos: ProgramacaoImportGroup[] } {
+  const mesReferencia = String(body?.mesReferencia || '').trim();
+  if (!/^\d{4}-\d{2}$/.test(mesReferencia)) throw new Error('Mês de referência inválido.');
+  const monthDate = `${mesReferencia}-01`;
+  const gruposRaw = Array.isArray(body?.grupos) ? body.grupos : [];
+  if (!gruposRaw.length) throw new Error('A programação não possui grupos válidos para importar.');
+
+  const grupos = gruposRaw.map((item: any) => {
+    const dataProgramada = String(item?.dataProgramada || '').slice(0, 10);
+    const setor = String(item?.setor || '').trim();
+    const linha = String(item?.linha || '').trim();
+    const potencia = String(item?.potencia ?? '').trim();
+    const quantidade = Number(item?.quantidade);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dataProgramada) || !dataProgramada.startsWith(`${mesReferencia}-`)) {
+      throw new Error(`Data programada fora do mês selecionado: ${dataProgramada || 'não informada'}.`);
+    }
+    if (!setor || !linha || !potencia) throw new Error('Setor, linha e potência são obrigatórios na programação consolidada.');
+    if (!Number.isInteger(quantidade) || quantidade <= 0) throw new Error('Quantidade inválida na programação consolidada.');
+    return { dataProgramada, setor, linha, potencia, quantidade };
+  });
+
+  return { mesReferencia, monthDate, grupos };
+}
+
+app.post('/api/coordenacao/importar-programacao', auth, requireCoordenacao, async (req: any, res) => {
+  let client: any;
+  try {
+    const { mesReferencia, monthDate, grupos } = validateProgramacaoImport(req.body);
+    client = await pool.connect();
+    await client.query('BEGIN');
+    await client.query('DELETE FROM programacao WHERE mes_referencia = $1::date', [monthDate]);
+
+    const chunkSize = 400;
+    for (let start = 0; start < grupos.length; start += chunkSize) {
+      const chunk = grupos.slice(start, start + chunkSize);
+      const values: any[] = [];
+      const placeholders = chunk.map((group, index) => {
+        const base = index * 6;
+        values.push(monthDate, group.dataProgramada, group.setor, group.linha, group.potencia, group.quantidade);
+        return `($${base + 1}::date,$${base + 2}::date,$${base + 3},$${base + 4},$${base + 5},$${base + 6}::integer)`;
+      });
+      await client.query(
+        `INSERT INTO programacao(mes_referencia, data_programada, setor, linha, potencia, quantidade)
+         VALUES ${placeholders.join(',')}`,
+        values,
+      );
+    }
+
+    await client.query('COMMIT');
+    res.json({
+      mesReferencia,
+      grupos: grupos.length,
+      totalQuantidade: grupos.reduce((sum, group) => sum + group.quantidade, 0),
+    });
+  } catch (e) {
+    if (client) await client.query('ROLLBACK').catch(() => undefined);
+    console.error(e);
+    res.status(400).json({ error: e instanceof Error ? e.message : 'Falha ao importar a programação.' });
+  } finally {
+    client?.release?.();
+  }
+});
+
+function dashboardSectorName(setor: string, tipoBobina?: string | null): string {
+  const value = String(setor || '').trim().toUpperCase();
+  if (value === 'BOBINA AT/BT') return String(tipoBobina || '').toUpperCase() === 'BT' ? 'BOBINA BT' : 'BOBINA AT';
+  if (value === 'CORTE LASER') return 'CORTE DO LASER';
+  if (value === 'MONTAGEM NUCLEO') return 'MONTAGEM DO NUCLEO';
+  return value;
+}
+
+function expandedDashboardSectors(setor: string, linha?: string | null, tipoBobina?: string | null): string[] {
+  const base = dashboardSectorName(setor, tipoBobina);
+  const line = String(linha || '').trim().toUpperCase();
+  const sectors = [base];
+  // Montagem Final + EPO participa simultaneamente da visão de Montagem Final e da visão específica de Epóxi.
+  if (base === 'MONTAGEM FINAL' && line === 'EPO') sectors.push('EPOXI');
+  if (base === 'EPOXI') sectors.push('MONTAGEM FINAL');
+  return [...new Set(sectors)];
+}
+
+app.get('/api/coordenacao/dashboard', auth, requireCoordenacao, async (_req: any, res) => {
+  try {
+    const [monthsResult, programacaoResult, producaoResult, faltasResult, observacoesResult, materialResult, maquinaResult, ncResult] = await Promise.all([
+      pool.query(`
+        SELECT mes FROM (
+          SELECT TO_CHAR(mes_referencia, 'YYYY-MM') mes FROM programacao
+          UNION
+          SELECT TO_CHAR(data, 'YYYY-MM') mes FROM apontamentos
+        ) x
+        WHERE mes IS NOT NULL
+        ORDER BY mes
+      `),
+      pool.query(`
+        SELECT data_programada, setor, linha, SUM(quantidade)::int quantidade
+          FROM programacao
+         GROUP BY data_programada, setor, linha
+         ORDER BY data_programada, setor, linha
+      `),
+      pool.query(`
+        SELECT a.data, s.nome setor, a.tipo_bobina, l.nome linha, p.potencia, p.quantidade
+          FROM producao p
+          JOIN apontamentos a ON a.id = p.apontamento_id
+          JOIN setores s ON s.id = a.setor_id
+          JOIN linhas l ON l.id = p.linha_id
+         ORDER BY a.data, s.nome, l.nome, p.potencia
+      `),
+      pool.query(`
+        SELECT a.data, s.nome setor, a.tipo_bobina, l.nome linha, f.turno, f.quantidade,
+               f.nome, f.motivo_justificativa, f.atestado
+          FROM faltas f
+          JOIN apontamentos a ON a.id = f.apontamento_id
+          JOIN setores s ON s.id = a.setor_id
+          LEFT JOIN linhas l ON l.id = f.linha_id
+         ORDER BY a.data, s.nome, f.id
+      `),
+      pool.query(`
+        SELECT a.data, s.nome setor, a.tipo_bobina, l.nome linha, o.turno, o.observacao, o.justificativa_meta
+          FROM observacoes o
+          JOIN apontamentos a ON a.id = o.apontamento_id
+          JOIN setores s ON s.id = a.setor_id
+          LEFT JOIN linhas l ON l.id = o.linha_id
+         ORDER BY a.data, s.nome, o.id
+      `),
+      pool.query(`
+        SELECT a.data, s.nome setor, a.tipo_bobina, pfm.causa_motivo, pfm.material, pfm.hora_inicio, pfm.hora_fim
+          FROM paradas_falta_material pfm
+          JOIN apontamentos a ON a.id = pfm.apontamento_id
+          JOIN setores s ON s.id = a.setor_id
+         ORDER BY a.data, s.nome, pfm.id
+      `),
+      pool.query(`
+        SELECT a.data, s.nome setor, a.tipo_bobina, pm.maquina_equipamento, pm.hora_inicio, pm.hora_fim, pm.observacao
+          FROM paradas_maquina pm
+          JOIN apontamentos a ON a.id = pm.apontamento_id
+          JOIN setores s ON s.id = a.setor_id
+         ORDER BY a.data, s.nome, pm.id
+      `),
+      pool.query(`
+        SELECT a.data, s.nome setor, a.tipo_bobina, nc.causa_nao_conformidade, nc.op, nc.numero_serie
+          FROM nao_conformidades nc
+          JOIN apontamentos a ON a.id = nc.apontamento_id
+          JOIN setores s ON s.id = a.setor_id
+         ORDER BY a.data, s.nome, nc.id
+      `),
+    ]);
+
+    const programacao: any[] = [];
+    for (const row of programacaoResult.rows) {
+      const linha = String(row.linha || '').trim();
+      for (const setor of expandedDashboardSectors(String(row.setor), linha)) {
+        programacao.push({ data: dateOnly(row.data_programada), linha, setor, quantidade: Number(row.quantidade) || 0 });
+      }
+    }
+
+    const detalhesProducao: any[] = [];
+    const apontamentoMap = new Map<string, any>();
+    for (const row of producaoResult.rows) {
+      const linha = String(row.linha || '').trim();
+      const data = dateOnly(row.data);
+      const quantidade = Number(row.quantidade) || 0;
+      for (const setor of expandedDashboardSectors(String(row.setor), linha, row.tipo_bobina)) {
+        detalhesProducao.push({ data, linha, setor, potencia: Number(row.potencia), quantidade });
+        const key = `${data}|${setor}|${linha}`;
+        const current = apontamentoMap.get(key) || { data, linha, setor, turno: 'Todos', quantidade: 0 };
+        current.quantidade += quantidade;
+        apontamentoMap.set(key, current);
+      }
+    }
+    const apontamento = [...apontamentoMap.values()];
+
+    const faltas: any[] = [];
+    const detalhesFaltas: any[] = [];
+    for (const row of faltasResult.rows) {
+      const data = dateOnly(row.data);
+      const linha = String(row.linha || '').trim();
+      const turno = row.turno ? String(row.turno).replace(/\s*turno$/i, '').trim() : 'Todos';
+      const quantidade = row.quantidade == null ? (String(row.nome || '').trim() ? 1 : 0) : Number(row.quantidade) || 0;
+      for (const setor of expandedDashboardSectors(String(row.setor), linha, row.tipo_bobina)) {
+        faltas.push({ data, linha, setor, turno, quantidade });
+        detalhesFaltas.push({
+          data, setor, linha: linha || undefined, turno: turno === 'Todos' ? undefined : turno,
+          quantidade: row.quantidade == null ? null : Number(row.quantidade),
+          nome: row.nome || '', motivoJustificativa: row.motivo_justificativa || '',
+          atestado: typeof row.atestado === 'boolean' ? (row.atestado ? 'Sim' : 'Não') : '',
+        });
+      }
+    }
+
+    const observacoes: any[] = [];
+    const detalhesObservacoes: any[] = [];
+    for (const row of observacoesResult.rows) {
+      const data = dateOnly(row.data);
+      const linha = String(row.linha || '').trim();
+      for (const setor of expandedDashboardSectors(String(row.setor), linha, row.tipo_bobina)) {
+        const item = { data, linha, setor, observacao: row.observacao || '', justificativaMeta: row.justificativa_meta || '' };
+        observacoes.push(item);
+        detalhesObservacoes.push(item);
+      }
+    }
+
+    const faltasMaterial: any[] = [];
+    for (const row of materialResult.rows) {
+      for (const setor of expandedDashboardSectors(String(row.setor), null, row.tipo_bobina)) {
+        faltasMaterial.push({ data: dateOnly(row.data), setor, causaMotivo: row.causa_motivo || '', material: row.material || '', horaInicio: String(row.hora_inicio || '').slice(0,5), horaFim: String(row.hora_fim || '').slice(0,5) });
+      }
+    }
+
+    const maquinasQuebradas: any[] = [];
+    for (const row of maquinaResult.rows) {
+      for (const setor of expandedDashboardSectors(String(row.setor), null, row.tipo_bobina)) {
+        maquinasQuebradas.push({ data: dateOnly(row.data), setor, maquinaEquipamento: row.maquina_equipamento || '', horaInicio: String(row.hora_inicio || '').slice(0,5), horaFim: String(row.hora_fim || '').slice(0,5), observacao: row.observacao || '' });
+      }
+    }
+
+    const naoConformidades: any[] = [];
+    for (const row of ncResult.rows) {
+      for (const setor of expandedDashboardSectors(String(row.setor), null, row.tipo_bobina)) {
+        naoConformidades.push({ data: dateOnly(row.data), setor, causa: row.causa_nao_conformidade || '', op: row.op || '', numeroSerie: row.numero_serie || '' });
+      }
+    }
+
+    const linhas = [...new Set([...programacao, ...apontamento].map((row: any) => row.linha).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'pt-BR'));
+    const setores = [...new Set([...programacao, ...apontamento].map((row: any) => row.setor).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'pt-BR'));
+
+    res.json({
+      geradoEm: new Date().toISOString(),
+      periodo: { meses: monthsResult.rows.map((row: any) => String(row.mes)).filter(Boolean) },
+      filtros: { linhas, setores, turnos: [] },
+      programacao,
+      apontamento,
+      detalhesProducao,
+      faltas,
+      observacoes,
+      detalhesFaltas,
+      detalhesObservacoes,
+      faltasMaterial,
+      maquinasQuebradas,
+      naoConformidades,
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Falha ao carregar os dados do Dashboard de Aderência.' });
+  }
+});
+
 app.get('/api/coordenacao/apontamentos', auth, requireCoordenacao, async (_req: any, res) => {
   try {
     const ids = await pool.query('SELECT id FROM apontamentos ORDER BY data DESC, id DESC');

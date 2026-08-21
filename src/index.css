@@ -1,5 +1,20 @@
 @import "tailwindcss";
 
+@theme {
+  --color-bg-main: #030a14;
+  --color-bg-elevated: #07111e;
+  --color-bg-card: #081422;
+  --color-bg-card-hover: #0b1a2b;
+  --color-border-subtle: #17283b;
+  --color-border-strong: #263a51;
+  --color-text-primary: #f4f7fb;
+  --color-text-secondary: #91a0b2;
+  --color-status-success: #19c99a;
+  --color-status-danger: #ef5350;
+  --color-status-planned: #22c55e;
+  --color-status-warning: #e9aa19;
+}
+
 :root {
   color-scheme: dark;
   font-family:

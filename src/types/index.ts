@@ -147,3 +147,23 @@ export interface ProductionImportResult {
   totalQuantidade: number;
   totalUnidades: number;
 }
+
+
+export interface ProgramacaoImportGroup {
+  dataProgramada: string;
+  setor: string;
+  linha: string;
+  potencia: string;
+  quantidade: number;
+}
+
+export interface ProgramacaoImportRequest {
+  mesReferencia: string;
+  grupos: ProgramacaoImportGroup[];
+}
+
+export interface ProgramacaoImportResult {
+  mesReferencia: string;
+  grupos: number;
+  totalQuantidade: number;
+}

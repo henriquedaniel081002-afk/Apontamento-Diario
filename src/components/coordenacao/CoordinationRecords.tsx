@@ -52,10 +52,10 @@ function RecordActions({
   const isApprovalBusy = approvalBusyId === record.id;
   const isAnyApprovalBusy = Boolean(approvalBusyId);
   const awaitingComplement = record.origemProducao === 'IMPORTADO' && record.complementado === false;
-  const columnsClass = showApprovalActions ? 'grid-cols-4' : 'grid-cols-3';
+  const columnsClass = showApprovalActions ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-1 min-[420px]:grid-cols-3';
 
   return (
-    <div className={`grid ${columnsClass} divide-x divide-white/[0.07] overflow-hidden rounded-xl border border-white/[0.08] bg-black/10`}>
+    <div className={`grid ${columnsClass} gap-px overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.07] [&>button]:bg-[#080d0a]`}>
       <button
         type="button"
         onClick={() => onView(record)}

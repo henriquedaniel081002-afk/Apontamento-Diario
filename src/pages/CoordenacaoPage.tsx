@@ -171,7 +171,7 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
       .sort((a, b) => b.data.localeCompare(a.data) || Number(b.id) - Number(a.id)));
     if (detailItem?.id === updated.id) setDetailItem(updated);
     setEditItem(null);
-    setToast({ id: Date.now().toString(), type: 'success', message: 'Apontamento atualizado com sucesso.' });
+    setToast({ id: Date.now().toString(), type: 'success', message: updated.origemProducao === 'IMPORTADO' ? 'Apontamento atualizado e finalizado. Já está disponível para aprovação.' : 'Apontamento atualizado com sucesso.' });
   };
 
   const handleImportProduction = async (data: string, groups: ProductionImportGroup[]) => {
@@ -312,7 +312,7 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
       </section>
 
       {loading ? (
-        <section aria-label="Carregando indicadores" aria-busy="true" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <section aria-label="Carregando indicadores" aria-busy="true" className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 lg:grid-cols-4">
           {[0, 1, 2, 3].map((item) => (
             <div key={item} className="h-32 animate-pulse rounded-2xl border border-white/[0.07] bg-white/[0.035]" />
           ))}
@@ -334,7 +334,7 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
           </button>
         </section>
       ) : (
-        <section aria-label="Indicadores do dia" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <section aria-label="Indicadores do dia" className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 lg:grid-cols-4">
           <KpiCard
             label="Data analisada"
             value={dataFilter ? formatDateBR(dataFilter) : 'Selecione'}

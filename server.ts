@@ -397,32 +397,10 @@ function isLegacyObservacao(item: any): boolean {
   return !String(item?.justificativaMeta || '').trim() && Boolean(item?.linha || item?.turno);
 }
 
-function validateOccurrencePayload(data: any): string | null {
-  for (const item of occurrenceList(data.paradasFaltaMaterial)) {
-    if (!String(item?.causaMotivo || '').trim() || !String(item?.material || '').trim() || !String(item?.horaInicio || '').trim() || !String(item?.horaFim || '').trim()) {
-      return 'Preencha causa/motivo, material, hora de início e hora de fim em cada parada por falta de material.';
-    }
-  }
-  for (const item of occurrenceList(data.paradasMaquina)) {
-    if (!String(item?.maquinaEquipamento || '').trim() || !String(item?.horaInicio || '').trim() || !String(item?.horaFim || '').trim() || !String(item?.observacao || '').trim()) {
-      return 'Preencha máquina/equipamento, hora de início, hora de fim e observações em cada parada por máquina quebrada.';
-    }
-  }
-  for (const item of occurrenceList(data.naoConformidades)) {
-    if (!String(item?.causaNaoConformidade || '').trim() || !String(item?.op || '').trim() || !String(item?.numeroSerie || '').trim()) {
-      return 'Preencha causa da não conformidade, OP e número de série em cada não conformidade.';
-    }
-  }
-  for (const item of occurrenceList(data.faltas)) {
-    if (!isLegacyFalta(item) && (!String(item?.nome || '').trim() || !String(item?.motivoJustificativa || '').trim() || typeof item?.atestado !== 'boolean')) {
-      return 'Preencha nome, motivo/justificativa e atestado em cada falta.';
-    }
-  }
-  for (const item of occurrenceList(data.observacoes)) {
-    if (!isLegacyObservacao(item) && (!String(item?.observacao || '').trim() || !String(item?.justificativaMeta || '').trim())) {
-      return 'Preencha observações e justificativa pelo não atingimento da meta em cada registro de observação.';
-    }
-  }
+function validateOccurrencePayload(_data: any): string | null {
+  // As ocorrências aceitam preenchimento parcial. Nenhum campo individual é
+  // obrigatório para adicionar/salvar um registro; os dados podem ser
+  // complementados posteriormente.
   return null;
 }
 
@@ -442,21 +420,21 @@ async function insertOccurrenceCollections(client: any, apontamentoId: number, d
     await client.query(
       `INSERT INTO paradas_falta_material(apontamento_id, causa_motivo, material, hora_inicio, hora_fim)
        VALUES($1, $2, $3, $4, $5)`,
-      [apontamentoId, String(item.causaMotivo).trim(), String(item.material).trim(), item.horaInicio, item.horaFim],
+      [apontamentoId, String(item.causaMotivo || '').trim(), String(item.material || '').trim(), item.horaInicio || null, item.horaFim || null],
     );
   }
   for (const item of occurrenceList(data.paradasMaquina)) {
     await client.query(
       `INSERT INTO paradas_maquina(apontamento_id, maquina_equipamento, hora_inicio, hora_fim, observacao)
        VALUES($1, $2, $3, $4, $5)`,
-      [apontamentoId, String(item.maquinaEquipamento).trim(), item.horaInicio, item.horaFim, String(item.observacao).trim()],
+      [apontamentoId, String(item.maquinaEquipamento || '').trim(), item.horaInicio || null, item.horaFim || null, String(item.observacao || '').trim()],
     );
   }
   for (const item of occurrenceList(data.naoConformidades)) {
     await client.query(
       `INSERT INTO nao_conformidades(apontamento_id, causa_nao_conformidade, op, numero_serie)
        VALUES($1, $2, $3, $4)`,
-      [apontamentoId, String(item.causaNaoConformidade).trim(), String(item.op).trim(), String(item.numeroSerie).trim()],
+      [apontamentoId, String(item.causaNaoConformidade || '').trim(), String(item.op || '').trim(), String(item.numeroSerie || '').trim()],
     );
   }
   for (const item of occurrenceList(data.faltas)) {
@@ -470,7 +448,7 @@ async function insertOccurrenceCollections(client: any, apontamentoId: number, d
       await client.query(
         `INSERT INTO faltas(apontamento_id, linha_id, turno, quantidade, justificativa, nome, motivo_justificativa, atestado)
          VALUES($1, NULL, NULL, NULL, NULL, $2, $3, $4)`,
-        [apontamentoId, String(item.nome).trim(), String(item.motivoJustificativa).trim(), item.atestado],
+        [apontamentoId, String(item.nome || '').trim() || null, String(item.motivoJustificativa || '').trim() || null, typeof item.atestado === 'boolean' ? item.atestado : null],
       );
     }
   }
@@ -485,7 +463,7 @@ async function insertOccurrenceCollections(client: any, apontamentoId: number, d
       await client.query(
         `INSERT INTO observacoes(apontamento_id, linha_id, turno, observacao, justificativa_meta)
          VALUES($1, NULL, NULL, $2, $3)`,
-        [apontamentoId, String(item.observacao).trim(), String(item.justificativaMeta).trim()],
+        [apontamentoId, String(item.observacao || '').trim(), String(item.justificativaMeta || '').trim() || null],
       );
     }
   }
@@ -775,20 +753,32 @@ app.post('/api/coordenacao/importar-producao', auth, requireCoordenacao, async (
     // Se o apontador já complementou um registro que deixou de existir no novo Excel,
     // preservamos ocorrências/aprovação e removemos somente a produção antiga.
     const previous = await client.query(
-      `SELECT id, complementado
-         FROM apontamentos
-        WHERE data = $1 AND origem_producao = 'IMPORTADO'`,
+      `SELECT a.id,
+              a.complementado,
+              (
+                EXISTS (SELECT 1 FROM paradas_falta_material pfm WHERE pfm.apontamento_id = a.id)
+                OR EXISTS (SELECT 1 FROM paradas_maquina pm WHERE pm.apontamento_id = a.id)
+                OR EXISTS (SELECT 1 FROM nao_conformidades nc WHERE nc.apontamento_id = a.id)
+                OR EXISTS (SELECT 1 FROM faltas f WHERE f.apontamento_id = a.id)
+                OR EXISTS (SELECT 1 FROM observacoes o WHERE o.apontamento_id = a.id)
+              ) AS possui_complementos
+         FROM apontamentos a
+        WHERE a.data = $1 AND a.origem_producao = 'IMPORTADO'`,
       [data],
     );
     for (const row of previous.rows) {
       const id = Number(row.id);
       if (usedIds.has(id)) continue;
-      if (row.complementado === false) {
+
+      // Nunca apaga informações digitadas pelos apontadores. Um registro ainda
+      // não finalizado só é removido quando não possui nenhum complemento manual.
+      if (row.complementado === false && row.possui_complementos !== true) {
         await client.query('DELETE FROM apontamentos WHERE id = $1', [id]);
-      } else {
-        await client.query('DELETE FROM producao WHERE apontamento_id = $1', [id]);
-        await client.query('UPDATE apontamentos SET atualizado_em = NOW() WHERE id = $1', [id]);
+        continue;
       }
+
+      await client.query('DELETE FROM producao WHERE apontamento_id = $1', [id]);
+      await client.query('UPDATE apontamentos SET atualizado_em = NOW() WHERE id = $1', [id]);
     }
 
     await client.query('COMMIT');
@@ -862,6 +852,7 @@ app.put('/api/coordenacao/apontamentos/:id', auth, requireCoordenacao, async (re
     await client.query(
       `UPDATE apontamentos
           SET data = $1,
+              complementado = CASE WHEN origem_producao = 'IMPORTADO' THEN TRUE ELSE complementado END,
               atualizado_em = NOW(),
               status_aprovacao = 'PENDENTE',
               aprovado_em = NULL,

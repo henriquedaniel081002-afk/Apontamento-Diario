@@ -242,15 +242,19 @@ export function buildApontamentosWorkbookData(apontamentos: Apontamento[]): Apon
   );
 
   const faltas: ExcelRow[] = ordenados.flatMap((apt) =>
-    apt.faltas.map((item) => item.nome ? ({
-      data: formatDataExcel(apt.data), nome: item.nome, motivo_justificativa: item.motivoJustificativa || '',
-      atestado: item.atestado ? 'SIM' : 'NÃO', setor: setorParaExcel(String(apt.setor)),
-      status: apt.statusAprovacao === 'APROVADO' ? 'APROVADO' : 'PENDENTE',
-    }) : ({
-      data: formatDataExcel(apt.data), faltas: Number(item.quantidade), turno: turnoNumero(item.turno || ''),
-      setor: setorParaExcel(String(apt.setor)), linha: item.linha || '',
-      status: apt.statusAprovacao === 'APROVADO' ? 'APROVADO' : 'PENDENTE',
-    })),
+    apt.faltas.map((item) => {
+      const isLegacy = !item.nome && !item.motivoJustificativa && typeof item.atestado !== 'boolean'
+        && Boolean(item.linha || item.turno || item.quantidade || item.justificativa);
+      return isLegacy ? ({
+        data: formatDataExcel(apt.data), faltas: Number(item.quantidade), turno: turnoNumero(item.turno || ''),
+        setor: setorParaExcel(String(apt.setor)), linha: item.linha || '',
+        status: apt.statusAprovacao === 'APROVADO' ? 'APROVADO' : 'PENDENTE',
+      }) : ({
+        data: formatDataExcel(apt.data), nome: item.nome || '', motivo_justificativa: item.motivoJustificativa || '',
+        atestado: typeof item.atestado === 'boolean' ? (item.atestado ? 'SIM' : 'NÃO') : '', setor: setorParaExcel(String(apt.setor)),
+        status: apt.statusAprovacao === 'APROVADO' ? 'APROVADO' : 'PENDENTE',
+      });
+    }),
   );
 
   const obs: ExcelRow[] = ordenados.flatMap((apt) => [

@@ -145,7 +145,7 @@ export function ImportProductionModal({ isOpen, onClose, onImport }: ImportProdu
           <p className="text-xs leading-5 text-slate-500">
             Uma nova importação da mesma data substitui a produção importada anteriormente, preservando faltas, observações e aprovação já existentes.
           </p>
-          <div className="flex shrink-0 gap-2">
+          <div className="grid w-full grid-cols-1 gap-2 min-[380px]:grid-cols-2 sm:w-auto sm:flex sm:shrink-0">
             <Button variant="secondary" onClick={onClose} disabled={busy}>Cancelar</Button>
             {!preview ? (
               <Button
@@ -186,7 +186,7 @@ export function ImportProductionModal({ isOpen, onClose, onImport }: ImportProdu
                 setFile(event.target.files?.[0] || null);
                 invalidatePreview();
               }}
-              className="block min-h-11 w-full cursor-pointer rounded-xl border border-white/15 bg-[#070B08] px-3 py-2 text-sm font-semibold text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-400/10 file:px-3 file:py-1.5 file:text-xs file:font-black file:text-emerald-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+              className="block min-h-11 min-w-0 w-full cursor-pointer rounded-xl border border-white/15 bg-[#070B08] px-3 py-2 text-sm font-semibold text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-400/10 file:px-3 file:py-1.5 file:text-xs file:font-black file:text-emerald-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
             />
             {file && <p className="mt-1.5 truncate text-xs text-slate-500">{file.name}</p>}
           </label>
@@ -221,7 +221,7 @@ export function ImportProductionModal({ isOpen, onClose, onImport }: ImportProdu
 
         {preview && (
           <>
-            <section className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Resumo da leitura">
+            <section className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 lg:grid-cols-4" aria-label="Resumo da leitura">
               <div className="rounded-xl border border-white/10 bg-white/[0.035] p-3">
                 <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Data</p>
                 <p className="mt-1 text-sm font-black text-slate-100">{formatDateBR(preview.data)}</p>

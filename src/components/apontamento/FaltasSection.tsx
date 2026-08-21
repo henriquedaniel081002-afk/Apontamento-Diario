@@ -31,15 +31,11 @@ export const FaltasSection: React.FC<FaltasSectionProps> = ({ faltas, onAdd, onU
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
-    if (!nome.trim() || !motivoJustificativa.trim() || !atestado) {
-      setError('Preencha nome, motivo/justificativa e informe se houve atestado.');
-      return;
-    }
     const item: FaltaItem = {
       id: editingId || `falta-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       nome: nome.trim(),
       motivoJustificativa: motivoJustificativa.trim(),
-      atestado: atestado === 'SIM',
+      atestado: atestado ? atestado === 'SIM' : undefined,
     };
     editingId ? onUpdate(item) : onAdd(item);
     setEditingId(null);
@@ -59,7 +55,7 @@ export const FaltasSection: React.FC<FaltasSectionProps> = ({ faltas, onAdd, onU
     <Surface as="section" className="record-industrial overflow-hidden" aria-labelledby="faltas-title">
       <div className="flex items-start gap-3 border-b border-[var(--border-subtle)] p-5 sm:p-6">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--warning-soft)] text-[var(--warning)]"><UserX className="h-5 w-5" /></span>
-        <div><p className="mb-1 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--warning)]">Ocorrência opcional</p><h2 id="faltas-title" className="text-lg font-bold text-[var(--text-primary)]">Faltas</h2><p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">Registre cada colaborador ausente individualmente. Se não houve faltas, deixe esta etapa vazia.</p></div>
+        <div><p className="mb-1 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--warning)]">Ocorrência opcional</p><h2 id="faltas-title" className="text-lg font-bold text-[var(--text-primary)]">Faltas</h2><p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">Registre cada colaborador ausente individualmente. Os campos podem ser preenchidos parcialmente e complementados depois.</p></div>
       </div>
       <div className="space-y-5 p-5 sm:p-6">
         <form onSubmit={submit} className="space-y-4 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-muted)] p-4">
@@ -76,7 +72,7 @@ export const FaltasSection: React.FC<FaltasSectionProps> = ({ faltas, onAdd, onU
           <ul className="space-y-2" aria-label="Faltas adicionadas">
             {faltas.map((item, index) => {
               const legacy = isLegacy(item);
-              return <li key={item.id} className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-muted)] p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="text-xs font-bold uppercase tracking-wider text-[var(--warning)]">Falta #{index + 1}</p>{legacy && <span className="rounded-full border border-white/10 bg-white/[0.05] px-2 py-0.5 text-[10px] font-bold text-[var(--text-tertiary)]">Registro antigo</span>}</div>{legacy ? <><p className="mt-1 font-bold text-[var(--text-primary)]">{item.linha || 'Linha não informada'} · {item.turno || 'Turno não informado'}</p><p className="mt-1 text-sm text-[var(--text-secondary)]">Quantidade: {item.quantidade ?? 0}</p>{item.justificativa && <p className="mt-1 text-sm text-[var(--text-secondary)]">{item.justificativa}</p>}</> : <><p className="mt-1 font-bold text-[var(--text-primary)]">{item.nome}</p><p className="mt-1 text-sm text-[var(--text-secondary)]">{item.motivoJustificativa}</p><p className="mt-2 text-xs font-semibold text-[var(--text-tertiary)]">Atestado: {item.atestado ? 'Sim' : 'Não'}</p></>}</div><div className="flex gap-1">{!legacy && <Button size="icon" variant="ghost" aria-label="Editar falta" onClick={() => edit(item)}><Edit2 className="h-4 w-4" /></Button>}<Button size="icon" variant="ghost" aria-label="Excluir falta" onClick={() => setDeleteId(item.id)}><Trash2 className="h-4 w-4" /></Button></div></div></li>;
+              return <li key={item.id} className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-muted)] p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="text-xs font-bold uppercase tracking-wider text-[var(--warning)]">Falta #{index + 1}</p>{legacy && <span className="rounded-full border border-white/10 bg-white/[0.05] px-2 py-0.5 text-[10px] font-bold text-[var(--text-tertiary)]">Registro antigo</span>}</div>{legacy ? <><p className="mt-1 font-bold text-[var(--text-primary)]">{item.linha || 'Linha não informada'} · {item.turno || 'Turno não informado'}</p><p className="mt-1 text-sm text-[var(--text-secondary)]">Quantidade: {item.quantidade ?? 0}</p>{item.justificativa && <p className="mt-1 text-sm text-[var(--text-secondary)]">{item.justificativa}</p>}</> : <><p className="mt-1 font-bold text-[var(--text-primary)]">{item.nome || 'Nome não informado'}</p><p className="mt-1 text-sm text-[var(--text-secondary)]">{item.motivoJustificativa || 'Motivo não informado'}</p><p className="mt-2 text-xs font-semibold text-[var(--text-tertiary)]">Atestado: {typeof item.atestado === 'boolean' ? (item.atestado ? 'Sim' : 'Não') : 'Não informado'}</p></>}</div><div className="flex gap-1">{!legacy && <Button size="icon" variant="ghost" aria-label="Editar falta" onClick={() => edit(item)}><Edit2 className="h-4 w-4" /></Button>}<Button size="icon" variant="ghost" aria-label="Excluir falta" onClick={() => setDeleteId(item.id)}><Trash2 className="h-4 w-4" /></Button></div></div></li>;
             })}
           </ul>
         )}

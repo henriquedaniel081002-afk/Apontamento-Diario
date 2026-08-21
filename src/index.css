@@ -56,6 +56,7 @@ html {
 body {
   margin: 0;
   min-width: 0;
+  overflow-x: hidden;
   min-height: 100vh;
   background:
     radial-gradient(circle at 12% -8%, rgba(0, 199, 111, 0.10), transparent 31rem),
@@ -70,7 +71,10 @@ body {
 }
 
 #root {
+  width: 100%;
+  min-width: 0;
   min-height: 100vh;
+  overflow-x: clip;
 }
 
 ::selection {
@@ -278,6 +282,8 @@ input:-webkit-autofill:focus {
 /* ITAM redesign 2026 — visual only, without changing product features */
 .app-page {
   position: relative;
+  width: 100%;
+  min-width: 0;
   isolation: isolate;
 }
 
@@ -485,4 +491,24 @@ input:-webkit-autofill:focus {
 @media (max-width: 640px) {
   .industrial-hero::before { right: -10rem; opacity: .55; }
   .kpi-industrial { min-height: 6.5rem; }
+}
+
+@media (max-width: 420px) {
+  .app-page {
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+  }
+
+  .record-industrial > div,
+  .record-industrial > form {
+    min-width: 0;
+  }
+
+  .field-control,
+  input,
+  select,
+  textarea {
+    min-width: 0;
+    max-width: 100%;
+  }
 }

@@ -55,11 +55,11 @@ function RecordActions({
   const columnsClass = showApprovalActions ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-1 min-[420px]:grid-cols-3';
 
   return (
-    <div className={`grid ${columnsClass} gap-px overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.07] [&>button]:bg-[#080d0a]`}>
+    <div className={`grid ${columnsClass} gap-px overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--border-subtle)] [&>button]:bg-[var(--surface-raised)]`}>
       <button
         type="button"
         onClick={() => onView(record)}
-        className="inline-flex min-h-11 items-center justify-center gap-2 px-3 text-xs font-bold text-slate-300 transition-colors hover:bg-white/[0.055] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-400"
+        className="inline-flex min-h-11 items-center justify-center gap-2 px-3 text-xs font-bold text-[var(--text-secondary)] transition-colors hover:bg-white/[0.055] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)]"
         aria-label={`Ver detalhes de ${accessibleRecordName}`}
       >
         <Eye className="size-4" aria-hidden="true" />
@@ -149,14 +149,14 @@ interface MetricProps {
 
 function Metric({ icon, label, value, valueClassName, iconClassName, helper }: MetricProps) {
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-3 border-t border-white/[0.07] px-4 py-4 first:border-t-0 sm:border-l sm:border-t-0 sm:px-5 sm:first:border-l-0 lg:py-5 lg:first:border-l">
-      <div className={`flex size-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.035] ${iconClassName}`} aria-hidden="true">
+    <div className="flex min-w-0 flex-1 items-center gap-3 border-t border-[var(--border-subtle)] px-4 py-4 first:border-t-0 sm:border-l sm:border-t-0 sm:px-5 sm:first:border-l-0 lg:py-5 xl:first:border-l">
+      <div className={`flex size-10 shrink-0 items-center justify-center rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-muted)] ${iconClassName}`} aria-hidden="true">
         {icon}
       </div>
       <div className="min-w-0">
-        <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">{label}</p>
+        <p className="text-xs font-bold uppercase tracking-[0.08em] text-[var(--text-tertiary)]">{label}</p>
         <p className={`mt-0.5 text-xl font-black tracking-tight ${valueClassName}`}>{value}</p>
-        <p className="text-[10px] font-semibold text-slate-600">{helper}</p>
+        <p className="text-xs font-semibold text-[var(--text-tertiary)]">{helper}</p>
       </div>
     </div>
   );
@@ -168,7 +168,7 @@ function ApprovalBadge({ record }: { record: Apontamento }) {
 
   if (awaitingComplement && !isApproved) {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-lg border border-sky-400/25 bg-sky-400/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-sky-300">
+      <span className="inline-flex min-h-7 items-center gap-1.5 rounded-lg border border-sky-400/25 bg-sky-400/10 px-2 py-1 text-xs font-black uppercase tracking-wide text-sky-300">
         <CircleDashed className="size-3.5" aria-hidden="true" />
         Aguardando complemento
       </span>
@@ -177,14 +177,14 @@ function ApprovalBadge({ record }: { record: Apontamento }) {
 
   return isApproved ? (
     <span
-      className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-400/25 bg-emerald-400/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-300"
+      className="inline-flex min-h-7 items-center gap-1.5 rounded-lg border border-emerald-400/25 bg-emerald-400/10 px-2 py-1 text-xs font-black uppercase tracking-wide text-emerald-300"
       title={record.aprovadoPorNome ? `Aprovado por ${record.aprovadoPorNome}` : 'Registro aprovado'}
     >
       <BadgeCheck className="size-3.5" aria-hidden="true" />
       Aprovado
     </span>
   ) : (
-    <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-400/25 bg-amber-400/10 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-amber-300">
+    <span className="inline-flex min-h-7 items-center gap-1.5 rounded-lg border border-amber-400/25 bg-amber-400/10 px-2 py-1 text-xs font-black uppercase tracking-wide text-amber-300">
       <CircleDashed className="size-3.5" aria-hidden="true" />
       Pendente
     </span>
@@ -198,20 +198,20 @@ function CoordinationRecordCard(props: CoordinationRecordsProps & { record: Apon
   const unitLabel = getOperationalUnitLabel(record);
 
   return (
-    <article className="record-industrial group overflow-hidden rounded-2xl border transition-colors">
-      <div className="grid lg:grid-cols-[minmax(190px,0.95fr)_minmax(250px,1.25fr)_minmax(130px,0.7fr)_minmax(130px,0.7fr)_minmax(130px,0.7fr)]">
-        <section className="flex items-center gap-4 border-b border-white/[0.07] bg-gradient-to-br from-emerald-400/[0.04] to-transparent px-4 py-5 sm:px-5 lg:border-b-0">
+    <article className="record-industrial group overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-base)] shadow-[var(--shadow-surface)] transition-colors">
+      <div className="grid xl:grid-cols-[minmax(190px,0.95fr)_minmax(250px,1.25fr)_minmax(130px,0.7fr)_minmax(130px,0.7fr)_minmax(130px,0.7fr)]">
+        <section className="flex items-center gap-4 border-b border-[var(--border-subtle)] bg-gradient-to-br from-emerald-400/[0.04] to-transparent px-4 py-5 sm:px-5 xl:border-b-0">
           <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl border border-emerald-400/25 bg-emerald-400/[0.06] text-emerald-300 shadow-[0_0_30px_rgba(0,199,111,0.07)]">
             <Factory className="size-7" aria-hidden="true" />
           </div>
           <div className="min-w-0">
-            <h2 className="truncate text-sm font-black text-slate-100" title={unitLabel}>{unitLabel}</h2>
-            <p className="mt-1 truncate text-[11px] font-semibold uppercase tracking-wide text-slate-500" title={getSectorSubtitle(record)}>
+            <h2 className="truncate text-base font-black text-[var(--text-primary)]" title={unitLabel}>{unitLabel}</h2>
+            <p className="mt-1 truncate text-xs font-semibold uppercase tracking-wide text-[var(--text-tertiary)]" title={getSectorSubtitle(record)}>
               {getSectorSubtitle(record)}
             </p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {record.tipoBobina && (
-                <span className="inline-flex rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-2 py-1 text-[10px] font-black text-emerald-300">
+                <span className="inline-flex rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-2 py-1 text-xs font-black text-emerald-300">
                   {record.tipoBobina}
                 </span>
               )}
@@ -220,29 +220,29 @@ function CoordinationRecordCard(props: CoordinationRecordsProps & { record: Apon
           </div>
         </section>
 
-        <section className="grid gap-3 border-b border-white/[0.07] px-4 py-4 sm:grid-cols-2 sm:px-5 lg:border-b-0 lg:border-l lg:py-5">
+        <section className="grid gap-3 border-b border-[var(--border-subtle)] px-4 py-4 sm:grid-cols-2 sm:px-5 xl:border-b-0 xl:border-l xl:py-5">
           <div className="min-w-0">
             <p className="flex items-center gap-2 text-sm font-black text-slate-100">
               <CalendarDays className="size-4 shrink-0 text-emerald-400" aria-hidden="true" />
               {formatDateBR(record.data)}
             </p>
-            <p className="mt-1 pl-6 text-[11px] font-semibold text-slate-500">{getWeekday(record.data)}</p>
+            <p className="mt-1 pl-6 text-xs font-semibold text-[var(--text-tertiary)]">{getWeekday(record.data)}</p>
           </div>
           <div className="min-w-0">
-            <p className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">
+            <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.08em] text-[var(--text-tertiary)]">
               <UserRound className="size-3.5 shrink-0" aria-hidden="true" />
               Responsável
             </p>
             <p className="mt-1 truncate text-sm font-bold text-slate-200" title={record.userName}>{record.userName}</p>
           </div>
           <div className="sm:col-span-2">
-            <p className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">
+            <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.08em] text-[var(--text-tertiary)]">
               <GitBranch className="size-3.5" aria-hidden="true" />
               Linha
             </p>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {lines.length > 0 ? lines.map((line) => (
-                <span key={line} className="rounded-lg border border-white/10 bg-white/[0.045] px-2 py-1 text-[10px] font-black text-slate-300">
+                <span key={line} className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-2 py-1 text-xs font-black text-[var(--text-secondary)]">
                   {line}
                 </span>
               )) : (
@@ -252,7 +252,7 @@ function CoordinationRecordCard(props: CoordinationRecordsProps & { record: Apon
           </div>
         </section>
 
-        <div className="grid grid-cols-1 border-b border-white/[0.07] sm:grid-cols-3 lg:contents">
+        <div className="grid grid-cols-1 border-b border-[var(--border-subtle)] sm:grid-cols-3 xl:contents">
           <Metric
             icon={<Zap className="size-4" />}
             label="Produção"
@@ -280,7 +280,7 @@ function CoordinationRecordCard(props: CoordinationRecordsProps & { record: Apon
         </div>
       </div>
 
-      <footer className="border-t border-white/[0.07] bg-black/[0.08] p-2.5 sm:px-4">
+      <footer className="border-t border-[var(--border-subtle)] bg-[var(--surface-muted)] p-2.5 sm:px-4">
         <RecordActions {...props} record={record} />
       </footer>
     </article>

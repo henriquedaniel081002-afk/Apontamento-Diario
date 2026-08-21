@@ -55,7 +55,7 @@ export function MetricPanels({ adherence, goal, auxiliary, operational }: Metric
       <div className="control-operational-grid" aria-label="Volumes programados e produzidos">
         <OperationalCard title="Programado Parcial" value={operational.partialProgrammed} description="Programado até o dia anterior" icon={CalendarRange} accent="blue" />
         <OperationalCard title="Produzido Parcial" value={operational.partialProduced} description="Produzido até o dia anterior" icon={CheckCircle2} trend={operational.partialProducedTrend} accent="green" />
-        <OperationalCard title="Programado Total" value={operational.totalProgrammed} description="Programação completa do mês" icon={Flag} accent="violet" />
+        <OperationalCard title="Programado Total" value={operational.totalProgrammed} description="Programação completa do mês" icon={Flag} accent="blue" />
       </div>
     </section>
   );
@@ -82,7 +82,7 @@ function AdherenceGauge({ value, trend }: { value: string; trend: MetricTrend })
 
       <div className="control-primary-card__body">
         <h3 id={titleId}>Aderência mensal</h3>
-        <span className={cn('control-primary-value', isPositive ? 'text-[#27d7a3]' : 'text-[#ef6764]')}>{value}</span>
+        <span className={cn('control-primary-value', isPositive ? 'positive' : 'negative')}>{value}</span>
         <TrendBadge trend={trend} />
         <div className="control-scale" aria-hidden="true">
           <span className="control-scale__fill control-scale__fill--green" style={{ width: `${progress}%` }} />
@@ -107,7 +107,7 @@ function GoalGauge({ value, percent }: { value: string; percent: number }) {
 
       <div className="control-primary-card__body">
         <h3 id={titleId}>Alcance de meta</h3>
-        <span className="control-primary-value text-[#3c95ff]">{value}</span>
+        <span className="control-primary-value control-primary-value--blue">{value}</span>
         <div className="control-scale" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={safePercent}>
           <span className="control-scale__fill control-scale__fill--blue" style={{ width: `${safePercent}%` }} />
         </div>
@@ -161,7 +161,7 @@ function OperationalCard({
   description: string;
   icon: LucideIcon;
   trend?: MetricTrend;
-  accent: 'blue' | 'green' | 'violet';
+  accent: 'blue' | 'green';
 }) {
   return (
     <article className={`control-operational-card control-operational-card--${accent}`}>

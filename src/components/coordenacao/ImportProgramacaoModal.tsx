@@ -88,10 +88,10 @@ export function ImportProgramacaoModal({ isOpen, onClose, onImport }: Props) {
 
       {preview && <>
         <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <div className="rounded-xl border border-white/10 bg-white/[0.035] p-3"><span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Mês</span><p className="mt-1 font-black text-white">{preview.mesReferencia.split('-').reverse().join('/')}</p></div>
-          <div className="rounded-xl border border-white/10 bg-white/[0.035] p-3"><span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Linhas do mês</span><p className="mt-1 font-black text-white">{preview.rowsMatched.toLocaleString('pt-BR')}</p></div>
-          <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/[0.06] p-3"><span className="text-[10px] font-black uppercase tracking-wider text-emerald-300/70">Programado</span><p className="mt-1 font-black text-emerald-200">{totalProgramado.toLocaleString('pt-BR')} un.</p></div>
-          <div className="rounded-xl border border-sky-400/20 bg-sky-400/[0.06] p-3"><span className="text-[10px] font-black uppercase tracking-wider text-sky-300/70">Consolidados</span><p className="mt-1 font-black text-sky-200">{preview.grupos.length.toLocaleString('pt-BR')}</p></div>
+          <div className="rounded-xl border border-white/10 bg-white/[0.035] p-3"><span className="text-xs font-black uppercase tracking-wider text-slate-500">Mês</span><p className="mt-1 font-black text-white">{preview.mesReferencia.split('-').reverse().join('/')}</p></div>
+          <div className="rounded-xl border border-white/10 bg-white/[0.035] p-3"><span className="text-xs font-black uppercase tracking-wider text-slate-500">Linhas do mês</span><p className="mt-1 font-black text-white">{preview.rowsMatched.toLocaleString('pt-BR')}</p></div>
+          <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/[0.06] p-3"><span className="text-xs font-black uppercase tracking-wider text-emerald-300/70">Programado</span><p className="mt-1 font-black text-emerald-200">{totalProgramado.toLocaleString('pt-BR')} un.</p></div>
+          <div className="rounded-xl border border-sky-400/20 bg-sky-400/[0.06] p-3"><span className="text-xs font-black uppercase tracking-wider text-sky-300/70">Consolidados</span><p className="mt-1 font-black text-sky-200">{preview.grupos.length.toLocaleString('pt-BR')}</p></div>
         </section>
         <div className="flex items-start gap-2 rounded-xl border border-emerald-400/20 bg-emerald-400/[0.05] p-3 text-xs leading-5 text-emerald-100/80">
           <CheckCircle2 className="mt-0.5 size-4 shrink-0"/>

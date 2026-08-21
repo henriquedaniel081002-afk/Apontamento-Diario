@@ -56,7 +56,7 @@ export function EpoxiDashboard({
   })();
 
   return (
-    <main className="epoxi-dashboard">
+    <section className="epoxi-dashboard" aria-label="Indicadores e detalhes do setor EPOXI">
       <section className="epoxi-heading">
         <div>
           <div className="epoxi-title-line"><h2>EPOXI</h2><span>•</span><strong>Linha: EPO</strong></div>
@@ -68,7 +68,7 @@ export function EpoxiDashboard({
       <section className="epoxi-kpis">
         <EpoxiKpi icon={Box} label="Produção total" value={fmt(calculado.totalProduzido)} suffix="unidades" tone="green" description="Total produzido no período" />
         <EpoxiKpi icon={CalendarDays} label="Dias com produção" value={fmt(calculado.diasComProducao)} suffix={calculado.diasComProducao === 1 ? 'dia' : 'dias'} tone="blue" description="Dias com pelo menos 1 registro de produção" />
-        <EpoxiKpi icon={UsersRound} label="Total de faltas" value={fmt(calculado.totalFaltas)} suffix={calculado.totalFaltas === 1 ? 'falta' : 'faltas'} tone="purple" description={turno==='Todos'?'Total de faltas no período':`Faltas do ${turno} turno`} />
+        <EpoxiKpi icon={UsersRound} label="Total de faltas" value={fmt(calculado.totalFaltas)} suffix={calculado.totalFaltas === 1 ? 'falta' : 'faltas'} tone="danger" description={turno==='Todos'?'Total de faltas no período':`Faltas do ${turno} turno`} />
         <EpoxiKpi icon={AlertTriangle} label="Total de ocorrências" value={fmt(calculado.obs.length)} suffix="ocorrências" tone="orange" description="Ocorrências registradas no período" />
       </section>
 
@@ -79,13 +79,13 @@ export function EpoxiDashboard({
             <span className="epoxi-view-pill">Visualização: <b>Diária</b></span>
           </div>
           <div className="epoxi-chart-wrap overflow-x-auto">
-            <div className="flex h-full min-w-[640px] items-end gap-1.5 px-2 pt-7">
+            <div className="epoxi-bars" style={{ minWidth: `clamp(42rem, ${calculado.porDia.length * 2.75}rem, 92rem)` }}>
               {calculado.porDia.map(item=>{
                 const max=Math.max(1,...calculado.porDia.map(r=>r.produzido));
                 const height=Math.max(item.produzido?6:0,(item.produzido/max)*155);
-                return <button key={item.data} type="button" disabled={!item.produzido} onClick={()=>item.produzido>0&&setDiaSelecionado(item.data)} className="flex min-w-[24px] flex-1 flex-col items-center justify-end gap-1 rounded-md px-0.5 hover:bg-white/[0.03] disabled:cursor-default">
-                  <div className="relative w-[70%] max-w-5 rounded-t-md bg-[#27d6a1] shadow-[0_0_12px_rgba(45,214,160,.24)]" style={{height,opacity:item.produzido>0?1:0}}>{item.produzido>0&&<span className="absolute -top-4 left-1/2 -translate-x-1/2 text-[8px] font-extrabold text-slate-200">{item.produzido}</span>}</div>
-                  <span className="text-[8px] font-bold text-slate-400">{item.dia}</span>
+                return <button key={item.data} type="button" disabled={!item.produzido} onClick={()=>item.produzido>0&&setDiaSelecionado(item.data)} className="epoxi-day-bar" aria-label={`${item.data}: ${fmt(item.produzido)} unidades produzidas${item.produzido>0?'. Abrir detalhes.':''}`}>
+                  <div className="epoxi-day-bar__column" style={{height,opacity:item.produzido>0?1:0}} aria-hidden="true">{item.produzido>0&&<span>{item.produzido}</span>}</div>
+                  <span className="epoxi-day-bar__label" aria-hidden="true">{item.dia}</span>
                 </button>;
               })}
             </div>
@@ -107,25 +107,25 @@ export function EpoxiDashboard({
 
       <section className="epoxi-tables">
         <EpoxiTable title="Detalhes de produção" subtitle="Registros de produção do período" icon={ClipboardList} columns={['Data','Potência','Linha','Quantidade']} empty="Nenhum registro de produção no período.">
-          {calculado.producao.map((r,i)=><div className="epoxi-table-row epoxi-table-row--production" key={`${r.data}-${r.potencia}-${i}`}><span>{fmtDate(r.data)}</span><span>{r.potencia} kVA</span><span>{r.linha}</span><strong>{fmt(Number(r.quantidade||0))}</strong></div>)}
+          {calculado.producao.map((r,i)=><tr key={`${r.data}-${r.potencia}-${i}`}><td>{fmtDate(r.data)}</td><td>{r.potencia} kVA</td><td>{r.linha}</td><td><strong>{fmt(Number(r.quantidade||0))}</strong></td></tr>)}
         </EpoxiTable>
 
         <EpoxiTable title="Faltas" subtitle="Faltas registradas no período" icon={UsersRound} columns={['Data','Turno','Quantidade']} empty="Nenhuma falta registrada no período.">
-          {calculado.faltasFiltradas.map((r,i)=><div className="epoxi-table-row epoxi-table-row--absence" key={`${r.data}-${r.turno}-${i}`}><span>{fmtDate(r.data)}</span><span>{r.turno} turno</span><strong>{fmt(Number(r.quantidade||0))}</strong></div>)}
+          {calculado.faltasFiltradas.map((r,i)=><tr key={`${r.data}-${r.turno}-${i}`}><td>{fmtDate(r.data)}</td><td>{r.turno} turno</td><td><strong>{fmt(Number(r.quantidade||0))}</strong></td></tr>)}
         </EpoxiTable>
 
         <EpoxiTable title="Ocorrências / observações" subtitle="Ocorrências registradas no período" icon={AlertTriangle} columns={['Data','Descrição']} empty="Nenhuma ocorrência registrada no período.">
-          {calculado.obs.map((r,i)=><div className="epoxi-table-row epoxi-table-row--notes" key={`${r.data}-${i}`}><span>{fmtDate(r.data)}</span><span>{r.observacao ?? r.texto ?? '—'}</span></div>)}
+          {calculado.obs.map((r,i)=><tr key={`${r.data}-${i}`}><td>{fmtDate(r.data)}</td><td>{r.observacao ?? r.texto ?? '—'}</td></tr>)}
         </EpoxiTable>
       </section>
 
       {diaSelecionado && <EpoxiDayDetailModal data={diaSelecionado} detalhes={detalhes} faltas={faltas} observacoes={observacoes} turno={turno} onClose={()=>setDiaSelecionado(null)}/>}      
-    </main>
+    </section>
   );
 }
 
 type IconType = typeof Box;
-function EpoxiKpi({icon:Icon,label,value,suffix,tone,description}:{icon:IconType;label:string;value:string;suffix:string;tone:'green'|'blue'|'purple'|'orange';description:string}) {
+function EpoxiKpi({icon:Icon,label,value,suffix,tone,description}:{icon:IconType;label:string;value:string;suffix:string;tone:'green'|'blue'|'danger'|'orange';description:string}) {
   return <article className={`epoxi-kpi epoxi-kpi--${tone}`}>
     <div className="epoxi-kpi-icon"><Icon className="size-6"/></div>
     <div><span>{label}</span><div className="epoxi-kpi-value"><strong>{value}</strong><b>{suffix}</b></div><p>{description}</p></div>
@@ -136,7 +136,11 @@ function EpoxiTable({title,subtitle,icon:Icon,columns,children,empty}:{title:str
   const count = Array.isArray(children) ? children.length : children ? 1 : 0;
   return <article className="epoxi-panel epoxi-table-card">
     <div className="epoxi-table-title"><Icon className="size-4"/><div><h3>{title}</h3><p>{subtitle}</p></div></div>
-    <div className={`epoxi-table-head epoxi-table-head--${columns.length}`}>{columns.map(c=><span key={c}>{c}</span>)}</div>
-    <div className="epoxi-table-body">{count ? children : <div className="epoxi-table-empty">{empty}</div>}</div>
+    <div className="epoxi-table-scroll" tabIndex={0} role="region" aria-label={title}>
+      <table className="epoxi-table">
+        <thead><tr>{columns.map(c=><th scope="col" key={c}>{c}</th>)}</tr></thead>
+        <tbody>{count ? children : <tr><td className="epoxi-table-empty" colSpan={columns.length}>{empty}</td></tr>}</tbody>
+      </table>
+    </div>
   </article>;
 }

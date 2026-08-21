@@ -7,6 +7,7 @@ import { DayDetailModal } from '../components/DayDetailModal';
 import { EpoxiDashboard } from './EpoxiDashboard';
 import type { EvolutionItem } from '../components/Charts';
 import type { DashboardData } from '../types';
+import { PageHeader } from '../../components/common/ui';
 
 const mesesNomes = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 const mesLabel = (ym:string) => { const [a,m]=ym.split('-').map(Number); return `${mesesNomes[m-1]} de ${a}`; };
@@ -75,13 +76,12 @@ export function MonthlyDashboard({ dados }: { dados: DashboardData }) {
     <div className="dashboard-shell">
       <div className="dashboard-scrollbar min-h-0 flex-1 overflow-y-auto">
         <div className="dashboard-content">
-          <div className="mb-1 flex flex-col gap-1 px-0.5 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-emerald-400">Dashboard integrado</p>
-              <h1 className="text-xl font-black tracking-tight text-white sm:text-2xl">Aderência Mensal</h1>
-            </div>
-            <p className="text-[11px] font-semibold text-slate-500">Atualizado em {new Date(dados.geradoEm).toLocaleString('pt-BR')}</p>
-          </div>
+          <PageHeader
+            eyebrow="Dashboard integrado"
+            title="Aderência Mensal"
+            description="Acompanhamento do programado e produzido com os mesmos critérios operacionais do sistema."
+            actions={<p className="dashboard-heading__updated">Atualizado em <time dateTime={dados.geradoEm}>{new Date(dados.geradoEm).toLocaleString('pt-BR')}</time></p>}
+          />
 
           <FilterBar onClear={limpar} clearDisabled={!filtrosAtivos}>
             <FilterSelect id="filtro-mes" label="Mês" options={dados.periodo.meses.length ? dados.periodo.meses : [defaultMes]} selected={mes} onSelect={setMes} formatOption={mesLabel} active={mes !== defaultMes} />
@@ -99,7 +99,7 @@ export function MonthlyDashboard({ dados }: { dados: DashboardData }) {
               observacoes={dados.observacoes ?? []}
             />
           ) : (
-            <main className="dashboard-main">
+            <section className="dashboard-main" aria-label="Indicadores e evolução mensal">
               <MetricPanels
                 adherence={{ value: calculado.programadoParcial?formatPct(calculado.aderenciaMensal):'—', trend: calculado.aderenciaMensal>=100?'up':'down' }}
                 goal={{ value: calculado.programadoTotal?formatPct(calculado.alcanceMeta):'—', percent: Math.min(calculado.alcanceMeta,100) }}
@@ -117,7 +117,7 @@ export function MonthlyDashboard({ dados }: { dados: DashboardData }) {
                 }}
               />
               <EvolutionChart data={calculado.porDia} mesLabel={mesLabel(mes)} onDayClick={setDiaSelecionado} />
-            </main>
+            </section>
           )}
         </div>
       </div>

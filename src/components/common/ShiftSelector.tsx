@@ -29,7 +29,7 @@ export const ShiftSelector: React.FC<ShiftSelectorProps> = ({
               onClick={() => onChange(shift)}
               aria-pressed={isSelected}
               className={cx(
-                'min-h-10 rounded-lg px-3 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300',
+                'min-h-11 rounded-lg px-3 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300',
                 isSelected
                   ? 'bg-emerald-400 text-emerald-950 shadow-sm'
                   : 'text-slate-400 hover:bg-white/[0.07] hover:text-white',

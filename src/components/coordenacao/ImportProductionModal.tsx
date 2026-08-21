@@ -223,19 +223,19 @@ export function ImportProductionModal({ isOpen, onClose, onImport }: ImportProdu
           <>
             <section className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 lg:grid-cols-4" aria-label="Resumo da leitura">
               <div className="rounded-xl border border-white/10 bg-white/[0.035] p-3">
-                <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Data</p>
+                <p className="text-xs font-black uppercase tracking-wider text-slate-500">Data</p>
                 <p className="mt-1 text-sm font-black text-slate-100">{formatDateBR(preview.data)}</p>
               </div>
               <div className="rounded-xl border border-white/10 bg-white/[0.035] p-3">
-                <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Linhas encontradas</p>
+                <p className="text-xs font-black uppercase tracking-wider text-slate-500">Linhas encontradas</p>
                 <p className="mt-1 text-sm font-black text-slate-100">{preview.rowsMatched.toLocaleString('pt-BR')}</p>
               </div>
               <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/[0.06] p-3">
-                <p className="text-[10px] font-black uppercase tracking-wider text-emerald-300/70">Produção válida</p>
+                <p className="text-xs font-black uppercase tracking-wider text-emerald-300/70">Produção válida</p>
                 <p className="mt-1 text-sm font-black text-emerald-200">{totalQuantidade.toLocaleString('pt-BR')} un.</p>
               </div>
               <div className="rounded-xl border border-amber-400/20 bg-amber-400/[0.06] p-3">
-                <p className="text-[10px] font-black uppercase tracking-wider text-amber-300/70">A revisar</p>
+                <p className="text-xs font-black uppercase tracking-wider text-amber-300/70">A revisar</p>
                 <p className="mt-1 text-sm font-black text-amber-200">{unresolved.length + sectorIssues.length}</p>
               </div>
             </section>
@@ -277,7 +277,7 @@ export function ImportProductionModal({ isOpen, onClose, onImport }: ImportProdu
                             ...current,
                             [issue.id]: (value || undefined) as Linha | undefined,
                           }))}
-                          className="min-h-10 text-xs font-black"
+                          className="min-h-11 text-xs font-black"
                           ariaLabel={`Corrigir linha de ${issue.setorOriginal}, potência ${formatPotencia(issue.potencia)}`}
                           options={[
                             { value: '', label: 'Selecionar linha…' },

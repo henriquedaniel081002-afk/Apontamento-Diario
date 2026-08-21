@@ -1,4 +1,5 @@
-import { AlertTriangle, Box, CalendarDays, UsersRound, X } from 'lucide-react';
+import { AlertTriangle, Box, UsersRound } from 'lucide-react';
+import { ModalShell } from '../../components/common/ModalShell';
 import type { DetalheProducao, Falta, Observacao } from './DayDetailModal';
 
 const fmt = (value:number) => Math.round(value).toLocaleString('pt-BR');
@@ -27,24 +28,24 @@ export function EpoxiDayDetailModal({data,detalhes,faltas,observacoes,turno,onCl
   const totalProducao=potencias.reduce((acc,r)=>acc+r.quantidade,0);
   const totalFaltas=faltasDia.reduce((acc,r)=>acc+Number(r.quantidade||0),0);
 
-  return <div className="epoxi-modal-backdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}>
-    <section className="epoxi-day-modal" role="dialog" aria-modal="true" aria-label={`Detalhes do EPOXI em ${formatDate(data)}`}>
-      <header className="epoxi-day-modal-header">
-        <div>
-          <span><CalendarDays className="size-4"/> Detalhes do dia</span>
-          <h2>{formatDate(data)}</h2>
-          <p><b>EPOXI</b><i/>Linha: EPO{turno!=='Todos'&&<><i/>{turno} turno</>}</p>
-        </div>
-        <button type="button" onClick={onClose} aria-label="Fechar"><X className="size-5"/></button>
-      </header>
-
-      <div className="epoxi-day-modal-body">
+  return <ModalShell
+    isOpen
+    onClose={onClose}
+    size="lg"
+    presentation="drawer"
+    title={formatDate(data)}
+    description={`EPOXI • Linha EPO${turno!=='Todos'?` • ${turno} turno`:''}`}
+    closeLabel="Fechar detalhes do EPOXI"
+    className="epoxi-day-modal"
+    footer={<div className="epoxi-day-modal-footer"><button type="button" onClick={onClose}>Fechar</button></div>}
+  >
+      <div className="epoxi-day-modal-body" aria-label="Detalhes do dia no setor EPOXI">
         <section className="epoxi-day-section">
           <div className="epoxi-day-section-title"><Box className="size-4"/><h3>Produção</h3><span>{fmt(totalProducao)} un.</span></div>
-          {potencias.length ? <div className="epoxi-day-table">
-            <div className="epoxi-day-table-head"><span>Potência</span><span>Linha</span><span>Quantidade</span></div>
-            {potencias.map(r=><div className="epoxi-day-table-row" key={r.potencia}><span>{r.potencia} kVA</span><span>EPO</span><strong>{fmt(r.quantidade)}</strong></div>)}
-          </div> : <Empty text="Nenhuma produção registrada."/>}
+          {potencias.length ? <div className="epoxi-table-scroll"><table className="epoxi-day-table">
+            <thead><tr><th scope="col">Potência</th><th scope="col">Linha</th><th scope="col">Quantidade</th></tr></thead>
+            <tbody>{potencias.map(r=><tr key={r.potencia}><td>{r.potencia} kVA</td><td>EPO</td><td><strong>{fmt(r.quantidade)}</strong></td></tr>)}</tbody>
+          </table></div> : <Empty text="Nenhuma produção registrada."/>}
         </section>
 
         <section className="epoxi-day-section">
@@ -57,8 +58,6 @@ export function EpoxiDayDetailModal({data,detalhes,faltas,observacoes,turno,onCl
           {obsDia.length ? <div className="epoxi-day-notes">{obsDia.map((r,i)=><div key={i}>{r.observacao ?? r.texto ?? '—'}</div>)}</div> : <Empty text="Nenhuma ocorrência registrada."/>}
         </section>
       </div>
-      <footer className="epoxi-day-modal-footer"><button type="button" onClick={onClose}>Fechar</button></footer>
-    </section>
-  </div>;
+  </ModalShell>;
 }
 function Empty({text}:{text:string}){return <div className="epoxi-day-empty">{text}</div>}

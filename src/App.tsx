@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { LoaderCircle } from 'lucide-react';
 import { User } from './types';
 import { authService } from './services/authService';
 import {
@@ -15,6 +14,7 @@ import { HistoricoPage } from './pages/HistoricoPage';
 import { CoordenacaoPage } from './pages/CoordenacaoPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { Header } from './components/common/Header';
+import { AppShell, LoadingState } from './components/common/ui';
 
 type AppTab = 'apontamento' | 'historico' | 'dashboard';
 
@@ -145,14 +145,13 @@ export default function App() {
 
   if (isInitializing) {
     return (
-      <div
-        role="status"
-        aria-live="polite"
-        className="flex min-h-[100dvh] flex-col items-center justify-center gap-3 bg-[#050806] text-sm font-semibold text-slate-400"
-      >
-        <LoaderCircle className="size-6 animate-spin text-emerald-300" aria-hidden="true" />
-        <span>Carregando sistema ITAM...</span>
-      </div>
+      <AppShell className="flex items-center justify-center px-4">
+        <LoadingState
+          label="Carregando sistema ITAM..."
+          description="Preparando sua sessão e o contexto operacional."
+          className="w-full max-w-md"
+        />
+      </AppShell>
     );
   }
 
@@ -169,7 +168,7 @@ export default function App() {
   const isCoordenacao = currentUser.perfil === 'COORDENACAO';
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-transparent font-sans text-slate-100 antialiased selection:bg-emerald-400/20 selection:text-emerald-50">
+    <AppShell className="flex flex-col bg-transparent font-sans text-slate-100 antialiased selection:bg-emerald-400/20 selection:text-emerald-50">
       <Header
         user={currentUser}
         activeTab={activeTab}
@@ -190,9 +189,9 @@ export default function App() {
         )}
       </main>
 
-      <footer className="border-t border-emerald-300/[0.06] bg-[#030605] px-4 py-4 text-center text-xs text-slate-600">
+      <footer className="border-t border-[var(--border-subtle)] bg-[var(--surface-raised)] px-4 py-4 text-center text-xs text-[var(--text-tertiary)]">
         <p>ITAM — Sistema de Apontamento Diário de Produção © {new Date().getFullYear()}</p>
       </footer>
-    </div>
+    </AppShell>
   );
 }

@@ -3,6 +3,9 @@ import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cx } from './ui';
 
+export type ModalSize = 'sm' | 'md' | 'lg' | 'xl' | '2xl';
+export type ModalPresentation = 'dialog' | 'drawer';
+
 export interface ModalShellProps {
   isOpen: boolean;
   onClose: () => void;
@@ -10,7 +13,8 @@ export interface ModalShellProps {
   description?: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: ModalSize;
+  presentation?: ModalPresentation;
   closeLabel?: string;
   busy?: boolean;
   initialFocusRef?: React.RefObject<HTMLElement | null>;
@@ -23,6 +27,7 @@ const sizeClasses: Record<NonNullable<ModalShellProps['size']>, string> = {
   md: 'max-w-xl',
   lg: 'max-w-3xl',
   xl: 'max-w-5xl',
+  '2xl': 'max-w-7xl',
 };
 
 const focusableSelector = [
@@ -35,6 +40,7 @@ const focusableSelector = [
 ].join(',');
 
 const openModalStack: string[] = [];
+let originalBodyOverflow: string | null = null;
 
 export function ModalShell({
   isOpen,
@@ -44,6 +50,7 @@ export function ModalShell({
   children,
   footer,
   size = 'md',
+  presentation = 'dialog',
   closeLabel = 'Fechar janela',
   busy = false,
   initialFocusRef,
@@ -64,7 +71,7 @@ export function ModalShell({
     if (!isOpen) return undefined;
 
     const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const previousOverflow = document.body.style.overflow;
+    if (openModalStack.length === 0) originalBodyOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     openModalStack.push(modalInstanceId);
 
@@ -114,9 +121,12 @@ export function ModalShell({
     return () => {
       window.clearTimeout(focusTimer);
       document.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = previousOverflow;
       const stackIndex = openModalStack.lastIndexOf(modalInstanceId);
       if (stackIndex >= 0) openModalStack.splice(stackIndex, 1);
+      if (openModalStack.length === 0) {
+        document.body.style.overflow = originalBodyOverflow || '';
+        originalBodyOverflow = null;
+      }
       previouslyFocused?.focus();
     };
   }, [initialFocusRef, isOpen, modalInstanceId]);
@@ -125,7 +135,13 @@ export function ModalShell({
 
   const modal = (
     <div
-      className="modal-overlay ui-fade-in fixed inset-0 z-[100] flex h-[100dvh] min-h-0 w-screen max-w-full items-end justify-center overflow-hidden bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-3 lg:p-4"
+      className={cx(
+        'modal-overlay ui-fade-in fixed inset-0 z-[100] flex h-[100dvh] min-h-0 w-screen max-w-full overflow-hidden bg-black/75 backdrop-blur-sm',
+        presentation === 'drawer'
+          ? 'modal-overlay--drawer items-stretch justify-end'
+          : 'items-end justify-center sm:items-center',
+      )}
+      data-presentation={presentation}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !busy) onClose();
       }}
@@ -139,7 +155,10 @@ export function ModalShell({
         aria-busy={busy || undefined}
         tabIndex={-1}
         className={cx(
-          'modal-dialog ui-slide-up flex h-auto max-h-[100dvh] w-full min-w-0 flex-col overflow-hidden rounded-t-2xl border border-white/12 bg-[#0c120e] shadow-[0_30px_90px_rgba(0,0,0,0.55)] outline-none sm:max-h-[calc(100dvh-1.5rem)] sm:rounded-2xl lg:max-h-[calc(100dvh-2rem)]',
+          'modal-dialog flex w-full min-w-0 flex-col overflow-hidden border border-white/12 bg-[#0c120e] shadow-[0_30px_90px_rgba(0,0,0,0.55)] outline-none',
+          presentation === 'drawer'
+            ? 'modal-dialog--drawer ui-slide-left h-[100dvh] max-h-[100dvh] rounded-none border-y-0 border-r-0 sm:rounded-l-2xl'
+            : 'ui-slide-up h-auto max-h-[100dvh] rounded-t-2xl sm:max-h-[calc(100dvh-1.5rem)] sm:rounded-2xl lg:max-h-[calc(100dvh-2rem)]',
           sizeClasses[size],
           className,
         )}
@@ -160,7 +179,7 @@ export function ModalShell({
             onClick={onClose}
             disabled={busy}
             aria-label={closeLabel}
-            className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-transparent text-slate-400 transition-colors hover:border-white/10 hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 disabled:cursor-not-allowed disabled:opacity-40 sm:size-11"
+            className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-transparent text-slate-400 transition-colors hover:border-white/10 hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <X className="size-5" aria-hidden="true" />
           </button>

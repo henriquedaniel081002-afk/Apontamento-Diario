@@ -2,13 +2,13 @@ import type { ReactNode } from 'react';
 import {
   Box,
   CalendarDays,
-  ChevronDown,
   Clock3,
   Funnel,
   RotateCcw,
   SlidersHorizontal,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { CustomSelect } from '../../components/common/CustomSelect';
 import { cn } from '../lib/utils';
 
 type FilterSelectProps = {
@@ -88,18 +88,15 @@ export function FilterSelect({
           )}
           aria-hidden="true"
         />
-        <select
+        <CustomSelect
           id={id}
           value={selected}
-          onChange={(event) => onSelect?.(event.target.value)}
-          data-active={activeState || undefined}
-          className="dashboard-filter__select"
-        >
-          {options.map((option) => (
-            <option key={option} value={option}>{formatOption(option)}</option>
-          ))}
-        </select>
-        <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 size-4 -translate-y-1/2 text-text-secondary" aria-hidden="true" />
+          onChange={(value) => onSelect?.(value)}
+          options={options.map((option) => ({ value: option, label: formatOption(option) }))}
+          ariaLabel={label}
+          active={activeState}
+          className="dashboard-filter__select pl-10"
+        />
       </div>
     </div>
   );

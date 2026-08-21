@@ -75,7 +75,7 @@ export const ToastViewport: React.FC<ToastProps> = ({ toast, onClose, duration =
                 toast.action?.onClick();
                 onClose();
               }}
-              className="mt-2 min-h-8 rounded-lg px-1 text-xs font-extrabold text-current underline decoration-current/40 underline-offset-4 hover:decoration-current focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+              className="mt-2 min-h-11 rounded-lg px-2 text-xs font-extrabold text-current underline decoration-current/40 underline-offset-4 hover:decoration-current focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
             >
               {toast.action.label}
             </button>
@@ -85,7 +85,7 @@ export const ToastViewport: React.FC<ToastProps> = ({ toast, onClose, duration =
           type="button"
           onClick={onClose}
           aria-label="Fechar notificação"
-          className="-m-2 flex size-10 shrink-0 items-center justify-center rounded-xl text-current/65 transition-colors hover:bg-white/[0.08] hover:text-current focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+          className="-m-2 flex size-11 shrink-0 items-center justify-center rounded-xl text-current/65 transition-colors hover:bg-white/[0.08] hover:text-current focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
         >
           <X className="size-4" aria-hidden="true" />
         </button>

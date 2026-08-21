@@ -60,19 +60,19 @@ export const DetailModal: React.FC<Props> = ({ apontamento, isOpen, onClose }) =
       <div className="min-w-0 space-y-4">
         <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 lg:grid-cols-4">
           <Surface tone="muted" padding="sm" className="min-w-0">
-            <p className="text-[10px] font-black uppercase text-slate-500">Produção</p>
+            <p className="text-xs font-black uppercase text-slate-500">Produção</p>
             <p className="mt-1 text-xl font-black text-slate-100">{totals.producao}</p>
           </Surface>
           <Surface tone="muted" padding="sm" className="min-w-0">
-            <p className="text-[10px] font-black uppercase text-slate-500">Ocorrências</p>
+            <p className="text-xs font-black uppercase text-slate-500">Ocorrências</p>
             <p className="mt-1 text-xl font-black text-slate-100">{material.length + maquina.length + nc.length + apontamento.faltas.length + apontamento.observacoes.length}</p>
           </Surface>
           <Surface tone="muted" padding="sm" className="min-w-0">
-            <p className="text-[10px] font-black uppercase text-slate-500">Status</p>
+            <p className="text-xs font-black uppercase text-slate-500">Status</p>
             <p className={`mt-1 text-sm font-black text-slate-100 ${textWrapClass}`}>{apontamento.statusAprovacao || 'PENDENTE'}</p>
           </Surface>
           <Surface tone="muted" padding="sm" className="min-w-0">
-            <p className="text-[10px] font-black uppercase text-slate-500">Atualizado</p>
+            <p className="text-xs font-black uppercase text-slate-500">Atualizado</p>
             <p className={`mt-1 text-xs font-bold text-slate-200 ${textWrapClass}`}>{formattedUpdate}</p>
           </Surface>
         </div>

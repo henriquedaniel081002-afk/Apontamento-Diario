@@ -17,6 +17,12 @@ interface CustomSelectProps {
   ariaLabel?: string;
   ariaLabelledBy?: string;
   disabled?: boolean;
+  active?: boolean;
+  autoFocus?: boolean;
+  ariaInvalid?: boolean;
+  ariaDescribedBy?: string;
+  'aria-invalid'?: React.AriaAttributes['aria-invalid'];
+  'aria-describedby'?: string;
   className?: string;
   menuClassName?: string;
   placeholder?: string;
@@ -30,6 +36,12 @@ export function CustomSelect({
   ariaLabel,
   ariaLabelledBy,
   disabled = false,
+  active = false,
+  autoFocus = false,
+  ariaInvalid,
+  ariaDescribedBy,
+  'aria-invalid': ariaInvalidAttribute,
+  'aria-describedby': ariaDescribedByAttribute,
   className,
   menuClassName,
   placeholder = 'Selecione',
@@ -180,9 +192,14 @@ export function CustomSelect({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listboxId}
+        aria-activedescendant={open ? `${listboxId}-option-${highlightedIndex}` : undefined}
         aria-label={ariaLabel}
         aria-labelledby={ariaLabelledBy}
+        aria-invalid={ariaInvalid ?? ariaInvalidAttribute}
+        aria-describedby={ariaDescribedBy || ariaDescribedByAttribute}
+        data-active={active || undefined}
         disabled={disabled}
+        autoFocus={autoFocus}
         onClick={() => {
           if (open) setOpen(false);
           else openMenu();
@@ -207,7 +224,7 @@ export function CustomSelect({
           aria-labelledby={ariaLabelledBy}
           style={{ maxHeight: `${menuMaxHeight}px` }}
           className={cx(
-            'absolute z-[70] w-full overflow-y-auto rounded-xl border border-emerald-400/20 bg-[#07100B] p-1.5 shadow-[0_20px_55px_rgba(0,0,0,0.62)] ring-1 ring-black/30',
+            'absolute z-[70] w-full overflow-y-auto rounded-xl border border-[var(--border-strong)] bg-[var(--surface-overlay)] p-1.5 shadow-[var(--shadow-overlay)] ring-1 ring-black/30',
             placement === 'up' ? 'bottom-full mb-2' : 'mt-2',
             menuClassName,
           )}
@@ -218,6 +235,7 @@ export function CustomSelect({
             return (
               <button
                 key={`${option.value}-${index}`}
+                id={`${listboxId}-option-${index}`}
                 ref={(node) => { optionRefs.current[index] = node; }}
                 type="button"
                 role="option"
@@ -226,7 +244,7 @@ export function CustomSelect({
                 onMouseEnter={() => !option.disabled && setHighlightedIndex(index)}
                 onClick={() => choose(option)}
                 className={cx(
-                  'flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300',
+                  'flex min-h-11 w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]',
                   isSelected
                     ? 'bg-emerald-400/12 text-emerald-100'
                     : isHighlighted
@@ -238,7 +256,7 @@ export function CustomSelect({
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-bold">{option.label}</span>
                   {option.description && (
-                    <span className="mt-0.5 block truncate text-[11px] font-medium text-slate-500">
+                    <span className="mt-0.5 block truncate text-xs font-medium text-[var(--text-tertiary)]">
                       {option.description}
                     </span>
                   )}

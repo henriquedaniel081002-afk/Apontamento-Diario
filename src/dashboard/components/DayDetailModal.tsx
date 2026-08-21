@@ -10,8 +10,8 @@ import {
   UserRound,
   UsersRound,
   Wrench,
-  X,
 } from 'lucide-react';
+import { ModalShell } from '../../components/common/ModalShell';
 import type { EvolutionItem } from './Charts';
 
 export type DetalheProducao = { data:string; linha:string; setor:string; potencia:number|string; quantidade:number };
@@ -175,24 +175,27 @@ export function DayDetailModal({
 
   const ProductionCard=({full=false}:{full?:boolean}) => <article className={`day-detail-card day-detail-production${full?' day-detail-card--full':''}`}>
     <div className="day-detail-card-title"><Gauge className="size-4"/><div><h3>Produção por potência</h3><p>Composição do volume produzido no dia</p></div><b>{fmt(totalDetalhado)}</b></div>
-    {potenciaRows.length ? <div className="day-detail-table">
-      <div className="day-detail-table-head"><span>Potência</span><span className="day-detail-line">Linha</span><span>Produzido</span></div>
-      {potenciaRows.map(r=><div className="day-detail-table-row" key={`${r.potencia}-${r.linha}`}><span>{r.potencia} kVA</span><span className="day-detail-line">{r.linha}</span><strong>{fmt(r.quantidade)}</strong></div>)}
-      <div className="day-detail-table-total"><span>Total detalhado</span><span/><strong>{fmt(totalDetalhado)}</strong></div>
+    {potenciaRows.length ? <div className="day-detail-table-scroll" tabIndex={0} role="region" aria-label="Produção por potência">
+      <table className="day-detail-table">
+        <thead><tr><th scope="col">Potência</th><th scope="col" className="day-detail-line">Linha</th><th scope="col">Produzido</th></tr></thead>
+        <tbody>{potenciaRows.map(r=><tr key={`${r.potencia}-${r.linha}`}><td>{r.potencia} kVA</td><td className="day-detail-line">{r.linha}</td><td><strong>{fmt(r.quantidade)}</strong></td></tr>)}</tbody>
+        <tfoot><tr><th scope="row">Total detalhado</th><td/><td><strong>{fmt(totalDetalhado)}</strong></td></tr></tfoot>
+      </table>
     </div> : <Empty text="Nenhum detalhamento por potência registrado para este dia."/>}
   </article>;
 
-  return <div className="day-detail-backdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}>
-    <section className="day-detail-modal" role="dialog" aria-modal="true" aria-label={`Detalhamento de ${formatDate(item.data)}`}>
-      <header className="day-detail-header">
-        <div>
-          <span className="day-detail-eyebrow"><CalendarDays className="size-4"/> Detalhamento diário</span>
-          <h2>{formatDate(item.data)}</h2>
-          <p>{setor} <i/> {linha==='Todas'?'Todas as linhas':linha} {turno!=='Todos' && <><i/> {turno} turno</>}</p>
-        </div>
-        <button type="button" onClick={onClose} aria-label="Fechar detalhamento"><X className="size-5"/></button>
-      </header>
-
+  return <ModalShell
+    isOpen
+    onClose={onClose}
+    size="2xl"
+    title={formatDate(item.data)}
+    description={`${setor} • ${linha==='Todas'?'Todas as linhas':linha}${turno!=='Todos'?` • ${turno} turno`:''}`}
+    closeLabel="Fechar detalhamento diário"
+    className="day-detail-modal"
+    footer={<footer className="day-detail-footer"><Factory className="size-3.5" aria-hidden="true"/> Dados consolidados para os filtros selecionados no dashboard.</footer>}
+  >
+    <section aria-label="Detalhamento diário">
+      <span className="day-detail-eyebrow"><CalendarDays className="size-4" aria-hidden="true"/> Detalhamento diário</span>
       <div className="day-detail-body">
         <div className="day-detail-kpis">
           <article><span>Programado</span><strong>{fmt(item.programado)}</strong></article>
@@ -210,8 +213,18 @@ export function DayDetailModal({
               type="button"
               role="tab"
               aria-selected={selected}
+              tabIndex={selected ? 0 : -1}
               className={selected?'active':''}
               onClick={()=>setActiveTab(tab.id)}
+              onKeyDown={(event)=>{
+                if (event.key!=='ArrowRight' && event.key!=='ArrowLeft' && event.key!=='Home' && event.key!=='End') return;
+                event.preventDefault();
+                const current=tabs.findIndex(item=>item.id===tab.id);
+                const next=event.key==='Home'?0:event.key==='End'?tabs.length-1:event.key==='ArrowRight'?(current+1)%tabs.length:(current-1+tabs.length)%tabs.length;
+                setActiveTab(tabs[next].id);
+                const buttons=event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]');
+                buttons?.[next]?.focus();
+              }}
             >
               <Icon className="size-3.5"/>
               <span>{tab.label}</span>
@@ -333,9 +346,8 @@ export function DayDetailModal({
           </div>}
         </div>
       </div>
-      <footer className="day-detail-footer"><Factory className="size-3.5"/> Dados consolidados para os filtros selecionados no dashboard.</footer>
     </section>
-  </div>;
+  </ModalShell>;
 }
 
 function Empty({text}:{text:string}){return <div className="day-detail-empty">{text}</div>}

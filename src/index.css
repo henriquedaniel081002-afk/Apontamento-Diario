@@ -1,18 +1,18 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg-main: #030a14;
-  --color-bg-elevated: #07111e;
-  --color-bg-card: #081422;
-  --color-bg-card-hover: #0b1a2b;
-  --color-border-subtle: #17283b;
-  --color-border-strong: #263a51;
-  --color-text-primary: #f4f7fb;
-  --color-text-secondary: #91a0b2;
-  --color-status-success: #19c99a;
-  --color-status-danger: #ef5350;
-  --color-status-planned: #22c55e;
-  --color-status-warning: #e9aa19;
+  --color-bg-main: #030605;
+  --color-bg-elevated: #0a100d;
+  --color-bg-card: #0c130f;
+  --color-bg-card-hover: #111b15;
+  --color-border-subtle: #1b2821;
+  --color-border-strong: #2d4035;
+  --color-text-primary: #f5f8f6;
+  --color-text-secondary: #aab8b0;
+  --color-status-success: #34d399;
+  --color-status-danger: #fb7185;
+  --color-status-planned: #60a5fa;
+  --color-status-warning: #fbbf24;
 }
 
 :root {
@@ -28,6 +28,7 @@
   --surface-base: #0a100d;
   --surface-muted: #070c09;
   --surface-raised: #0e1712;
+  --surface-overlay: #0c120e;
   --surface-hover: rgba(255, 255, 255, 0.065);
   --border-subtle: rgba(196, 255, 222, 0.10);
   --border-strong: rgba(196, 255, 222, 0.18);
@@ -40,18 +41,30 @@
   --accent-strong: #009b57;
   --accent-soft: rgba(0, 199, 111, 0.10);
   --accent-border: rgba(0, 199, 111, 0.30);
+  --success: #34d399;
+  --success-soft: rgba(52, 211, 153, 0.10);
+  --success-border: rgba(52, 211, 153, 0.28);
   --warning: #fbbf24;
   --warning-soft: rgba(251, 191, 36, 0.1);
   --warning-border: rgba(251, 191, 36, 0.28);
   --danger: #fb7185;
   --danger-soft: rgba(251, 113, 133, 0.1);
   --danger-border: rgba(251, 113, 133, 0.28);
-  --info: #7dd3fc;
+  --info: #60a5fa;
+  --info-soft: rgba(96, 165, 250, 0.10);
+  --info-border: rgba(96, 165, 250, 0.28);
+
+  --chart-planned: #60a5fa;
+  --chart-produced-positive: #34d399;
+  --chart-produced-negative: #fb7185;
 
   --radius-sm: 0.5rem;
   --radius-md: 0.75rem;
   --radius-lg: 1rem;
   --radius-xl: 1.35rem;
+  --space-page: clamp(1rem, 2vw, 2rem);
+  --container-max: 90rem;
+  --container-gutter: clamp(0.75rem, 2vw, 2rem);
   --shadow-surface: 0 18px 55px rgba(0, 0, 0, 0.30);
   --shadow-overlay: 0 34px 100px rgba(0, 0, 0, 0.62);
   --glow-accent: 0 0 0 1px rgba(0, 199, 111, 0.04), 0 18px 60px rgba(0, 199, 111, 0.06);
@@ -80,6 +93,7 @@ body {
     linear-gradient(90deg, rgba(255,255,255,0.011) 1px, transparent 1px),
     var(--canvas);
   background-size: auto, auto, 42px 42px, 42px 42px, auto;
+  background-attachment: fixed;
   color: var(--text-primary);
   font-size: 16px;
   line-height: 1.5;
@@ -90,6 +104,35 @@ body {
   min-width: 0;
   min-height: 100vh;
   overflow-x: clip;
+}
+
+.app-shell {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.app-container {
+  width: 100%;
+  max-width: var(--app-container-max, var(--container-max));
+  margin-inline: auto;
+  padding-inline: var(--container-gutter);
+}
+
+.app-container--default {
+  --app-container-max: 90rem;
+}
+
+.app-container--narrow {
+  --app-container-max: 64rem;
+}
+
+.app-container--wide {
+  --app-container-max: 90rem;
+}
+
+.app-container--full {
+  --app-container-max: none;
 }
 
 ::selection {
@@ -194,20 +237,16 @@ input:-webkit-autofill:focus {
   transition: background-color 9999s ease-out;
 }
 
-.login-grid {
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px);
-  background-size: 38px 38px;
-  mask-image: linear-gradient(to bottom, black, transparent 82%);
-}
-
 .ui-fade-in {
   animation: ui-fade-in 160ms ease-out both;
 }
 
 .ui-slide-up {
   animation: ui-slide-up 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.ui-slide-left {
+  animation: ui-slide-left 190ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .toast-enter {
@@ -241,6 +280,17 @@ input:-webkit-autofill:focus {
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes ui-slide-left {
+  from {
+    opacity: 0;
+    transform: translateX(1.25rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
   }
 }
 
@@ -299,14 +349,27 @@ input:-webkit-autofill:focus {
    diretamente no body e dimensionados pelo viewport real, evitando que cabeçalhos
    sticky ou containers internos cubram partes da janela. */
 .modal-overlay {
-  padding-top: env(safe-area-inset-top);
-  padding-right: env(safe-area-inset-right);
-  padding-bottom: env(safe-area-inset-bottom);
-  padding-left: env(safe-area-inset-left);
+  padding-top: max(env(safe-area-inset-top), 0px);
+  padding-right: max(env(safe-area-inset-right), 0px);
+  padding-bottom: max(env(safe-area-inset-bottom), 0px);
+  padding-left: max(env(safe-area-inset-left), 0px);
 }
 
 .modal-dialog {
-  max-width: min(100%, calc(100vw - env(safe-area-inset-left) - env(safe-area-inset-right)));
+  /* A largura máxima pertence às variantes do ModalShell. Não definir
+     max-width aqui evita sobrescrever sm/md/lg/xl/2xl pela cascata global. */
+  min-width: 0;
+}
+
+.modal-overlay--drawer {
+  padding-top: 0;
+  padding-right: 0;
+  padding-bottom: 0;
+  padding-left: max(env(safe-area-inset-left), 0px);
+}
+
+.modal-dialog--drawer {
+  max-height: 100dvh;
 }
 
 .modal-scroll,
@@ -319,7 +382,7 @@ input:-webkit-autofill:focus {
 }
 
 @media (max-width: 639px) {
-  .modal-dialog {
+  .modal-dialog:not(.modal-dialog--drawer) {
     height: 100dvh;
     max-height: 100dvh;
     border-right-width: 0;
@@ -328,12 +391,24 @@ input:-webkit-autofill:focus {
   }
 }
 
+@media (min-width: 640px) {
+  .modal-overlay:not(.modal-overlay--drawer) {
+    padding-top: max(env(safe-area-inset-top), 0.75rem);
+    padding-right: max(env(safe-area-inset-right), 0.75rem);
+    padding-bottom: max(env(safe-area-inset-bottom), 0.75rem);
+    padding-left: max(env(safe-area-inset-left), 0.75rem);
+  }
+}
+
 @media (min-width: 640px) and (max-height: 700px) {
-  .modal-overlay {
-    padding: 0.375rem;
+  .modal-overlay:not(.modal-overlay--drawer) {
+    padding-top: max(env(safe-area-inset-top), 0.375rem);
+    padding-right: max(env(safe-area-inset-right), 0.375rem);
+    padding-bottom: max(env(safe-area-inset-bottom), 0.375rem);
+    padding-left: max(env(safe-area-inset-left), 0.375rem);
   }
 
-  .modal-dialog {
+  .modal-dialog:not(.modal-dialog--drawer) {
     max-height: calc(100dvh - 0.75rem) !important;
   }
 
@@ -358,19 +433,7 @@ input:-webkit-autofill:focus {
   position: relative;
   width: 100%;
   min-width: 0;
-  isolation: isolate;
   overflow-wrap: anywhere;
-}
-
-.app-page::before {
-  position: fixed;
-  z-index: -1;
-  inset: 0;
-  pointer-events: none;
-  background:
-    linear-gradient(115deg, transparent 0 72%, rgba(0, 199, 111, 0.025) 72.1% 72.3%, transparent 72.4%),
-    radial-gradient(circle at 78% 8%, rgba(0, 199, 111, 0.045), transparent 22rem);
-  content: "";
 }
 
 .industrial-hero {
@@ -460,7 +523,11 @@ input:-webkit-autofill:focus {
 
 .workflow-stepper {
   position: relative;
-  overflow: visible !important;
+  max-width: 100%;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  overscroll-behavior-inline: contain;
+  scrollbar-gutter: stable;
 }
 
 .workflow-stepper ol {
@@ -504,10 +571,7 @@ input:-webkit-autofill:focus {
 }
 
 .login-industrial-stage {
-  background:
-    radial-gradient(circle at 22% 14%, rgba(0,199,111,.14), transparent 22rem),
-    radial-gradient(circle at 88% 88%, rgba(0,199,111,.04), transparent 24rem),
-    #030605;
+  background: transparent;
 }
 
 .login-showcase {

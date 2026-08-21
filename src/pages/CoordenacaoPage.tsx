@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  AlertCircle,
   AlertTriangle,
   CalendarDays,
   CheckCircle2,
@@ -11,7 +10,6 @@ import {
   Filter,
   Inbox,
   ListFilter,
-  Loader2,
   RefreshCw,
   ShieldCheck,
   TimerReset,
@@ -34,6 +32,18 @@ import { CoordinationRecords } from '../components/coordenacao/CoordinationRecor
 import { ConfirmModal } from '../components/common/ConfirmModal';
 import { Toast, ToastMessage } from '../components/common/Toast';
 import { CustomSelect } from '../components/common/CustomSelect';
+import {
+  Button,
+  DateInput,
+  EmptyState,
+  ErrorState,
+  Field,
+  FilterPanel,
+  LoadingState,
+  MetricCard,
+  PageContainer,
+  PageHeader,
+} from '../components/common/ui';
 
 interface CoordenacaoPageProps {
   user: User;
@@ -48,23 +58,15 @@ interface KpiCardProps {
 }
 
 function KpiCard({ label, value, helper, icon, tone = 'neutral' }: KpiCardProps) {
-  const toneClasses = {
-    neutral: 'border-white/10 bg-[#0D120F] text-slate-100',
-    success: 'border-emerald-400/20 bg-emerald-400/[0.07] text-emerald-100',
-    warning: 'border-amber-400/20 bg-amber-400/[0.07] text-amber-100',
-  };
-
   return (
-    <article className={`kpi-industrial rounded-2xl border p-4 shadow-lg ${toneClasses[tone]}`}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[10px] font-black uppercase tracking-[0.13em] text-slate-500">{label}</p>
-          <p className="mt-2 whitespace-nowrap text-xl font-black tracking-tight sm:text-2xl">{value}</p>
-          <p className="mt-1 text-xs font-medium text-slate-500">{helper}</p>
-        </div>
-        <div className="hidden rounded-xl border border-white/10 bg-black/15 p-2.5 text-slate-300 sm:flex" aria-hidden="true">{icon}</div>
-      </div>
-    </article>
+    <MetricCard
+      label={label}
+      value={value}
+      description={helper}
+      icon={icon}
+      tone={tone}
+      className="min-h-32"
+    />
   );
 }
 
@@ -280,82 +282,29 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
   };
 
   return (
-    <div className="app-page mx-auto max-w-[1440px] space-y-5 px-4 py-6 sm:px-6 sm:py-8">
-      <section className="industrial-hero flex flex-col gap-5 rounded-2xl border p-5 sm:p-6 xl:flex-row xl:items-center xl:justify-between">
-        <div className="min-w-0">
-          <p className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-[0.15em] text-emerald-400">
-            <ShieldCheck className="size-4" aria-hidden="true" />
-            Acesso da coordenação
-          </p>
-          <h1 className="text-2xl font-black tracking-tight text-slate-50 sm:text-3xl">Visão geral dos apontamentos</h1>
-          <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-slate-400">
-            Acompanhe a cobertura diária, analise registros e exporte o recorte filtrado.
-          </p>
-          <p className="mt-2 text-xs font-semibold text-slate-500">Sessão: {user.name}</p>
-        </div>
-
-        <div className="relative z-10 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setImportOpen(true)}
-            disabled={loading}
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-400/35 bg-emerald-400 px-4 text-sm font-black text-[#041007] transition-colors hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
-          >
-            <FileUp className="size-4" aria-hidden="true" />
-            Importar produção
-          </button>
-          <button
-            type="button"
-            onClick={() => setProgramacaoImportOpen(true)}
-            disabled={loading}
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-sky-400/25 bg-sky-400/10 px-4 text-sm font-black text-sky-200 transition-colors hover:bg-sky-400/15 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-          >
-            <FileSpreadsheet className="size-4" aria-hidden="true" />
-            Importar programação
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleExport()}
-            disabled={loading || !!loadError || exporting}
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-400/25 bg-emerald-400/10 px-4 text-sm font-black text-emerald-200 transition-colors hover:bg-emerald-400/15 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
-          >
-            {exporting ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Download className="size-4" aria-hidden="true" />}
-            {exporting ? 'Exportando…' : 'Exportar Excel'}
-          </button>
-          <button
-            type="button"
-            onClick={() => void loadData(true)}
-            disabled={loading}
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-4 text-sm font-bold text-slate-300 transition-colors hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
-          >
-            <RefreshCw className={`size-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
-            Atualizar
-          </button>
-        </div>
-      </section>
+    <PageContainer className="app-page space-y-5 py-6 sm:py-8">
+      <PageHeader
+        icon={<ShieldCheck className="size-5" aria-hidden="true" />}
+        eyebrow="Acesso da coordenação"
+        title="Visão geral dos apontamentos"
+        description="Acompanhe a cobertura diária, analise registros e exporte o recorte filtrado."
+        metadata={<span>Sessão: <strong className="text-[var(--text-primary)]">{user.name}</strong></span>}
+        actions={<>
+          <Button type="button" onClick={() => setImportOpen(true)} disabled={loading} leftIcon={<FileUp className="size-4" aria-hidden="true" />}>Importar produção</Button>
+          <Button type="button" variant="secondary" onClick={() => setProgramacaoImportOpen(true)} disabled={loading} leftIcon={<FileSpreadsheet className="size-4" aria-hidden="true" />}>Importar programação</Button>
+          <Button type="button" variant="success" onClick={() => void handleExport()} disabled={loading || !!loadError || exporting} isLoading={exporting} loadingLabel="Exportando…" leftIcon={<Download className="size-4" aria-hidden="true" />}>Exportar Excel</Button>
+          <Button type="button" variant="ghost" onClick={() => void loadData(true)} disabled={loading} leftIcon={<RefreshCw className={`size-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />}>Atualizar</Button>
+        </>}
+      />
 
       {loading ? (
-        <section aria-label="Carregando indicadores" aria-busy="true" className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 lg:grid-cols-4">
-          {[0, 1, 2, 3].map((item) => (
-            <div key={item} className="h-32 animate-pulse rounded-2xl border border-white/[0.07] bg-white/[0.035]" />
-          ))}
-          <span className="sr-only">Carregando indicadores...</span>
-        </section>
+        <LoadingState label="Carregando indicadores" description="Atualizando cobertura, pendências e registros do dia." />
       ) : loadError ? (
-        <section role="alert" className="rounded-2xl border border-rose-400/20 bg-rose-400/[0.07] p-6 text-center sm:p-8">
-          <AlertCircle className="mx-auto size-9 text-rose-300" aria-hidden="true" />
-          <h2 className="mt-3 text-base font-black text-slate-100">Não foi possível carregar os apontamentos</h2>
-          <p className="mx-auto mt-1 max-w-xl text-sm text-slate-400">{loadError}</p>
-          <p className="mx-auto mt-2 max-w-xl text-xs text-slate-500">Os indicadores foram ocultados para não apresentar números incompletos.</p>
-          <button
-            type="button"
-            onClick={() => void loadData(true)}
-            className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-400 px-4 text-sm font-black text-[#041007] hover:bg-emerald-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0D120F]"
-          >
-            <RefreshCw className="size-4" aria-hidden="true" />
-            Tentar novamente
-          </button>
-        </section>
+        <ErrorState
+          title="Não foi possível carregar os apontamentos"
+          description={<>{loadError} Os indicadores foram ocultados para não apresentar números incompletos.</>}
+          action={<Button type="button" onClick={() => void loadData(true)} leftIcon={<RefreshCw className="size-4" aria-hidden="true" />}>Tentar novamente</Button>}
+        />
       ) : (
         <section aria-label="Indicadores do dia" className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 lg:grid-cols-4">
           <KpiCard
@@ -389,11 +338,7 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
 
       {!loading && !loadError && (
         !dataFilter ? (
-          <section className="rounded-2xl border border-white/10 bg-[#0D120F] p-5 text-center">
-            <CalendarDays className="mx-auto size-7 text-slate-500" aria-hidden="true" />
-            <h2 className="mt-2 text-sm font-black text-slate-100">Selecione uma data para analisar as pendências</h2>
-            <p className="mt-1 text-xs text-slate-500">Nenhum status de conclusão é calculado sem uma data de referência.</p>
-          </section>
+          <EmptyState icon={<CalendarDays className="size-6" aria-hidden="true" />} title="Selecione uma data para analisar as pendências" description="Nenhum status de conclusão é calculado sem uma data de referência." />
         ) : operationalStatus.pendingUnits.length > 0 ? (
           <section aria-labelledby="pending-title" className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.06] p-4 shadow-lg sm:p-5">
             <div className="flex items-start gap-3">
@@ -433,36 +378,22 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
         )
       )}
 
-      <section aria-labelledby="coord-filters-title" className="filter-panel rounded-2xl border p-4 sm:p-5">
-        <div className="mb-4 flex flex-col items-stretch gap-2 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between min-[420px]:gap-3">
-          <div className="flex items-center gap-2">
-            <Filter className="size-4 text-emerald-400" aria-hidden="true" />
-            <h2 id="coord-filters-title" className="text-xs font-black uppercase tracking-[0.14em] text-slate-200">Filtros dos registros</h2>
-          </div>
-          <button
-            type="button"
-            onClick={clearFilters}
-            disabled={!hasFilters}
-            className="inline-flex min-h-10 items-center gap-2 rounded-xl px-3 text-xs font-bold text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
-          >
-            <ListFilter className="size-4" aria-hidden="true" />
-            Limpar filtros
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-bold text-slate-400">Data</span>
-            <input
-              type="date"
+      <FilterPanel
+        aria-label="Filtros dos registros"
+        title={<span className="flex items-center gap-2"><Filter className="size-4 text-emerald-400" aria-hidden="true" />Filtros dos registros</span>}
+        description="A lista e a exportação respeitam este mesmo recorte."
+        actions={<Button type="button" variant="ghost" size="sm" onClick={clearFilters} disabled={!hasFilters} leftIcon={<ListFilter className="size-4" aria-hidden="true" />}>Limpar filtros</Button>}
+        contentClassName="sm:[grid-template-columns:repeat(2,minmax(0,1fr))] xl:[grid-template-columns:repeat(4,minmax(0,1fr))]"
+      >
+          <Field label="Data" htmlFor="coord-date-filter">
+            <DateInput
+              id="coord-date-filter"
               value={dataFilter}
               onChange={(event) => setDataFilter(event.target.value)}
-              className="min-h-11 w-full rounded-xl border border-white/15 bg-[#080C09] px-3 py-2.5 text-sm font-semibold text-slate-100 [color-scheme:dark] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
             />
-          </label>
+          </Field>
 
-          <div className="block">
-            <span className="mb-1.5 block text-xs font-bold text-slate-400">Setor</span>
+          <Field label="Setor">
             <CustomSelect
               value={setorFilter}
               onChange={setSetorFilter}
@@ -472,10 +403,9 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
                 ...setores.map((setor) => ({ value: setor, label: setor })),
               ]}
             />
-          </div>
+          </Field>
 
-          <div className="block">
-            <span className="mb-1.5 block text-xs font-bold text-slate-400">Linha</span>
+          <Field label="Linha">
             <CustomSelect
               value={linhaFilter}
               onChange={setLinhaFilter}
@@ -485,10 +415,9 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
                 ...linhas.map((linha) => ({ value: linha, label: linha })),
               ]}
             />
-          </div>
+          </Field>
 
-          <div className="block">
-            <span className="mb-1.5 block text-xs font-bold text-slate-400">Potência</span>
+          <Field label="Potência">
             <CustomSelect
               value={potenciaFilter}
               onChange={setPotenciaFilter}
@@ -498,31 +427,19 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
                 ...potencias.map((potencia) => ({ value: String(potencia), label: `${formatPotencia(potencia)} kVA` })),
               ]}
             />
-          </div>
-        </div>
-      </section>
+          </Field>
+      </FilterPanel>
 
       {!loading && !loadError && (
         apontamentos.length === 0 ? (
-          <section className="rounded-2xl border border-white/10 bg-[#0D120F] p-8 text-center sm:p-12">
-            <Inbox className="mx-auto size-10 text-slate-500" aria-hidden="true" />
-            <h2 className="mt-3 text-base font-black text-slate-100">Ainda não há apontamentos registrados</h2>
-            <p className="mx-auto mt-1 max-w-md text-sm text-slate-500">Quando as unidades enviarem registros, eles aparecerão nesta visão.</p>
-          </section>
+          <EmptyState icon={<Inbox className="size-6" aria-hidden="true" />} title="Ainda não há apontamentos registrados" description="Quando as unidades enviarem registros, eles aparecerão nesta visão." />
         ) : filtered.length === 0 ? (
-          <section className="rounded-2xl border border-white/10 bg-[#0D120F] p-8 text-center sm:p-12">
-            <ListFilter className="mx-auto size-9 text-slate-500" aria-hidden="true" />
-            <h2 className="mt-3 text-base font-black text-slate-100">Nenhum registro corresponde aos filtros</h2>
-            <p className="mx-auto mt-1 max-w-md text-sm text-slate-500">A cobertura diária acima continua sendo calculada apenas pela data selecionada.</p>
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.06] px-4 text-sm font-bold text-slate-200 hover:bg-white/[0.1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
-            >
-              <ListFilter className="size-4" aria-hidden="true" />
-              Limpar filtros
-            </button>
-          </section>
+          <EmptyState
+            icon={<ListFilter className="size-6" aria-hidden="true" />}
+            title="Nenhum registro corresponde aos filtros"
+            description="A cobertura diária acima continua sendo calculada apenas pela data selecionada."
+            action={<Button type="button" variant="secondary" onClick={clearFilters} leftIcon={<ListFilter className="size-4" aria-hidden="true" />}>Limpar filtros</Button>}
+          />
         ) : (
           <section aria-labelledby="coord-results-title" className="space-y-3">
             <div className="flex items-center justify-between gap-3 px-1">
@@ -577,6 +494,6 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
       />
 
       <Toast toast={toast} onClose={() => setToast(null)} />
-    </div>
+    </PageContainer>
   );
 };

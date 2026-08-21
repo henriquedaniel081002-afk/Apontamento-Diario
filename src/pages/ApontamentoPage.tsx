@@ -12,7 +12,7 @@ import { ObservacoesSection } from '../components/apontamento/ObservacoesSection
 import { ReviewSection } from '../components/apontamento/ReviewSection';
 import { SummaryHeader } from '../components/apontamento/SummaryHeader';
 import { Toast, ToastMessage } from '../components/common/Toast';
-import { Badge, Button, EmptyState, Stepper, Surface } from '../components/common/ui';
+import { Badge, Button, EmptyState, PageContainer, PageHeader, Stepper, Surface } from '../components/common/ui';
 
 interface Props { user: User; onNavigateToHistory: () => void; }
 type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7;
@@ -100,8 +100,15 @@ export const ApontamentoPage: React.FC<Props> = ({ user, onNavigateToHistory }) 
     } finally { setIsSaving(false); }
   };
 
-  return <div className="app-page mx-auto max-w-6xl space-y-5 px-4 py-6 sm:px-6 sm:py-8" aria-busy={loading || isSaving || undefined}>
-    <Surface tone="raised" padding="lg" className="industrial-hero relative overflow-hidden"><div className="pointer-events-none absolute inset-y-0 right-0 w-1/2 bg-[radial-gradient(circle_at_top_right,rgba(52,211,153,0.08),transparent_65%)]" /><div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between"><div className="min-w-0"><div className="mb-2 flex flex-wrap items-center gap-2"><span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-[var(--accent)]"><Sparkles className="h-4 w-4" /> Complemento diário</span><Badge variant="neutral">{user.setor || 'Setor não definido'}</Badge></div><h1 className="text-2xl font-extrabold tracking-tight text-[var(--text-primary)] sm:text-3xl">Ocorrências do apontamento</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">Confira a produção importada e registre somente as ocorrências que realmente aconteceram. Nenhuma categoria é obrigatória.</p></div><div className="glass-panel w-full rounded-2xl p-4 lg:max-w-sm"><div className="flex items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-[var(--text-tertiary)]">Aguardando complemento</p><p className="mt-1 text-2xl font-black text-[var(--text-primary)]">{pendingImports.length}</p></div><Button size="sm" variant="secondary" disabled={loading || isSaving} leftIcon={<RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />} onClick={() => void loadPending(true)}>Atualizar</Button></div></div></div></Surface>
+  return <PageContainer className="app-page space-y-5 py-6 sm:py-8" aria-busy={loading || isSaving || undefined}>
+    <PageHeader
+      icon={<Sparkles className="size-5" aria-hidden="true" />}
+      eyebrow="Complemento diário"
+      title="Ocorrências do apontamento"
+      description="Confira a produção importada e registre somente as ocorrências que realmente aconteceram. Nenhuma categoria é obrigatória."
+      metadata={<Badge variant="neutral">{user.setor || 'Setor não definido'}</Badge>}
+      actions={<Surface tone="muted" padding="sm" className="w-full min-w-[min(100%,18rem)] sm:w-auto"><div className="flex items-center justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-wider text-[var(--text-tertiary)]">Aguardando complemento</p><p className="mt-1 text-2xl font-black text-[var(--text-primary)]">{pendingImports.length}</p></div><Button size="sm" variant="secondary" disabled={loading || isSaving} leftIcon={<RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />} onClick={() => void loadPending(true)}>Atualizar</Button></div></Surface>}
+    />
 
     {loading ? <Surface tone="base" padding="lg" className="flex min-h-56 items-center justify-center"><div role="status" className="flex items-center gap-3 text-sm font-bold text-[var(--text-secondary)]"><Loader2 className="h-5 w-5 animate-spin text-[var(--accent)]" />Carregando produção importada…</div></Surface>
     : loadError ? <Surface tone="base" padding="lg"><EmptyState icon={<Inbox className="h-6 w-6" />} title="Não foi possível carregar os apontamentos" description={loadError} action={<Button onClick={() => void loadPending(true)}>Tentar novamente</Button>} /></Surface>
@@ -124,5 +131,5 @@ export const ApontamentoPage: React.FC<Props> = ({ user, onNavigateToHistory }) 
       <div className="sticky-action-bar sticky bottom-3 z-20 rounded-2xl border p-3 backdrop-blur-2xl sm:p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-semibold text-[var(--text-primary)]">Etapa {currentStep} de 7 · {stepLabels[currentStep - 1]}</p><p className="mt-0.5 hidden text-xs text-[var(--text-tertiary)] sm:block">Nenhuma ocorrência é obrigatória. A produção não pode ser alterada.</p></div><div className="grid grid-cols-1 gap-2 min-[380px]:grid-cols-2 sm:flex">{currentStep > 1 && <Button variant="secondary" disabled={isSaving} leftIcon={<ArrowLeft className="h-4 w-4" />} onClick={goBack}>Voltar</Button>}{currentStep < 7 ? <Button className={currentStep === 1 ? 'min-[380px]:col-span-2 sm:col-span-1' : undefined} rightIcon={<ArrowRight className="h-4 w-4" />} onClick={goNext}>Avançar</Button> : <Button isLoading={isSaving} loadingLabel="Salvando…" leftIcon={<Save className="h-4 w-4" />} onClick={() => void handleSave()}>Finalizar apontamento</Button>}</div></div></div>
     </>}
     <Toast toast={toast} onClose={() => setToast(null)} />
-  </div>;
+  </PageContainer>;
 };

@@ -31,7 +31,7 @@ export const LineSelector: React.FC<LineSelectorProps> = ({
               onClick={() => onChange(linha)}
               aria-pressed={isSelected}
               className={cx(
-                'min-h-10 min-w-12 rounded-lg px-3 text-xs font-extrabold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300',
+                'min-h-11 min-w-12 rounded-lg px-3 text-xs font-extrabold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300',
                 isSelected
                   ? 'bg-emerald-400 text-emerald-950 shadow-sm'
                   : 'text-slate-400 hover:bg-white/[0.07] hover:text-white',

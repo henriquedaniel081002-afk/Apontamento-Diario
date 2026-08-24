@@ -703,6 +703,92 @@ export function LoadingState({
   );
 }
 
+export interface ProgressLoadingStateProps extends React.HTMLAttributes<HTMLDivElement> {
+  progress: number;
+  label?: React.ReactNode;
+  description?: React.ReactNode;
+}
+
+export function ProgressLoadingState({
+  progress,
+  label = 'Carregando dados…',
+  description = 'Preparando as informações para exibição.',
+  className,
+  ...props
+}: ProgressLoadingStateProps) {
+  const normalizedProgress = Math.max(0, Math.min(100, Math.round(progress)));
+  const stage = normalizedProgress < 25
+    ? 'Conectando ao banco de dados'
+    : normalizedProgress < 60
+      ? 'Buscando informações'
+      : normalizedProgress < 90
+        ? 'Organizando os dados'
+        : normalizedProgress < 100
+          ? 'Finalizando a tela'
+          : 'Tudo pronto';
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-label={`${String(label)}: ${normalizedProgress}%`}
+      className={cx(
+        'relative isolate flex min-h-[21rem] items-center justify-center overflow-hidden rounded-[1.4rem] border border-emerald-400/15 bg-[linear-gradient(145deg,rgba(10,19,14,.99),rgba(4,9,6,.99))] px-5 py-10 shadow-[0_28px_90px_rgba(0,0,0,.32)] sm:px-8',
+        className,
+      )}
+      {...props}
+    >
+      <div className="pointer-events-none absolute inset-0 -z-10 opacity-70" aria-hidden="true">
+        <div className="absolute left-1/2 top-0 h-48 w-80 -translate-x-1/2 rounded-full bg-emerald-400/[0.08] blur-3xl" />
+        <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-emerald-300/30 to-transparent" />
+      </div>
+
+      <div className="w-full max-w-2xl text-center">
+        <div className="mx-auto mb-6 flex size-16 items-center justify-center rounded-2xl border border-emerald-400/20 bg-emerald-400/10 shadow-[inset_0_1px_rgba(255,255,255,.05)]">
+          <LoaderCircle className="size-8 animate-spin text-emerald-300" aria-hidden="true" />
+        </div>
+
+        <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-emerald-300/90">Sistema ITAM</p>
+        <h2 className="mt-2 text-xl font-black tracking-tight text-white sm:text-2xl">{label}</h2>
+        <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-400">{description}</p>
+
+        <div className="mt-8 rounded-2xl border border-white/[0.08] bg-black/20 p-4 text-left sm:p-5">
+          <div className="mb-3 flex items-end justify-between gap-4">
+            <div>
+              <p className="text-xs font-extrabold uppercase tracking-[0.1em] text-slate-500">Progresso</p>
+              <p className="mt-1 text-sm font-bold text-slate-200">{stage}</p>
+            </div>
+            <span className="tabular-nums text-3xl font-black tracking-[-0.04em] text-emerald-300 sm:text-4xl">
+              {normalizedProgress}%
+            </span>
+          </div>
+
+          <div
+            className="h-3 overflow-hidden rounded-full border border-white/[0.08] bg-white/[0.055] p-[2px]"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={normalizedProgress}
+          >
+            <div
+              className="relative h-full rounded-full bg-[linear-gradient(90deg,#00a85e,#00c76f,#4ade80)] shadow-[0_0_22px_rgba(0,199,111,.28)] transition-[width] duration-150 ease-out"
+              style={{ width: `${normalizedProgress}%` }}
+            >
+              <span className="absolute inset-y-0 right-0 w-10 animate-pulse rounded-full bg-white/25 blur-sm" aria-hidden="true" />
+            </div>
+          </div>
+
+          <div className="mt-3 flex items-center justify-between text-[11px] font-bold text-slate-600">
+            <span>0%</span>
+            <span>Carregamento seguro</span>
+            <span>100%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export interface ErrorStateProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'title'> {
   title?: React.ReactNode;
   description: React.ReactNode;

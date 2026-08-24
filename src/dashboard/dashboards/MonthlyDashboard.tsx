@@ -12,14 +12,33 @@ import { PageHeader } from '../../components/common/ui';
 const mesesNomes = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 const mesLabel = (ym:string) => { const [a,m]=ym.split('-').map(Number); return `${mesesNomes[m-1]} de ${a}`; };
 
-export function MonthlyDashboard({ dados }: { dados: DashboardData }) {
+export interface DashboardScope {
+  setores: string[];
+  linhas?: string[];
+  label?: string;
+}
+
+export function MonthlyDashboard({ dados, scope }: { dados: DashboardData; scope?: DashboardScope }) {
   const hoje = new Date();
   const atual = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
   const defaultMes = dados.periodo.meses.includes(atual) ? atual : (dados.periodo.meses[dados.periodo.meses.length-1] || atual);
-  const defaultSetor = dados.filtros.setores.includes('MONTAGEM FINAL') ? 'MONTAGEM FINAL' : (dados.filtros.setores[0] || 'MONTAGEM FINAL');
+  const globalSetorOptions = useMemo(
+    () => dados.filtros.setores.includes('EPOXI') ? dados.filtros.setores : [...dados.filtros.setores, 'EPOXI'],
+    [dados.filtros.setores],
+  );
+  const setorOptions = useMemo(() => {
+    if (!scope?.setores?.length) return globalSetorOptions;
+    const available = scope.setores.filter((item) => globalSetorOptions.includes(item));
+    return available.length ? available : scope.setores;
+  }, [globalSetorOptions, scope]);
+  const defaultSetor = scope?.setores?.find((item) => setorOptions.includes(item))
+    || (dados.filtros.setores.includes('MONTAGEM FINAL') ? 'MONTAGEM FINAL' : (setorOptions[0] || dados.filtros.setores[0] || 'MONTAGEM FINAL'));
+  const scopedLineOptions = scope?.linhas?.length ? scope.linhas : [];
+  const fixedLine = scopedLineOptions.length === 1 ? scopedLineOptions[0] : null;
+  const defaultLinha = fixedLine || 'Todas';
   const [mes, setMes] = useState(defaultMes);
   const [setor, setSetor] = useState(defaultSetor);
-  const [linha, setLinha] = useState('Todas');
+  const [linha, setLinha] = useState(defaultLinha);
   const [turno, setTurno] = useState('Todos');
   const [diaSelecionado, setDiaSelecionado] = useState<EvolutionItem | null>(null);
 
@@ -28,18 +47,20 @@ export function MonthlyDashboard({ dados }: { dados: DashboardData }) {
   }, [dados.periodo.meses, defaultMes, mes]);
 
   useEffect(() => {
-    if (setor !== 'EPOXI' && !dados.filtros.setores.includes(setor)) setSetor(defaultSetor);
-  }, [dados.filtros.setores, defaultSetor, setor]);
+    if (!setorOptions.includes(setor)) setSetor(defaultSetor);
+  }, [defaultSetor, setor, setorOptions]);
 
-  const setorOptions = useMemo(
-    () => dados.filtros.setores.includes('EPOXI') ? dados.filtros.setores : [...dados.filtros.setores, 'EPOXI'],
-    [dados.filtros.setores],
-  );
+  useEffect(() => {
+    if (fixedLine && linha !== fixedLine) setLinha(fixedLine);
+  }, [fixedLine, linha]);
+
   const isEpoxi = setor === 'EPOXI';
   const handleSetor = (value:string) => {
+    if (!setorOptions.includes(value)) return;
     setSetor(value);
     setDiaSelecionado(null);
     if (value === 'EPOXI') setLinha('EPO');
+    else if (fixedLine) setLinha(fixedLine);
     else if (setor === 'EPOXI') setLinha('Todas');
   };
 
@@ -69,8 +90,14 @@ export function MonthlyDashboard({ dados }: { dados: DashboardData }) {
     return {porDia:dadosGrafico,programadoTotal,programadoParcial,produzidoParcial,diasRegistro,mediaProgramada,mediaProduzida,aderenciaMensal,alcanceMeta};
   }, [dados, mes,setor,linha,turno]);
 
-  const limpar = () => { setMes(defaultMes); setSetor(defaultSetor); setLinha('Todas'); setTurno('Todos'); setDiaSelecionado(null); };
-  const filtrosAtivos = mes !== defaultMes || linha !== 'Todas' || setor !== defaultSetor || turno !== 'Todos';
+  const limpar = () => { setMes(defaultMes); setSetor(defaultSetor); setLinha(defaultLinha); setTurno('Todos'); setDiaSelecionado(null); };
+  const filtrosAtivos = mes !== defaultMes || linha !== defaultLinha || setor !== defaultSetor || turno !== 'Todos';
+  const setorLocked = Boolean(scope?.setores?.length) && setorOptions.length === 1;
+  const linhaOptions = isEpoxi
+    ? ['EPO']
+    : scope?.linhas?.length
+      ? ['Todas', ...scopedLineOptions]
+      : ['Todas', ...dados.filtros.linhas];
 
   return (
     <div className="dashboard-shell">
@@ -79,14 +106,14 @@ export function MonthlyDashboard({ dados }: { dados: DashboardData }) {
           <PageHeader
             eyebrow="Dashboard integrado"
             title="Aderência Mensal"
-            description="Acompanhamento do programado e produzido com os mesmos critérios operacionais do sistema."
+            description={scope?.label ? `Acompanhamento do programado e produzido restrito a ${scope.label}.` : "Acompanhamento do programado e produzido com os mesmos critérios operacionais do sistema."}
             actions={<p className="dashboard-heading__updated">Atualizado em <time dateTime={dados.geradoEm}>{new Date(dados.geradoEm).toLocaleString('pt-BR')}</time></p>}
           />
 
-          <FilterBar onClear={limpar} clearDisabled={!filtrosAtivos}>
+          <FilterBar onClear={limpar} clearDisabled={!filtrosAtivos} note={scope?.label ? `Visão restrita: ${scope.label}` : undefined}>
             <FilterSelect id="filtro-mes" label="Mês" options={dados.periodo.meses.length ? dados.periodo.meses : [defaultMes]} selected={mes} onSelect={setMes} formatOption={mesLabel} active={mes !== defaultMes} />
-            <FilterSelect id="filtro-linha" label="Linha" options={isEpoxi ? ['EPO'] : ['Todas',...dados.filtros.linhas]} selected={isEpoxi ? 'EPO' : linha} onSelect={setLinha} formatOption={(option) => option === 'Todas' ? 'Todos' : option} active={isEpoxi || linha !== 'Todas'} compact />
-            <FilterSelect id="filtro-setor" label="Setor" options={setorOptions} selected={setor} onSelect={handleSetor} defaultValue={defaultSetor} />
+            <FilterSelect id="filtro-linha" label="Linha" options={linhaOptions} selected={isEpoxi ? 'EPO' : linha} onSelect={setLinha} formatOption={(option) => option === 'Todas' ? 'Todos' : option} active={isEpoxi || linha !== defaultLinha} compact disabled={Boolean(fixedLine) || isEpoxi} />
+            <FilterSelect id="filtro-setor" label="Setor" options={setorOptions} selected={setor} onSelect={handleSetor} defaultValue={defaultSetor} disabled={setorLocked} />
             <FilterSelect id="filtro-turno" label="Turno" options={['Todos',...dados.filtros.turnos]} selected={turno} onSelect={setTurno} active={turno !== 'Todos'} compact />
           </FilterBar>
 

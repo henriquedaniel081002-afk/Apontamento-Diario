@@ -32,6 +32,7 @@ import { CoordinationRecords } from '../components/coordenacao/CoordinationRecor
 import { ConfirmModal } from '../components/common/ConfirmModal';
 import { Toast, ToastMessage } from '../components/common/Toast';
 import { CustomSelect } from '../components/common/CustomSelect';
+import { useLoadingProgress } from '../hooks/useLoadingProgress';
 import {
   Button,
   DateInput,
@@ -39,7 +40,7 @@ import {
   ErrorState,
   Field,
   FilterPanel,
-  LoadingState,
+  ProgressLoadingState,
   MetricCard,
   PageContainer,
   PageHeader,
@@ -87,12 +88,14 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
   const [editItem, setEditItem] = useState<Apontamento | null>(null);
   const [deleteItem, setDeleteItem] = useState<Apontamento | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
+  const { progress, startProgress, completeProgress } = useLoadingProgress();
 
   const loadData = useCallback(async (showFeedback = false) => {
     setLoading(true);
     setLoadError(null);
+    startProgress();
     try {
-      const data = await coordenacaoService.getAll();
+      const data = await coordenacaoService.getAll(showFeedback);
       setApontamentos(data);
       if (showFeedback) {
         setToast({
@@ -108,9 +111,10 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
         setToast({ id: Date.now().toString(), type: 'error', message });
       }
     } finally {
+      await completeProgress();
       setLoading(false);
     }
-  }, []);
+  }, [completeProgress, startProgress]);
 
   useEffect(() => {
     void loadData();
@@ -298,7 +302,11 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
       />
 
       {loading ? (
-        <LoadingState label="Carregando indicadores" description="Atualizando cobertura, pendências e registros do dia." />
+        <ProgressLoadingState
+          progress={progress}
+          label="Carregando Registros da Coordenação"
+          description="Buscando apontamentos, ocorrências e status de aprovação para montar a visão completa."
+        />
       ) : loadError ? (
         <ErrorState
           title="Não foi possível carregar os apontamentos"

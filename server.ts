@@ -473,6 +473,145 @@ async function insertOccurrenceCollections(client: any, apontamentoId: number, d
   }
 }
 
+
+async function loadApontamentosBatch(): Promise<any[]> {
+  const headers = await pool.query(
+    `SELECT a.id, a.data, a.usuario_id, a.setor_id, a.tipo_bobina, u.login usuario, s.nome setor,
+            a.criado_em, a.atualizado_em, a.status_aprovacao, a.aprovado_em, a.aprovado_por,
+            a.origem_producao, a.complementado, aprovador.login aprovado_por_nome
+       FROM apontamentos a
+       JOIN usuarios u ON u.id = a.usuario_id
+       JOIN setores s ON s.id = a.setor_id
+       LEFT JOIN usuarios aprovador ON aprovador.id = a.aprovado_por
+      ORDER BY a.data DESC, a.id DESC`,
+  );
+
+  if (!headers.rows.length) return [];
+  const ids = headers.rows.map((row: any) => Number(row.id));
+
+  const [p, material, maquina, nc, f, o, acessos] = await Promise.all([
+    pool.query(
+      `SELECT p.apontamento_id, p.id, l.nome linha, p.potencia, p.quantidade
+         FROM producao p
+         JOIN linhas l ON l.id = p.linha_id
+        WHERE p.apontamento_id = ANY($1::bigint[])
+        ORDER BY p.apontamento_id, p.id`, [ids],
+    ),
+    pool.query(
+      `SELECT apontamento_id, id, causa_motivo, material, hora_inicio, hora_fim
+         FROM paradas_falta_material
+        WHERE apontamento_id = ANY($1::bigint[])
+        ORDER BY apontamento_id, id`, [ids],
+    ),
+    pool.query(
+      `SELECT apontamento_id, id, maquina_equipamento, hora_inicio, hora_fim, observacao
+         FROM paradas_maquina
+        WHERE apontamento_id = ANY($1::bigint[])
+        ORDER BY apontamento_id, id`, [ids],
+    ),
+    pool.query(
+      `SELECT apontamento_id, id, causa_nao_conformidade, op, numero_serie
+         FROM nao_conformidades
+        WHERE apontamento_id = ANY($1::bigint[])
+        ORDER BY apontamento_id, id`, [ids],
+    ),
+    pool.query(
+      `SELECT f.apontamento_id, f.id, l.nome linha, f.turno, f.quantidade, f.justificativa,
+              f.nome, f.motivo_justificativa, f.atestado
+         FROM faltas f
+         LEFT JOIN linhas l ON l.id = f.linha_id
+        WHERE f.apontamento_id = ANY($1::bigint[])
+        ORDER BY f.apontamento_id, f.id`, [ids],
+    ),
+    pool.query(
+      `SELECT o.apontamento_id, o.id, l.nome linha, o.turno, o.observacao, o.justificativa_meta
+         FROM observacoes o
+         LEFT JOIN linhas l ON l.id = o.linha_id
+        WHERE o.apontamento_id = ANY($1::bigint[])
+        ORDER BY o.apontamento_id, o.id`, [ids],
+    ),
+    pool.query(
+      `SELECT DISTINCT h.id apontamento_id, l.nome linha
+         FROM apontamentos h
+         JOIN usuario_acessos ua ON ua.usuario_id = h.usuario_id AND ua.setor_id = h.setor_id
+         JOIN linhas l ON l.id = ua.linha_id
+        WHERE h.id = ANY($1::bigint[])
+        ORDER BY h.id, l.nome`, [ids],
+    ),
+  ]);
+
+  const group = (rows: any[]) => {
+    const map = new Map<number, any[]>();
+    for (const row of rows) {
+      const id = Number(row.apontamento_id);
+      const list = map.get(id) || [];
+      list.push(row);
+      map.set(id, list);
+    }
+    return map;
+  };
+
+  const producoesById = group(p.rows);
+  const materialById = group(material.rows);
+  const maquinaById = group(maquina.rows);
+  const ncById = group(nc.rows);
+  const faltasById = group(f.rows);
+  const observacoesById = group(o.rows);
+  const acessosById = group(acessos.rows);
+  const shortTime = (value: any) => String(value || '').slice(0, 5);
+
+  return headers.rows.map((x: any) => {
+    const id = Number(x.id);
+    const tipoBobina = ['AT', 'BT'].includes(String(x.tipo_bobina || '').toUpperCase())
+      ? String(x.tipo_bobina).toUpperCase()
+      : null;
+    const setorExibicao = x.setor === 'BOBINA AT/BT' && tipoBobina ? `BOBINA ${tipoBobina}` : x.setor;
+
+    return {
+      id: String(x.id),
+      data: dateOnly(x.data),
+      setor: setorExibicao,
+      tipoBobina: tipoBobina || undefined,
+      userId: String(x.usuario_id),
+      userName: x.usuario,
+      linhasPermitidas: (acessosById.get(id) || []).map((r: any) => r.linha).filter(Boolean),
+      producoes: (producoesById.get(id) || []).map((r: any) => ({
+        id: String(r.id), linha: r.linha, potencia: Number(r.potencia),
+        potenciaFormatted: String(r.potencia).replace('.', ','), quantidade: r.quantidade,
+      })),
+      paradasFaltaMaterial: (materialById.get(id) || []).map((r: any) => ({
+        id: String(r.id), causaMotivo: r.causa_motivo || '', material: r.material || '',
+        horaInicio: shortTime(r.hora_inicio), horaFim: shortTime(r.hora_fim),
+      })),
+      paradasMaquina: (maquinaById.get(id) || []).map((r: any) => ({
+        id: String(r.id), maquinaEquipamento: r.maquina_equipamento || '',
+        horaInicio: shortTime(r.hora_inicio), horaFim: shortTime(r.hora_fim), observacao: r.observacao || '',
+      })),
+      naoConformidades: (ncById.get(id) || []).map((r: any) => ({
+        id: String(r.id), causaNaoConformidade: r.causa_nao_conformidade || '', op: r.op || '', numeroSerie: r.numero_serie || '',
+      })),
+      faltas: (faltasById.get(id) || []).map((r: any) => ({
+        id: String(r.id), nome: r.nome || undefined, motivoJustificativa: r.motivo_justificativa || undefined,
+        atestado: typeof r.atestado === 'boolean' ? r.atestado : undefined, linha: r.linha || undefined,
+        turno: r.turno ? String(r.turno).toLowerCase() : undefined, quantidade: r.quantidade ?? undefined,
+        justificativa: r.justificativa || undefined,
+      })),
+      observacoes: (observacoesById.get(id) || []).map((r: any) => ({
+        id: String(r.id), linha: r.linha || undefined, turno: r.turno ? String(r.turno).toLowerCase() : undefined,
+        observacao: r.observacao || '', justificativaMeta: r.justificativa_meta || undefined,
+      })),
+      createdAt: isoDateTime(x.criado_em),
+      updatedAt: isoDateTime(x.atualizado_em),
+      statusAprovacao: String(x.status_aprovacao || 'PENDENTE').toUpperCase() === 'APROVADO' ? 'APROVADO' : 'PENDENTE',
+      aprovadoEm: x.aprovado_em ? isoDateTime(x.aprovado_em) : undefined,
+      aprovadoPorId: x.aprovado_por ? String(x.aprovado_por) : undefined,
+      aprovadoPorNome: x.aprovado_por_nome || undefined,
+      origemProducao: String(x.origem_producao || 'MANUAL').toUpperCase() === 'IMPORTADO' ? 'IMPORTADO' : 'MANUAL',
+      complementado: x.complementado !== false,
+    };
+  });
+}
+
 app.get('/api/apontamentos', auth, async (req: any, res) => {
   try {
     const ids = await pool.query(
@@ -898,18 +1037,55 @@ function expandedDashboardSectors(setor: string, linha?: string | null, tipoBobi
   return [...new Set(sectors)];
 }
 
-app.get('/api/coordenacao/dashboard', auth, requireCoordenacao, async (_req: any, res) => {
+function dashboardAccessSectorNames(setor: string): string[] {
+  const value = String(setor || '').trim().toUpperCase();
+  if (value === 'BOBINA AT/BT') return ['BOBINA AT', 'BOBINA BT'];
+  return [dashboardSectorName(value)];
+}
+
+app.get('/api/coordenacao/dashboard', auth, async (req: any, res) => {
   try {
+    const isCoordination = req.auth?.perfil === 'COORDENACAO';
+    const accessRows = isCoordination ? [] : await getUserAccess(req.auth.userId);
+    const allowedDashboardSectors = new Set<string>(
+      accessRows.flatMap((row: any) => dashboardAccessSectorNames(String(row.setor || ''))),
+    );
+    const allowedLines = new Set<string>(
+      accessRows.map((row: any) => String(row.linha || '').trim().toUpperCase()).filter(Boolean),
+    );
+    const accessSectorNames = [...new Set(accessRows.map((row: any) => String(row.setor || '').trim().toUpperCase()))];
+    const restrictLine = !isCoordination
+      && accessSectorNames.length > 0
+      && accessSectorNames.every((setor) => ['MONTAGEM FINAL', 'MPA', 'EPOXI'].includes(setor))
+      && allowedLines.size === 1;
+
+    const dashboardItemAllowed = (setor: string, linha?: string | null) => {
+      if (isCoordination) return true;
+      if (!allowedDashboardSectors.has(setor)) return false;
+      const normalizedLine = String(linha || '').trim().toUpperCase();
+      if (restrictLine && normalizedLine && !allowedLines.has(normalizedLine)) return false;
+      return true;
+    };
+
+    const rawApontamentoAllowed = (row: any) => isCoordination || Number(row.user_id) === Number(req.auth.userId);
+    const userQueryParams = isCoordination ? [] : [req.auth.userId];
+    const productionScopeSql = isCoordination ? '' : 'WHERE a.usuario_id = $1';
+    const approvedScopeSql = isCoordination
+      ? "WHERE a.status_aprovacao = 'APROVADO'"
+      : "WHERE a.status_aprovacao = 'APROVADO' AND a.usuario_id = $1";
+
     const [monthsResult, programacaoResult, producaoResult, faltasResult, observacoesResult, materialResult, maquinaResult, ncResult] = await Promise.all([
-      pool.query(`
-        SELECT mes FROM (
-          SELECT TO_CHAR(mes_referencia, 'YYYY-MM') mes FROM programacao
-          UNION
-          SELECT TO_CHAR(data, 'YYYY-MM') mes FROM apontamentos
-        ) x
-        WHERE mes IS NOT NULL
-        ORDER BY mes
-      `),
+      isCoordination
+        ? pool.query(`
+            SELECT mes FROM (
+              SELECT TO_CHAR(mes_referencia, 'YYYY-MM') mes FROM programacao
+              UNION
+              SELECT TO_CHAR(data, 'YYYY-MM') mes FROM apontamentos
+            ) x
+            WHERE mes IS NOT NULL
+            ORDER BY mes
+          `)
+        : Promise.resolve({ rows: [] as any[] }),
       pool.query(`
         SELECT data_programada, setor, linha, SUM(quantidade)::int quantidade
           FROM programacao
@@ -917,62 +1093,64 @@ app.get('/api/coordenacao/dashboard', auth, requireCoordenacao, async (_req: any
          ORDER BY data_programada, setor, linha
       `),
       pool.query(`
-        SELECT a.data, s.nome setor, a.tipo_bobina, l.nome linha, p.potencia, p.quantidade
+        SELECT a.data, a.usuario_id AS user_id, s.nome setor, a.tipo_bobina, l.nome linha, p.potencia, p.quantidade
           FROM producao p
           JOIN apontamentos a ON a.id = p.apontamento_id
           JOIN setores s ON s.id = a.setor_id
           JOIN linhas l ON l.id = p.linha_id
+         ${productionScopeSql}
          ORDER BY a.data, s.nome, l.nome, p.potencia
-      `),
+      `, userQueryParams),
       pool.query(`
-        SELECT a.data, s.nome setor, a.tipo_bobina, l.nome linha, f.turno, f.quantidade,
+        SELECT a.data, a.usuario_id AS user_id, s.nome setor, a.tipo_bobina, l.nome linha, f.turno, f.quantidade,
                f.nome, f.motivo_justificativa, f.atestado
           FROM faltas f
           JOIN apontamentos a ON a.id = f.apontamento_id
           JOIN setores s ON s.id = a.setor_id
           LEFT JOIN linhas l ON l.id = f.linha_id
-         WHERE a.status_aprovacao = 'APROVADO'
+         ${approvedScopeSql}
          ORDER BY a.data, s.nome, f.id
-      `),
+      `, userQueryParams),
       pool.query(`
-        SELECT a.data, s.nome setor, a.tipo_bobina, l.nome linha, o.turno, o.observacao, o.justificativa_meta
+        SELECT a.data, a.usuario_id AS user_id, s.nome setor, a.tipo_bobina, l.nome linha, o.turno, o.observacao, o.justificativa_meta
           FROM observacoes o
           JOIN apontamentos a ON a.id = o.apontamento_id
           JOIN setores s ON s.id = a.setor_id
           LEFT JOIN linhas l ON l.id = o.linha_id
-         WHERE a.status_aprovacao = 'APROVADO'
+         ${approvedScopeSql}
          ORDER BY a.data, s.nome, o.id
-      `),
+      `, userQueryParams),
       pool.query(`
-        SELECT a.data, s.nome setor, a.tipo_bobina, pfm.causa_motivo, pfm.material, pfm.hora_inicio, pfm.hora_fim
+        SELECT a.data, a.usuario_id AS user_id, s.nome setor, a.tipo_bobina, pfm.causa_motivo, pfm.material, pfm.hora_inicio, pfm.hora_fim
           FROM paradas_falta_material pfm
           JOIN apontamentos a ON a.id = pfm.apontamento_id
           JOIN setores s ON s.id = a.setor_id
-         WHERE a.status_aprovacao = 'APROVADO'
+         ${approvedScopeSql}
          ORDER BY a.data, s.nome, pfm.id
-      `),
+      `, userQueryParams),
       pool.query(`
-        SELECT a.data, s.nome setor, a.tipo_bobina, pm.maquina_equipamento, pm.hora_inicio, pm.hora_fim, pm.observacao
+        SELECT a.data, a.usuario_id AS user_id, s.nome setor, a.tipo_bobina, pm.maquina_equipamento, pm.hora_inicio, pm.hora_fim, pm.observacao
           FROM paradas_maquina pm
           JOIN apontamentos a ON a.id = pm.apontamento_id
           JOIN setores s ON s.id = a.setor_id
-         WHERE a.status_aprovacao = 'APROVADO'
+         ${approvedScopeSql}
          ORDER BY a.data, s.nome, pm.id
-      `),
+      `, userQueryParams),
       pool.query(`
-        SELECT a.data, s.nome setor, a.tipo_bobina, nc.causa_nao_conformidade, nc.op, nc.numero_serie
+        SELECT a.data, a.usuario_id AS user_id, s.nome setor, a.tipo_bobina, nc.causa_nao_conformidade, nc.op, nc.numero_serie
           FROM nao_conformidades nc
           JOIN apontamentos a ON a.id = nc.apontamento_id
           JOIN setores s ON s.id = a.setor_id
-         WHERE a.status_aprovacao = 'APROVADO'
+         ${approvedScopeSql}
          ORDER BY a.data, s.nome, nc.id
-      `),
+      `, userQueryParams),
     ]);
 
     const programacao: any[] = [];
     for (const row of programacaoResult.rows) {
       const linha = String(row.linha || '').trim();
       for (const setor of expandedDashboardSectors(String(row.setor), linha)) {
+        if (!dashboardItemAllowed(setor, linha)) continue;
         programacao.push({ data: dateOnly(row.data_programada), linha, setor, quantidade: Number(row.quantidade) || 0 });
       }
     }
@@ -980,10 +1158,12 @@ app.get('/api/coordenacao/dashboard', auth, requireCoordenacao, async (_req: any
     const detalhesProducao: any[] = [];
     const apontamentoMap = new Map<string, any>();
     for (const row of producaoResult.rows) {
+      if (!rawApontamentoAllowed(row)) continue;
       const linha = String(row.linha || '').trim();
       const data = dateOnly(row.data);
       const quantidade = Number(row.quantidade) || 0;
       for (const setor of expandedDashboardSectors(String(row.setor), linha, row.tipo_bobina)) {
+        if (!dashboardItemAllowed(setor, linha)) continue;
         detalhesProducao.push({ data, linha, setor, potencia: Number(row.potencia), quantidade });
         const key = `${data}|${setor}|${linha}`;
         const current = apontamentoMap.get(key) || { data, linha, setor, turno: 'Todos', quantidade: 0 };
@@ -996,11 +1176,13 @@ app.get('/api/coordenacao/dashboard', auth, requireCoordenacao, async (_req: any
     const faltas: any[] = [];
     const detalhesFaltas: any[] = [];
     for (const row of faltasResult.rows) {
+      if (!rawApontamentoAllowed(row)) continue;
       const data = dateOnly(row.data);
       const linha = String(row.linha || '').trim();
       const turno = row.turno ? String(row.turno).replace(/\s*turno$/i, '').trim() : 'Todos';
       const quantidade = row.quantidade == null ? (String(row.nome || '').trim() ? 1 : 0) : Number(row.quantidade) || 0;
       for (const setor of expandedDashboardSectors(String(row.setor), linha, row.tipo_bobina)) {
+        if (!dashboardItemAllowed(setor, linha)) continue;
         faltas.push({ data, linha, setor, turno, quantidade });
         detalhesFaltas.push({
           data, setor, linha: linha || undefined, turno: turno === 'Todos' ? undefined : turno,
@@ -1014,9 +1196,11 @@ app.get('/api/coordenacao/dashboard', auth, requireCoordenacao, async (_req: any
     const observacoes: any[] = [];
     const detalhesObservacoes: any[] = [];
     for (const row of observacoesResult.rows) {
+      if (!rawApontamentoAllowed(row)) continue;
       const data = dateOnly(row.data);
       const linha = String(row.linha || '').trim();
       for (const setor of expandedDashboardSectors(String(row.setor), linha, row.tipo_bobina)) {
+        if (!dashboardItemAllowed(setor, linha)) continue;
         const item = { data, linha, setor, observacao: row.observacao || '', justificativaMeta: row.justificativa_meta || '' };
         observacoes.push(item);
         detalhesObservacoes.push(item);
@@ -1025,21 +1209,27 @@ app.get('/api/coordenacao/dashboard', auth, requireCoordenacao, async (_req: any
 
     const faltasMaterial: any[] = [];
     for (const row of materialResult.rows) {
+      if (!rawApontamentoAllowed(row)) continue;
       for (const setor of expandedDashboardSectors(String(row.setor), null, row.tipo_bobina)) {
+        if (!dashboardItemAllowed(setor)) continue;
         faltasMaterial.push({ data: dateOnly(row.data), setor, causaMotivo: row.causa_motivo || '', material: row.material || '', horaInicio: String(row.hora_inicio || '').slice(0,5), horaFim: String(row.hora_fim || '').slice(0,5) });
       }
     }
 
     const maquinasQuebradas: any[] = [];
     for (const row of maquinaResult.rows) {
+      if (!rawApontamentoAllowed(row)) continue;
       for (const setor of expandedDashboardSectors(String(row.setor), null, row.tipo_bobina)) {
+        if (!dashboardItemAllowed(setor)) continue;
         maquinasQuebradas.push({ data: dateOnly(row.data), setor, maquinaEquipamento: row.maquina_equipamento || '', horaInicio: String(row.hora_inicio || '').slice(0,5), horaFim: String(row.hora_fim || '').slice(0,5), observacao: row.observacao || '' });
       }
     }
 
     const naoConformidades: any[] = [];
     for (const row of ncResult.rows) {
+      if (!rawApontamentoAllowed(row)) continue;
       for (const setor of expandedDashboardSectors(String(row.setor), null, row.tipo_bobina)) {
+        if (!dashboardItemAllowed(setor)) continue;
         naoConformidades.push({ data: dateOnly(row.data), setor, causa: row.causa_nao_conformidade || '', op: row.op || '', numeroSerie: row.numero_serie || '' });
       }
     }
@@ -1047,10 +1237,18 @@ app.get('/api/coordenacao/dashboard', auth, requireCoordenacao, async (_req: any
     const linhas = [...new Set([...programacao, ...apontamento].map((row: any) => row.linha).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'pt-BR'));
     const setores = [...new Set([...programacao, ...apontamento].map((row: any) => row.setor).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'pt-BR'));
 
+    const mesesVisiveis = isCoordination
+      ? monthsResult.rows.map((row: any) => String(row.mes)).filter(Boolean)
+      : [...new Set([...programacao, ...apontamento].map((row: any) => String(row.data || '').slice(0, 7)).filter(Boolean))].sort();
+
     res.json({
       geradoEm: new Date().toISOString(),
-      periodo: { meses: monthsResult.rows.map((row: any) => String(row.mes)).filter(Boolean) },
+      periodo: { meses: mesesVisiveis },
       filtros: { linhas, setores, turnos: [] },
+      escopo: isCoordination ? null : {
+        setores: [...allowedDashboardSectors],
+        linhas: restrictLine ? [...allowedLines] : [],
+      },
       programacao,
       apontamento,
       detalhesProducao,
@@ -1070,9 +1268,8 @@ app.get('/api/coordenacao/dashboard', auth, requireCoordenacao, async (_req: any
 
 app.get('/api/coordenacao/apontamentos', auth, requireCoordenacao, async (_req: any, res) => {
   try {
-    const ids = await pool.query('SELECT id FROM apontamentos ORDER BY data DESC, id DESC');
-    const registros = await Promise.all(ids.rows.map((r: any) => loadApontamento(r.id)));
-    res.json(registros.filter(Boolean));
+    const registros = await loadApontamentosBatch();
+    res.json(registros);
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Falha ao carregar os apontamentos gerais.' });

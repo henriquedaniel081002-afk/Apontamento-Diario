@@ -21,6 +21,7 @@ type FilterSelectProps = {
   defaultValue?: string;
   active?: boolean;
   formatOption?: (value: string) => string;
+  disabled?: boolean;
 };
 
 type FilterBarProps = {
@@ -73,6 +74,7 @@ export function FilterSelect({
   defaultValue,
   active = false,
   formatOption = (option) => option,
+  disabled = false,
 }: FilterSelectProps) {
   const activeState = defaultValue !== undefined ? selected !== defaultValue : active;
   const Icon = FILTER_ICONS[label] ?? SlidersHorizontal;
@@ -95,7 +97,8 @@ export function FilterSelect({
           options={options.map((option) => ({ value: option, label: formatOption(option) }))}
           ariaLabel={label}
           active={activeState}
-          className="dashboard-filter__select pl-10"
+          disabled={disabled}
+          className="dashboard-filter__select pl-10 disabled:cursor-not-allowed disabled:opacity-70"
         />
       </div>
     </div>

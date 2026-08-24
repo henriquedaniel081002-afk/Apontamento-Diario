@@ -13,6 +13,7 @@ import { ApontamentoPage } from './pages/ApontamentoPage';
 import { HistoricoPage } from './pages/HistoricoPage';
 import { CoordenacaoPage } from './pages/CoordenacaoPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { invalidateDashboardCache } from './services/dashboardService';
 import { Header } from './components/common/Header';
 import { AppShell, LoadingState } from './components/common/ui';
 
@@ -28,6 +29,7 @@ export default function App() {
 
   useEffect(() => {
     const unsubscribe = authService.onSessionExpired(({ message }) => {
+      invalidateDashboardCache();
       setCurrentUser(null);
       setActiveTab('apontamento');
       setLoginMessage(message);
@@ -131,12 +133,14 @@ export default function App() {
   }, [currentUser]);
 
   const handleLoginSuccess = (user: User) => {
+    invalidateDashboardCache();
     setCurrentUser(user);
     setActiveTab('apontamento');
     setLoginMessage(null);
   };
 
   const handleLogout = () => {
+    invalidateDashboardCache();
     authService.logout();
     setCurrentUser(null);
     setActiveTab('apontamento');
@@ -177,8 +181,10 @@ export default function App() {
       />
 
       <main id="conteudo-principal" className="flex-1 pb-12">
-        {isCoordenacao ? (
-          activeTab === 'dashboard' ? <DashboardPage /> : <CoordenacaoPage user={currentUser} />
+        {activeTab === 'dashboard' ? (
+          <DashboardPage user={currentUser} />
+        ) : isCoordenacao ? (
+          <CoordenacaoPage user={currentUser} />
         ) : activeTab === 'apontamento' ? (
           <ApontamentoPage
             user={currentUser}

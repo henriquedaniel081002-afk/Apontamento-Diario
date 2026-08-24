@@ -43,6 +43,7 @@ const navigationByProfile: Record<User['perfil'], NavigationConfig> = {
     items: [
       { id: 'apontamento', label: 'Apontamento', icon: ClipboardList },
       { id: 'historico', label: 'Histórico', icon: History },
+      { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
     ],
   },
   COORDENACAO: {
@@ -95,6 +96,7 @@ function Navigation({
 
 function getPageTitle(isCoordination: boolean, activeTab: HeaderTab): string {
   if (isCoordination) return activeTab === 'dashboard' ? 'Dashboard de Aderência' : 'Coordenação';
+  if (activeTab === 'dashboard') return 'Dashboard de Aderência';
   return activeTab === 'apontamento' ? 'Apontamento diário' : 'Histórico';
 }
 

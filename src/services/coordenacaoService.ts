@@ -1,4 +1,4 @@
-import { Apontamento, ApontamentoEditPayload, ProductionImportRequest, ProductionImportResult, ProgramacaoImportRequest, ProgramacaoImportResult, StatusAprovacao } from '../types';
+import { Apontamento, ApontamentoEditPayload, ProductionImportMonthRequest, ProductionImportMonthResult, ProductionImportRequest, ProductionImportResult, ProgramacaoImportRequest, ProgramacaoImportResult, StatusAprovacao } from '../types';
 import { apiRequest } from './apiClient';
 import { invalidateDashboardCache } from './dashboardService';
 
@@ -38,6 +38,14 @@ export const coordenacaoService = {
 
   async importProduction(payload: ProductionImportRequest): Promise<ProductionImportResult> {
     const result = await apiRequest<ProductionImportResult>('/api/coordenacao/importar-producao', {
+      method: 'POST', body: JSON.stringify(payload),
+    });
+    invalidateAfterMutation();
+    return result;
+  },
+
+  async importProductionMonth(payload: ProductionImportMonthRequest): Promise<ProductionImportMonthResult> {
+    const result = await apiRequest<ProductionImportMonthResult>('/api/coordenacao/importar-producao-mes', {
       method: 'POST', body: JSON.stringify(payload),
     });
     invalidateAfterMutation();

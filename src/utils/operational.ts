@@ -97,6 +97,8 @@ export function getOperationalUnitLabel(apontamento: Apontamento): string {
     'BOBINA AT': 'Bobina AT',
     'BOBINA BT': 'Bobina BT',
     'CORTE LASER': 'Corte do Laser',
+    'CORTE DO NUCLEO': 'Corte do Núcleo',
+    FERRAGEM: 'Ferragem',
     ISOLANTE: 'Isolante',
     'MONTAGEM NUCLEO': 'Montagem do Núcleo',
     'MONTAGEM FINAL': 'Montagem Final',

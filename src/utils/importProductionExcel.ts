@@ -24,6 +24,15 @@ export interface ProductionImportPreview {
   issues: ProductionImportIssue[];
 }
 
+export interface ProductionMonthImportPreview {
+  fileName: string;
+  mesReferencia: string;
+  rowsProcessed: number;
+  rowsMatched: number;
+  ignoredWithoutPower: number;
+  dias: ProductionImportPreview[];
+}
+
 interface ZipEntry {
   name: string;
   compressionMethod: number;
@@ -56,6 +65,12 @@ function sectorRule(rawSector: string): SectorRule | null {
     'BOBINA BT': { setor: 'BOBINA AT/BT', tipoBobina: 'BT', allowedLines: ['MON', 'TRI', 'EPO'] },
     'CORTE DO LASER': { setor: 'CORTE LASER', allowedLines: ['MON', 'TRI', 'EPO'] },
     'CORTE LASER': { setor: 'CORTE LASER', allowedLines: ['MON', 'TRI', 'EPO'] },
+    'CORTE DO NUCLEO': { setor: 'CORTE DO NUCLEO', allowedLines: ['MON', 'TRI', 'EPO'] },
+    'CORTE NUCLEO': { setor: 'CORTE DO NUCLEO', allowedLines: ['MON', 'TRI', 'EPO'] },
+    'FERRAGEM': { setor: 'FERRAGEM', allowedLines: ['MON', 'TRI', 'EPO'] },
+    'FERRAGEM PA': { setor: 'FERRAGEM', allowedLines: ['MON', 'TRI', 'EPO'] },
+    'FERRAGEM PA / ACESSORIOS': { setor: 'FERRAGEM', allowedLines: ['MON', 'TRI', 'EPO'] },
+    'FERRAGEM PA/ACESSORIOS': { setor: 'FERRAGEM', allowedLines: ['MON', 'TRI', 'EPO'] },
     'ISOLANTE': { setor: 'ISOLANTE', allowedLines: ['MON', 'TRI', 'EPO'] },
     'MONTAGEM DO NUCLEO': { setor: 'MONTAGEM NUCLEO', allowedLines: ['MON', 'TRI', 'EPO'] },
     'MONTAGEM NUCLEO': { setor: 'MONTAGEM NUCLEO', allowedLines: ['MON', 'TRI', 'EPO'] },
@@ -302,33 +317,45 @@ function parseRowCells(rowXml: string, sharedStrings: string[]): Map<string, str
   return cells;
 }
 
-function ymdToExcelSerial(ymd: string): number {
-  const [year, month, day] = ymd.split('-').map(Number);
-  if (!year || !month || !day) throw new Error('Informe uma data válida para a importação.');
-  return Math.floor((Date.UTC(year, month - 1, day) - Date.UTC(1899, 11, 30)) / 86400000);
-}
-
-function cellMatchesDate(value: string, ymd: string, targetSerial: number): boolean {
-  const numeric = Number(value);
-  if (Number.isFinite(numeric)) return Math.floor(numeric) === targetSerial;
-  const normalized = value.trim();
-  if (normalized === ymd) return true;
-  const [year, month, day] = ymd.split('-');
-  return normalized === `${day}/${month}/${year}` || normalized === `${day}-${month}-${year}`;
-}
-
 function rawGroupId(setor: string, linha: string, potencia: number): string {
   return `${normalizeText(setor)}|${normalizeText(linha)}|${potencia}`;
 }
 
-export async function readProductionImportExcel(
-  file: File,
-  data: string,
-  onProgress?: (rowsProcessed: number) => void,
-): Promise<ProductionImportPreview> {
-  if (!/\.xlsx$/i.test(file.name)) throw new Error('Selecione um arquivo Excel no formato .xlsx.');
-  if (!data) throw new Error('Informe a data que deve ser considerada.');
+function excelSerialToYmd(serial: number): string {
+  const date = new Date(Date.UTC(1899, 11, 30) + Math.floor(serial) * 86400000);
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
+}
 
+function cellDateToYmd(value: string): string {
+  const normalized = String(value || '').trim();
+  if (!normalized) return '';
+
+  const numeric = Number(normalized);
+  if (Number.isFinite(numeric) && numeric > 0) return excelSerialToYmd(numeric);
+
+  const iso = normalized.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (iso) return `${iso[1]}-${iso[2].padStart(2, '0')}-${iso[3].padStart(2, '0')}`;
+
+  const br = normalized.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+  if (br) return `${br[3]}-${br[2].padStart(2, '0')}-${br[1].padStart(2, '0')}`;
+
+  return '';
+}
+
+type ProductionReadMode =
+  | { mode: 'DAY'; value: string }
+  | { mode: 'MONTH'; value: string };
+
+async function readProductionImportExcelPeriod(
+  file: File,
+  period: ProductionReadMode,
+  onProgress?: (rowsProcessed: number) => void,
+): Promise<ProductionMonthImportPreview> {
+  if (!/\.xlsx$/i.test(file.name)) throw new Error('Selecione um arquivo Excel no formato .xlsx.');
+  if (period.mode === 'DAY' && !/^\d{4}-\d{2}-\d{2}$/.test(period.value)) throw new Error('Informe uma data válida para a importação.');
+  if (period.mode === 'MONTH' && !/^\d{4}-\d{2}$/.test(period.value)) throw new Error('Informe um mês válido para a importação.');
+
+  const mesReferencia = period.mode === 'DAY' ? period.value.slice(0, 7) : period.value;
   const buffer = await file.arrayBuffer();
   const entries = parseZipEntries(buffer);
   const workbookEntry = entries.get('xl/workbook.xml');
@@ -345,11 +372,12 @@ export async function readProductionImportExcel(
 
   const sharedEntry = entries.get('xl/sharedStrings.xml');
   const sharedStrings = readSharedStrings(sharedEntry ? await readEntryText(buffer, sharedEntry) : null);
-  const targetSerial = ymdToExcelSerial(data);
-  const rawGroups = new Map<string, RawProductionGroup>();
-  let ignoredWithoutPower = 0;
+  const rawGroupsByDate = new Map<string, Map<string, RawProductionGroup>>();
+  const rowsMatchedByDate = new Map<string, number>();
+  const ignoredByDate = new Map<string, number>();
   let rowsProcessed = 0;
   let rowsMatched = 0;
+  let ignoredWithoutPower = 0;
   let headerColumns: Record<'date' | 'power' | 'line' | 'sector', string> | null = null;
 
   const stream = await entryByteStream(buffer, sheetEntry);
@@ -373,24 +401,35 @@ export async function readProductionImportExcel(
       return;
     }
 
-    const dateValue = cells.get(headerColumns.date) || '';
-    if (!cellMatchesDate(dateValue, data, targetSerial)) return;
+    const rowDate = cellDateToYmd(cells.get(headerColumns.date) || '');
+    if (!rowDate) return;
+    if (period.mode === 'DAY' ? rowDate !== period.value : !rowDate.startsWith(`${period.value}-`)) return;
+
     rowsMatched += 1;
+    rowsMatchedByDate.set(rowDate, (rowsMatchedByDate.get(rowDate) || 0) + 1);
 
     const powerRaw = (cells.get(headerColumns.power) || '').trim().replace(',', '.');
     const potencia = Number(powerRaw);
     if (!powerRaw || !Number.isFinite(potencia) || potencia <= 0) {
       ignoredWithoutPower += 1;
+      ignoredByDate.set(rowDate, (ignoredByDate.get(rowDate) || 0) + 1);
       return;
     }
+
     const setor = (cells.get(headerColumns.sector) || '').trim();
     const linha = (cells.get(headerColumns.line) || '').trim();
     if (!setor || !linha) return;
 
-    const id = rawGroupId(setor, linha, potencia);
-    const existing = rawGroups.get(id);
+    let dayGroups = rawGroupsByDate.get(rowDate);
+    if (!dayGroups) {
+      dayGroups = new Map<string, RawProductionGroup>();
+      rawGroupsByDate.set(rowDate, dayGroups);
+    }
+    const baseId = rawGroupId(setor, linha, potencia);
+    const id = `${rowDate}|${baseId}`;
+    const existing = dayGroups.get(id);
     if (existing) existing.quantidade += 1;
-    else rawGroups.set(id, { id, setorOriginal: setor, linhaOriginal: linha, potencia, quantidade: 1 });
+    else dayGroups.set(id, { id, setorOriginal: setor, linhaOriginal: linha, potencia, quantidade: 1 });
   };
 
   while (true) {
@@ -398,18 +437,18 @@ export async function readProductionImportExcel(
     if (value) pending += value;
 
     while (true) {
-      const start = pending.indexOf('<row');
-      if (start < 0) {
+      const rowStart = pending.indexOf('<row');
+      if (rowStart < 0) {
         if (pending.length > 2048) pending = pending.slice(-2048);
         break;
       }
-      const end = pending.indexOf('</row>', start);
-      if (end < 0) {
-        if (start > 0) pending = pending.slice(start);
+      const rowEnd = pending.indexOf('</row>', rowStart);
+      if (rowEnd < 0) {
+        if (rowStart > 0) pending = pending.slice(rowStart);
         break;
       }
-      processRow(pending.slice(start, end + 6));
-      pending = pending.slice(end + 6);
+      processRow(pending.slice(rowStart, rowEnd + 6));
+      pending = pending.slice(rowEnd + 6);
       if (onProgress && rowsProcessed % 10000 === 0) onProgress(rowsProcessed);
     }
 
@@ -417,30 +456,57 @@ export async function readProductionImportExcel(
   }
 
   if (!headerColumns) throw new Error('Não foi possível localizar o cabeçalho da aba “Apontamento Final”.');
-  if (rowsMatched === 0) throw new Error(`Nenhum registro foi encontrado em DATA PRODUZIDA para ${data.split('-').reverse().join('/')}.`);
-
-  const valid: ProductionImportGroup[] = [];
-  const issues: ProductionImportIssue[] = [];
-  for (const raw of rawGroups.values()) {
-    const result = classifyRawProductionGroup(raw);
-    if (result.group) valid.push(result.group);
-    else issues.push(result.issue);
+  if (rowsMatched === 0) {
+    if (period.mode === 'DAY') throw new Error(`Nenhum registro foi encontrado em DATA PRODUZIDA para ${period.value.split('-').reverse().join('/')}.`);
+    const [ano, mes] = period.value.split('-');
+    throw new Error(`Nenhum registro foi encontrado em DATA PRODUZIDA para ${mes}/${ano}.`);
   }
 
-  return {
-    fileName: file.name,
-    data,
-    rowsProcessed,
-    rowsMatched,
-    ignoredWithoutPower,
-    validGroups: aggregateImportGroups(valid),
-    issues: issues.sort((a, b) =>
-      a.kind.localeCompare(b.kind)
-      || a.setorOriginal.localeCompare(b.setorOriginal, 'pt-BR')
-      || a.linhaOriginal.localeCompare(b.linhaOriginal, 'pt-BR')
-      || a.potencia - b.potencia,
-    ),
-  };
+  const dias: ProductionImportPreview[] = [...rowsMatchedByDate.keys()].sort().map((data) => {
+    const valid: ProductionImportGroup[] = [];
+    const issues: ProductionImportIssue[] = [];
+    for (const raw of rawGroupsByDate.get(data)?.values() || []) {
+      const result = classifyRawProductionGroup(raw);
+      if (result.group) valid.push(result.group);
+      else issues.push(result.issue);
+    }
+
+    return {
+      fileName: file.name,
+      data,
+      rowsProcessed,
+      rowsMatched: rowsMatchedByDate.get(data) || 0,
+      ignoredWithoutPower: ignoredByDate.get(data) || 0,
+      validGroups: aggregateImportGroups(valid),
+      issues: issues.sort((a, b) =>
+        a.kind.localeCompare(b.kind)
+        || a.setorOriginal.localeCompare(b.setorOriginal, 'pt-BR')
+        || a.linhaOriginal.localeCompare(b.linhaOriginal, 'pt-BR')
+        || a.potencia - b.potencia,
+      ),
+    };
+  });
+
+  return { fileName: file.name, mesReferencia, rowsProcessed, rowsMatched, ignoredWithoutPower, dias };
+}
+
+export async function readProductionImportExcel(
+  file: File,
+  data: string,
+  onProgress?: (rowsProcessed: number) => void,
+): Promise<ProductionImportPreview> {
+  const result = await readProductionImportExcelPeriod(file, { mode: 'DAY', value: data }, onProgress);
+  const day = result.dias.find((item) => item.data === data);
+  if (!day) throw new Error(`Nenhum registro válido foi encontrado para ${data.split('-').reverse().join('/')}.`);
+  return day;
+}
+
+export async function readProductionImportExcelMonth(
+  file: File,
+  mesReferencia: string,
+  onProgress?: (rowsProcessed: number) => void,
+): Promise<ProductionMonthImportPreview> {
+  return readProductionImportExcelPeriod(file, { mode: 'MONTH', value: mesReferencia }, onProgress);
 }
 
 export function importUnitLabel(group: Pick<ProductionImportGroup, 'setor' | 'linha' | 'tipoBobina'>): string {
@@ -448,6 +514,8 @@ export function importUnitLabel(group: Pick<ProductionImportGroup, 'setor' | 'li
   if (group.setor === 'MONTAGEM FINAL' || group.setor === 'MPA') return `${group.setor === 'MPA' ? 'MPA' : 'Montagem Final'} ${group.linha}`;
   const labels: Partial<Record<Setor, string>> = {
     'CORTE LASER': 'Corte do Laser',
+    'CORTE DO NUCLEO': 'Corte do Núcleo',
+    FERRAGEM: 'Ferragem',
     ISOLANTE: 'Isolante',
     'MONTAGEM NUCLEO': 'Montagem do Núcleo',
     PINTURA: 'Pintura',

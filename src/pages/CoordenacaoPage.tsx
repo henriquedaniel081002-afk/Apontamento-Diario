@@ -4,9 +4,7 @@ import {
   CalendarDays,
   CheckCircle2,
   ClipboardCheck,
-  Download,
-  FileSpreadsheet,
-  FileUp,
+  Settings2,
   Filter,
   Inbox,
   ListFilter,
@@ -14,7 +12,7 @@ import {
   ShieldCheck,
   TimerReset,
 } from 'lucide-react';
-import { Apontamento, ApontamentoEditPayload, ProductionImportGroup, StatusAprovacao, User } from '../types';
+import { Apontamento, ApontamentoEditPayload, ProductionImportGroup, ProductionImportMonthDay, StatusAprovacao, User } from '../types';
 import { coordenacaoService } from '../services/coordenacaoService';
 import { formatDateBR, formatPotencia } from '../utils/formatters';
 import { exportApontamentosExcel } from '../utils/exportExcel';
@@ -27,6 +25,7 @@ import { DetailModal } from '../components/historico/DetailModal';
 import { EditApontamentoModal } from '../components/coordenacao/EditApontamentoModal';
 import { ImportProductionModal } from '../components/coordenacao/ImportProductionModal';
 import { ImportProgramacaoModal } from '../components/coordenacao/ImportProgramacaoModal';
+import { CoordinationSettingsModal } from '../components/coordenacao/CoordinationSettingsModal';
 import type { ProgramacaoImportGroup } from '../utils/importProgramacaoExcel';
 import { CoordinationRecords } from '../components/coordenacao/CoordinationRecords';
 import { ConfirmModal } from '../components/common/ConfirmModal';
@@ -76,6 +75,7 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [programacaoImportOpen, setProgramacaoImportOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -194,7 +194,21 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
     setToast({
       id: Date.now().toString(),
       type: 'success',
-      message: `Produção de ${formatDateBR(data)} importada: ${result.totalQuantidade.toLocaleString('pt-BR')} unidades em ${result.totalUnidades} unidade(s) operacional(is).`,
+      message: `Produção de ${formatDateBR(data)} substituída: ${result.totalQuantidade.toLocaleString('pt-BR')} unidades em ${result.totalUnidades} unidade(s) operacional(is).`,
+    });
+  };
+
+  const handleImportProductionMonth = async (mesReferencia: string, dias: ProductionImportMonthDay[]) => {
+    const result = await coordenacaoService.importProductionMonth({ mesReferencia, dias });
+    const [ano, mes] = result.mesReferencia.split('-');
+    setSetorFilter('ALL');
+    setLinhaFilter('ALL');
+    setPotenciaFilter('ALL');
+    await loadData(false);
+    setToast({
+      id: Date.now().toString(),
+      type: 'success',
+      message: `Produção de ${mes}/${ano} substituída: ${result.totalQuantidade.toLocaleString('pt-BR')} unidades em ${result.datasImportadas} dia(s) do arquivo.`,
     });
   };
 
@@ -294,9 +308,7 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
         description="Acompanhe a cobertura diária, analise registros e exporte o recorte filtrado."
         metadata={<span>Sessão: <strong className="text-[var(--text-primary)]">{user.name}</strong></span>}
         actions={<>
-          <Button type="button" onClick={() => setImportOpen(true)} disabled={loading} leftIcon={<FileUp className="size-4" aria-hidden="true" />}>Importar produção</Button>
-          <Button type="button" variant="secondary" onClick={() => setProgramacaoImportOpen(true)} disabled={loading} leftIcon={<FileSpreadsheet className="size-4" aria-hidden="true" />}>Importar programação</Button>
-          <Button type="button" variant="success" onClick={() => void handleExport()} disabled={loading || !!loadError || exporting} isLoading={exporting} loadingLabel="Exportando…" leftIcon={<Download className="size-4" aria-hidden="true" />}>Exportar Excel</Button>
+          <Button type="button" onClick={() => setSettingsOpen(true)} disabled={loading} leftIcon={<Settings2 className="size-4" aria-hidden="true" />}>Configurações</Button>
           <Button type="button" variant="ghost" onClick={() => void loadData(true)} disabled={loading} leftIcon={<RefreshCw className={`size-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />}>Atualizar</Button>
         </>}
       />
@@ -467,10 +479,21 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
         )
       )}
 
+      <CoordinationSettingsModal
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onImportProduction={() => setImportOpen(true)}
+        onImportProgramacao={() => setProgramacaoImportOpen(true)}
+        onExport={() => void handleExport()}
+        exporting={exporting}
+        disabled={loading || !!loadError}
+      />
+
       <ImportProductionModal
         isOpen={importOpen}
         onClose={() => setImportOpen(false)}
-        onImport={handleImportProduction}
+        onImportDay={handleImportProduction}
+        onImportMonth={handleImportProductionMonth}
       />
       <ImportProgramacaoModal
         isOpen={programacaoImportOpen}

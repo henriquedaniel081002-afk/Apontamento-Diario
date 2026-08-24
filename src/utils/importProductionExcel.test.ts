@@ -59,18 +59,21 @@ describe('equivalências da importação de produção', () => {
     });
   });
 
-  it('não direciona EPO de outro setor ao Epóxi', () => {
-    const result = classifyRawProductionGroup({
+  it('mantém EPO de Ferragem no próprio setor', () => {
+    expect(classifyRawProductionGroup({
       id: 'ferragem-epo',
       setorOriginal: 'FERRAGEM',
       linhaOriginal: 'EPO',
       potencia: 150,
       quantidade: 4,
+    })).toEqual({
+      group: {
+        setor: 'FERRAGEM',
+        linha: 'EPO',
+        potencia: 150,
+        quantidade: 4,
+      },
     });
-
-    expect(result.issue).toEqual(expect.objectContaining({
-      kind: 'SETOR',
-    }));
   });
 
   it('exige correção manual para BIF/POT em setor reconhecido', () => {
@@ -113,15 +116,30 @@ describe('equivalências da importação de produção', () => {
     ]);
   });
 
-  it('não cria equivalência automática para setor sem apontador', () => {
-    const result = classifyRawProductionGroup({
+  it('reconhece Ferragem e Corte do Núcleo para o Dashboard', () => {
+    expect(classifyRawProductionGroup({
       id: 'ferragem',
       setorOriginal: 'FERRAGEM',
       linhaOriginal: 'MON',
       potencia: 75,
       quantidade: 3,
-    });
+    })).toEqual({ group: { setor: 'FERRAGEM', linha: 'MON', potencia: 75, quantidade: 3 } });
 
-    expect(result.issue).toEqual(expect.objectContaining({ kind: 'SETOR', allowedLines: [] }));
+    expect(classifyRawProductionGroup({
+      id: 'corte-nucleo',
+      setorOriginal: 'CORTE DO NÚCLEO',
+      linhaOriginal: 'TRI',
+      potencia: 112.5,
+      quantidade: 7,
+    })).toEqual({ group: { setor: 'CORTE DO NUCLEO', linha: 'TRI', potencia: 112.5, quantidade: 7 } });
+
+
+    expect(classifyRawProductionGroup({
+      id: 'ferragem-pa',
+      setorOriginal: 'FERRAGEM PA / ACESSÓRIOS',
+      linhaOriginal: 'EPO',
+      potencia: 45,
+      quantidade: 2,
+    })).toEqual({ group: { setor: 'FERRAGEM', linha: 'EPO', potencia: 45, quantidade: 2 } });
   });
 });

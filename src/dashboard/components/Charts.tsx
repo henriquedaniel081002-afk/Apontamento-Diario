@@ -27,7 +27,7 @@ export function EvolutionChart({ data, mesLabel, onDayClick }: { data: Evolution
           {data.map(item=>{
             const ph=Math.max(item.programado?8:0,(item.programado/max)*220);
             const rh=Math.max(item.produzido?8:0,(item.produzido/max)*220);
-            const ok=item.produzido>=item.programado && item.programado>0;
+            const ok=item.programado===0 ? item.produzido>0 : item.produzido>=item.programado;
             const ader=item.programado ? item.produzido/item.programado*100 : null;
             const label=`${item.data}: programado ${fmt(item.programado)}, produzido ${fmt(item.produzido)}${ader===null?'':`, aderência ${ader.toFixed(2)}%`}`;
             return <button key={item.data} type="button" onClick={()=>onDayClick?.(item)} className="evolution-day" title={label} aria-label={`${label}. Abrir detalhes do dia.`}>
@@ -40,7 +40,7 @@ export function EvolutionChart({ data, mesLabel, onDayClick }: { data: Evolution
           })}
         </div>
       </div>}
-      <div className="evolution-chart-note" role="note"><Info className="size-3.5"/><span>Clique nas colunas para abrir os detalhes do dia. Verde indica acima da programação; vermelho, abaixo.</span></div>
+      <div className="evolution-chart-note" role="note"><Info className="size-3.5"/><span>Clique nas colunas para abrir os detalhes do dia. Verde indica produção igual/acima da programação ou produção sem programação; vermelho indica produção abaixo do programado.</span></div>
     </div>
   </section>;
 }

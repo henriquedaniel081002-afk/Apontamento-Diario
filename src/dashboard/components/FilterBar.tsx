@@ -85,7 +85,7 @@ export function FilterSelect({
       <div className="relative">
         <Icon
           className={cn(
-            'pointer-events-none absolute left-3.5 top-1/2 size-[17px] -translate-y-1/2',
+            'pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2',
             activeState ? 'text-status-planned' : 'text-text-secondary',
           )}
           aria-hidden="true"
@@ -98,7 +98,7 @@ export function FilterSelect({
           ariaLabel={label}
           active={activeState}
           disabled={disabled}
-          className="dashboard-filter__select pl-10 disabled:cursor-not-allowed disabled:opacity-70"
+          className="dashboard-filter__select disabled:cursor-not-allowed disabled:opacity-70"
         />
       </div>
     </div>

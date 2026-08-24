@@ -12,7 +12,7 @@ const SESSION_SECRET = process.env.SESSION_SECRET || 'change-this-secret-in-prod
 if (!DATABASE_URL) throw new Error('DATABASE_URL não configurada.');
 
 const pool = new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false } });
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '5mb' }));
 app.use('/api', (_req, res, next) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.setHeader('Pragma', 'no-cache');
@@ -131,6 +131,8 @@ type PreparedImportGroup = ImportGroup & {
 const IMPORT_SECTORS = new Set([
   'BOBINA AT/BT',
   'CORTE LASER',
+  'CORTE DO NUCLEO',
+  'FERRAGEM',
   'ISOLANTE',
   'MONTAGEM NUCLEO',
   'MONTAGEM FINAL',
@@ -140,6 +142,7 @@ const IMPORT_SECTORS = new Set([
   'EPOXI',
 ]);
 const IMPORT_LINES = new Set<ImportLine>(['MON', 'TRI', 'EPO']);
+const DASHBOARD_ONLY_IMPORT_SECTORS = new Set(['CORTE DO NUCLEO', 'FERRAGEM']);
 
 function importUnitKey(group: Pick<ImportGroup, 'setor' | 'linha' | 'tipoBobina'>): string {
   if (group.setor === 'BOBINA AT/BT') return `${group.setor}|${group.tipoBobina || ''}`;
@@ -178,11 +181,32 @@ function validateImportGroups(value: unknown): ImportGroup[] {
   });
 }
 
-async function prepareImportGroups(client: any, groups: ImportGroup[]): Promise<PreparedImportGroup[]> {
+async function prepareImportGroups(client: any, groups: ImportGroup[], fallbackUserId?: number): Promise<PreparedImportGroup[]> {
   const sectorNames = [...new Set(groups.map((group) => group.setor))];
   const lineNames = [...new Set(groups.map((group) => group.linha))];
-  const [sectorsResult, linesResult, accessResult] = await Promise.all([
-    client.query('SELECT id, nome FROM setores WHERE nome = ANY($1::text[])', [sectorNames]),
+
+  const sectorsResult = await client.query('SELECT id, nome FROM setores WHERE nome = ANY($1::text[])', [sectorNames]);
+  const sectorMap = new Map<string, number>(sectorsResult.rows.map((row: any) => [String(row.nome), Number(row.id)]));
+
+  // Corte do Núcleo e Ferragem são setores usados somente na consolidação do Dashboard.
+  // Se ainda não existirem em uma base antiga, o próprio fluxo de importação os cadastra
+  // sem criar login/apontador adicional.
+  for (const sector of sectorNames) {
+    if (sectorMap.has(sector)) continue;
+    if (!DASHBOARD_ONLY_IMPORT_SECTORS.has(sector)) throw new Error(`Setor ${sector} não encontrado no Neon.`);
+    const inserted = await client.query(
+      `INSERT INTO setores(nome)
+       SELECT $1
+        WHERE NOT EXISTS (SELECT 1 FROM setores WHERE nome = $1)
+       RETURNING id, nome`,
+      [sector],
+    );
+    const row = inserted.rows[0] || (await client.query('SELECT id, nome FROM setores WHERE nome = $1 LIMIT 1', [sector])).rows[0];
+    if (!row) throw new Error(`Não foi possível preparar o setor ${sector} para a importação.`);
+    sectorMap.set(String(row.nome), Number(row.id));
+  }
+
+  const [linesResult, accessResult] = await Promise.all([
     client.query('SELECT id, nome FROM linhas WHERE nome = ANY($1::text[])', [lineNames]),
     client.query(
       `SELECT ua.usuario_id, u.login, ua.setor_id, s.nome setor, ua.linha_id, l.nome linha
@@ -196,9 +220,7 @@ async function prepareImportGroups(client: any, groups: ImportGroup[]): Promise<
     ),
   ]);
 
-  const sectorMap = new Map<string, number>(sectorsResult.rows.map((row: any) => [String(row.nome), Number(row.id)]));
   const lineMap = new Map<string, number>(linesResult.rows.map((row: any) => [String(row.nome), Number(row.id)]));
-  for (const sector of sectorNames) if (!sectorMap.has(sector)) throw new Error(`Setor ${sector} não encontrado no Neon.`);
   for (const line of lineNames) if (!lineMap.has(line)) throw new Error(`Linha ${line} não encontrada no Neon.`);
 
   const accessByUserSector = new Map<string, { usuarioId: number; setor: string; setorId: number; lines: Map<string, number> }>();
@@ -245,6 +267,17 @@ async function prepareImportGroups(client: any, groups: ImportGroup[]): Promise<
 
     const selected = candidates[0];
     if (!selected) {
+      if (DASHBOARD_ONLY_IMPORT_SECTORS.has(setor) && fallbackUserId) {
+        const setorId = sectorMap.get(setor);
+        if (!setorId) throw new Error(`Setor ${setor} não encontrado no Neon.`);
+        const lineIds = new Map<string, number>();
+        for (const line of neededLines) {
+          const lineId = lineMap.get(line);
+          if (lineId) lineIds.set(line, lineId);
+        }
+        assignments.set(unitKey, { usuarioId: fallbackUserId, setorId, lineIds });
+        continue;
+      }
       const label = setor === 'BOBINA AT/BT'
         ? `BOBINA ${unitGroups[0].tipoBobina || ''}`
         : (setor === 'MONTAGEM FINAL' || setor === 'MPA') ? `${setor} ${unitGroups[0].linha}` : setor;
@@ -828,6 +861,127 @@ app.delete('/api/apontamentos/:id', auth, async (req: any, res) => {
 });
 
 // Importa a produção agregada no navegador e associa cada unidade ao apontador correto.
+async function cleanupUnusedImportedProduction(
+  client: any,
+  whereSql: string,
+  params: any[],
+  usedIds: Set<number>,
+) {
+  const previous = await client.query(
+    `SELECT a.id,
+            a.complementado,
+            (
+              EXISTS (SELECT 1 FROM paradas_falta_material pfm WHERE pfm.apontamento_id = a.id)
+              OR EXISTS (SELECT 1 FROM paradas_maquina pm WHERE pm.apontamento_id = a.id)
+              OR EXISTS (SELECT 1 FROM nao_conformidades nc WHERE nc.apontamento_id = a.id)
+              OR EXISTS (SELECT 1 FROM faltas f WHERE f.apontamento_id = a.id)
+              OR EXISTS (SELECT 1 FROM observacoes o WHERE o.apontamento_id = a.id)
+            ) AS possui_complementos
+       FROM apontamentos a
+      WHERE a.origem_producao = 'IMPORTADO'
+        AND ${whereSql}`,
+    params,
+  );
+
+  for (const row of previous.rows) {
+    const id = Number(row.id);
+    if (usedIds.has(id)) continue;
+
+    // Nunca apaga informações digitadas pelos apontadores. Se o registro não possui
+    // complemento manual, pode ser removido por completo; caso contrário, apenas a
+    // produção antiga é retirada e as ocorrências permanecem intactas.
+    if (row.complementado === false && row.possui_complementos !== true) {
+      await client.query('DELETE FROM apontamentos WHERE id = $1', [id]);
+      continue;
+    }
+
+    await client.query('DELETE FROM producao WHERE apontamento_id = $1', [id]);
+    await client.query('UPDATE apontamentos SET atualizado_em = NOW() WHERE id = $1', [id]);
+  }
+}
+
+async function replaceImportedProductionForDate(
+  client: any,
+  data: string,
+  groups: ImportGroup[],
+  fallbackUserId: number,
+): Promise<{ usedIds: Set<number>; totalUnidades: number }> {
+  const prepared = await prepareImportGroups(client, groups, fallbackUserId);
+  const unitGroups = new Map<string, PreparedImportGroup[]>();
+  for (const group of prepared) {
+    // O apontamento importado é identificado por usuário + setor + tipo de bobina.
+    // MPA pode ter EPO associado ao mesmo apontador de MON/TRI; nesse caso as linhas
+    // permanecem juntas para evitar sobrescrita parcial na reimportação.
+    const key = `${group.usuarioId}|${group.setorId}|${group.tipoBobina || ''}`;
+    const bucket = unitGroups.get(key) || [];
+    bucket.push(group);
+    unitGroups.set(key, bucket);
+  }
+
+  const usedIds = new Set<number>();
+  for (const unit of unitGroups.values()) {
+    const first = unit[0];
+    const tipoBobina = first.setor === 'BOBINA AT/BT' ? first.tipoBobina || null : null;
+    const dashboardOnly = DASHBOARD_ONLY_IMPORT_SECTORS.has(first.setor);
+    const existing = dashboardOnly
+      ? await client.query(
+          `SELECT id, complementado
+             FROM apontamentos
+            WHERE data = $1
+              AND setor_id = $2
+              AND origem_producao = 'IMPORTADO'
+              AND tipo_bobina IS NULL
+            ORDER BY id DESC
+            LIMIT 1`,
+          [data, first.setorId],
+        )
+      : await client.query(
+          `SELECT id, complementado
+             FROM apontamentos
+            WHERE data = $1
+              AND usuario_id = $2
+              AND setor_id = $3
+              AND origem_producao = 'IMPORTADO'
+              AND (($4::text IS NULL AND tipo_bobina IS NULL) OR tipo_bobina = $4)
+            ORDER BY id DESC
+            LIMIT 1`,
+          [data, first.usuarioId, first.setorId, tipoBobina],
+        );
+
+    let apontamentoId: number;
+    if (existing.rows.length) {
+      apontamentoId = Number(existing.rows[0].id);
+      await client.query(
+        `UPDATE apontamentos
+            SET atualizado_em = NOW(),
+                complementado = CASE WHEN $2::boolean THEN TRUE ELSE complementado END
+          WHERE id = $1`,
+        [apontamentoId, dashboardOnly],
+      );
+    } else {
+      const inserted = await client.query(
+        `INSERT INTO apontamentos(data, usuario_id, setor_id, tipo_bobina, origem_producao, complementado)
+         VALUES($1, $2, $3, $4, 'IMPORTADO', $5)
+         RETURNING id`,
+        [data, first.usuarioId, first.setorId, tipoBobina, dashboardOnly],
+      );
+      apontamentoId = Number(inserted.rows[0].id);
+    }
+
+    usedIds.add(apontamentoId);
+    await client.query('DELETE FROM producao WHERE apontamento_id = $1', [apontamentoId]);
+    for (const group of unit) {
+      await client.query(
+        'INSERT INTO producao(apontamento_id, linha_id, potencia, quantidade) VALUES($1, $2, $3, $4)',
+        [apontamentoId, group.linhaId, group.potencia, group.quantidade],
+      );
+    }
+  }
+
+  await cleanupUnusedImportedProduction(client, 'a.data = $1::date', [data], usedIds);
+  return { usedIds, totalUnidades: unitGroups.size };
+}
+
 app.post('/api/coordenacao/importar-producao', auth, requireCoordenacao, async (req: any, res) => {
   const client = await pool.connect();
   const data = String(req.body?.data || '').trim();
@@ -842,100 +996,16 @@ app.post('/api/coordenacao/importar-producao', auth, requireCoordenacao, async (
     }
 
     await client.query('BEGIN');
-    const prepared = await prepareImportGroups(client, groups);
-    const unitGroups = new Map<string, PreparedImportGroup[]>();
-    for (const group of prepared) {
-      // O apontamento importado é identificado por usuário + setor + tipo de bobina.
-      // MPA pode ter EPO associado ao mesmo apontador de MON/TRI; nesse caso as linhas
-      // precisam permanecer no mesmo apontamento para que uma não sobrescreva a outra
-      // durante a reimportação (ex.: MON 80 + TRI 90 + EPO 15 = total MPA 185).
-      const key = `${group.usuarioId}|${group.setorId}|${group.tipoBobina || ''}`;
-      const bucket = unitGroups.get(key) || [];
-      bucket.push(group);
-      unitGroups.set(key, bucket);
-    }
-
-    const usedIds = new Set<number>();
-    for (const unit of unitGroups.values()) {
-      const first = unit[0];
-      const tipoBobina = first.setor === 'BOBINA AT/BT' ? first.tipoBobina || null : null;
-      const existing = await client.query(
-        `SELECT id, complementado
-           FROM apontamentos
-          WHERE data = $1
-            AND usuario_id = $2
-            AND setor_id = $3
-            AND origem_producao = 'IMPORTADO'
-            AND (($4::text IS NULL AND tipo_bobina IS NULL) OR tipo_bobina = $4)
-          ORDER BY id DESC
-          LIMIT 1`,
-        [data, first.usuarioId, first.setorId, tipoBobina],
-      );
-
-      let apontamentoId: number;
-      if (existing.rows.length) {
-        apontamentoId = Number(existing.rows[0].id);
-        await client.query('UPDATE apontamentos SET atualizado_em = NOW() WHERE id = $1', [apontamentoId]);
-      } else {
-        const inserted = await client.query(
-          `INSERT INTO apontamentos(data, usuario_id, setor_id, tipo_bobina, origem_producao, complementado)
-           VALUES($1, $2, $3, $4, 'IMPORTADO', FALSE)
-           RETURNING id`,
-          [data, first.usuarioId, first.setorId, tipoBobina],
-        );
-        apontamentoId = Number(inserted.rows[0].id);
-      }
-
-      usedIds.add(apontamentoId);
-      await client.query('DELETE FROM producao WHERE apontamento_id = $1', [apontamentoId]);
-      for (const group of unit) {
-        await client.query(
-          'INSERT INTO producao(apontamento_id, linha_id, potencia, quantidade) VALUES($1, $2, $3, $4)',
-          [apontamentoId, group.linhaId, group.potencia, group.quantidade],
-        );
-      }
-    }
-
-    // A importação mais recente substitui integralmente a produção importada da data.
-    // Se o apontador já complementou um registro que deixou de existir no novo Excel,
-    // preservamos ocorrências/aprovação e removemos somente a produção antiga.
-    const previous = await client.query(
-      `SELECT a.id,
-              a.complementado,
-              (
-                EXISTS (SELECT 1 FROM paradas_falta_material pfm WHERE pfm.apontamento_id = a.id)
-                OR EXISTS (SELECT 1 FROM paradas_maquina pm WHERE pm.apontamento_id = a.id)
-                OR EXISTS (SELECT 1 FROM nao_conformidades nc WHERE nc.apontamento_id = a.id)
-                OR EXISTS (SELECT 1 FROM faltas f WHERE f.apontamento_id = a.id)
-                OR EXISTS (SELECT 1 FROM observacoes o WHERE o.apontamento_id = a.id)
-              ) AS possui_complementos
-         FROM apontamentos a
-        WHERE a.data = $1 AND a.origem_producao = 'IMPORTADO'`,
-      [data],
-    );
-    for (const row of previous.rows) {
-      const id = Number(row.id);
-      if (usedIds.has(id)) continue;
-
-      // Nunca apaga informações digitadas pelos apontadores. Um registro ainda
-      // não finalizado só é removido quando não possui nenhum complemento manual.
-      if (row.complementado === false && row.possui_complementos !== true) {
-        await client.query('DELETE FROM apontamentos WHERE id = $1', [id]);
-        continue;
-      }
-
-      await client.query('DELETE FROM producao WHERE apontamento_id = $1', [id]);
-      await client.query('UPDATE apontamentos SET atualizado_em = NOW() WHERE id = $1', [id]);
-    }
-
+    const result = await replaceImportedProductionForDate(client, data, groups, Number(req.auth.userId));
     await client.query('COMMIT');
-    const ids = [...usedIds];
+
+    const ids = [...result.usedIds];
     const registros = await Promise.all(ids.map((id) => loadApontamento(id)));
     res.json({
       data,
       registros: registros.filter(Boolean),
       totalQuantidade: groups.reduce((sum, group) => sum + group.quantidade, 0),
-      totalUnidades: unitGroups.size,
+      totalUnidades: result.totalUnidades,
     });
   } catch (e: any) {
     await client.query('ROLLBACK');
@@ -944,6 +1014,76 @@ app.post('/api/coordenacao/importar-producao', auth, requireCoordenacao, async (
       return res.status(500).json({ error: 'Execute o script NEON_IMPORTACAO_PRODUCAO.sql no Neon antes da primeira importação.' });
     }
     res.status(500).json({ error: e instanceof Error ? e.message : 'Falha ao importar a produção.' });
+  } finally {
+    client.release();
+  }
+});
+
+function validateProductionMonthImport(body: any): { mesReferencia: string; dias: Array<{ data: string; grupos: ImportGroup[] }> } {
+  const mesReferencia = String(body?.mesReferencia || '').trim();
+  if (!/^\d{4}-\d{2}$/.test(mesReferencia)) throw new Error('Mês de referência inválido.');
+  const rawDays = Array.isArray(body?.dias) ? body.dias : [];
+  if (!rawDays.length) throw new Error('A importação mensal não possui dias válidos para importar.');
+
+  const seen = new Set<string>();
+  const dias = rawDays.map((day: any) => {
+    const data = String(day?.data || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(data) || !data.startsWith(`${mesReferencia}-`)) {
+      throw new Error(`Data fora do mês selecionado: ${data || 'não informada'}.`);
+    }
+    if (seen.has(data)) throw new Error(`A data ${data} foi enviada mais de uma vez na importação mensal.`);
+    seen.add(data);
+    return { data, grupos: validateImportGroups(day?.grupos) };
+  });
+
+  return { mesReferencia, dias: dias.sort((a, b) => a.data.localeCompare(b.data)) };
+}
+
+app.post('/api/coordenacao/importar-producao-mes', auth, requireCoordenacao, async (req: any, res) => {
+  const client = await pool.connect();
+  try {
+    let payload: ReturnType<typeof validateProductionMonthImport>;
+    try {
+      payload = validateProductionMonthImport(req.body);
+    } catch (validationError) {
+      return res.status(400).json({ error: validationError instanceof Error ? validationError.message : 'Dados de importação mensal inválidos.' });
+    }
+
+    await client.query('BEGIN');
+    const allUsedIds = new Set<number>();
+    let totalUnidades = 0;
+    let totalQuantidade = 0;
+
+    for (const day of payload.dias) {
+      const result = await replaceImportedProductionForDate(client, day.data, day.grupos, Number(req.auth.userId));
+      result.usedIds.forEach((id) => allUsedIds.add(id));
+      totalUnidades += result.totalUnidades;
+      totalQuantidade += day.grupos.reduce((sum, group) => sum + group.quantidade, 0);
+    }
+
+    // A opção mensal representa uma fotografia completa do mês. Portanto, qualquer
+    // produção importada anteriormente no mesmo mês que não esteja no novo arquivo
+    // também é removida, preservando ocorrências manuais vinculadas aos apontamentos.
+    await cleanupUnusedImportedProduction(
+      client,
+      "TO_CHAR(a.data, 'YYYY-MM') = $1",
+      [payload.mesReferencia],
+      allUsedIds,
+    );
+
+    await client.query('COMMIT');
+    const registros = await Promise.all([...allUsedIds].map((id) => loadApontamento(id)));
+    res.json({
+      mesReferencia: payload.mesReferencia,
+      datasImportadas: payload.dias.length,
+      registros: registros.filter(Boolean),
+      totalQuantidade,
+      totalUnidades,
+    });
+  } catch (e: any) {
+    await client.query('ROLLBACK');
+    console.error(e);
+    res.status(500).json({ error: e instanceof Error ? e.message : 'Falha ao importar a produção mensal.' });
   } finally {
     client.release();
   }
@@ -1023,16 +1163,28 @@ app.post('/api/coordenacao/importar-programacao', auth, requireCoordenacao, asyn
   }
 });
 
+function normalizeDashboardSector(setor: string): string {
+  return String(setor || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toUpperCase();
+}
+
 function dashboardSectorName(setor: string, tipoBobina?: string | null): string {
-  const value = String(setor || '').trim().toUpperCase();
+  const value = normalizeDashboardSector(setor);
   if (value === 'BOBINA AT/BT') return String(tipoBobina || '').toUpperCase() === 'BT' ? 'BOBINA BT' : 'BOBINA AT';
   if (value === 'CORTE LASER') return 'CORTE DO LASER';
   if (value === 'MONTAGEM NUCLEO') return 'MONTAGEM DO NUCLEO';
+  if (value === 'CORTE DO NUCLEO' || value === 'CORTE NUCLEO') return 'CORTE DO NUCLEO';
+  if (value === 'FERRAGEM PA' || value === 'FERRAGEM PA / ACESSORIOS' || value === 'FERRAGEM PA/ACESSORIOS') return 'FERRAGEM';
   return value;
 }
 
 function expandedDashboardSectors(setor: string, linha?: string | null, tipoBobina?: string | null): string[] {
   const base = dashboardSectorName(setor, tipoBobina);
+  if (base === 'ESTAMPARIA') return [];
   const line = String(linha || '').trim().toUpperCase();
   const sectors = [base];
   // Montagem Final + EPO participa simultaneamente da visão de Montagem Final e da visão específica de Epóxi.

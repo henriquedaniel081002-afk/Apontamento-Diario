@@ -25,6 +25,16 @@ describe('EvolutionChart', () => {
     expect(day).toHaveFocus();
   });
 
+
+  it('marca como sucesso quando há produção sem programação no dia', () => {
+    render(<EvolutionChart data={[{ dia: '11', data: '2026-08-11', programado: 0, produzido: 15 }]} mesLabel="Agosto de 2026" />);
+
+    const day = screen.getByRole('button', { name: /2026-08-11: programado 0, produzido 15/i });
+    const producedBar = day.querySelector('.evolution-bar--success');
+    expect(producedBar).toBeInTheDocument();
+    expect(day.querySelector('.evolution-bar--danger')).not.toBeInTheDocument();
+  });
+
   it('informa quando não há registros para os filtros', () => {
     render(<EvolutionChart data={[]} mesLabel="Agosto de 2026" />);
 

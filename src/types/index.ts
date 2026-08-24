@@ -7,6 +7,8 @@ export type Setor =
   | 'BOBINA AT'
   | 'BOBINA BT'
   | 'CORTE LASER'
+  | 'CORTE DO NUCLEO'
+  | 'FERRAGEM'
   | 'ISOLANTE'
   | 'MONTAGEM NUCLEO'
   | 'MONTAGEM FINAL'
@@ -141,6 +143,16 @@ export interface ProductionImportRequest {
   grupos: ProductionImportGroup[];
 }
 
+export interface ProductionImportMonthDay {
+  data: string;
+  grupos: ProductionImportGroup[];
+}
+
+export interface ProductionImportMonthRequest {
+  mesReferencia: string;
+  dias: ProductionImportMonthDay[];
+}
+
 export interface ProductionImportResult {
   data: string;
   registros: Apontamento[];
@@ -148,6 +160,13 @@ export interface ProductionImportResult {
   totalUnidades: number;
 }
 
+export interface ProductionImportMonthResult {
+  mesReferencia: string;
+  datasImportadas: number;
+  registros: Apontamento[];
+  totalQuantidade: number;
+  totalUnidades: number;
+}
 
 export interface ProgramacaoImportGroup {
   dataProgramada: string;

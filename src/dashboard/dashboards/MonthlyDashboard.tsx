@@ -22,10 +22,10 @@ export function MonthlyDashboard({ dados, scope }: { dados: DashboardData; scope
   const hoje = new Date();
   const atual = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
   const defaultMes = dados.periodo.meses.includes(atual) ? atual : (dados.periodo.meses[dados.periodo.meses.length-1] || atual);
-  const globalSetorOptions = useMemo(
-    () => dados.filtros.setores.includes('EPOXI') ? dados.filtros.setores : [...dados.filtros.setores, 'EPOXI'],
-    [dados.filtros.setores],
-  );
+  const globalSetorOptions = useMemo(() => {
+    const visible = dados.filtros.setores.filter((item) => item.trim().toUpperCase() !== 'ESTAMPARIA');
+    return visible.includes('EPOXI') ? visible : [...visible, 'EPOXI'];
+  }, [dados.filtros.setores]);
   const setorOptions = useMemo(() => {
     if (!scope?.setores?.length) return globalSetorOptions;
     const available = scope.setores.filter((item) => globalSetorOptions.includes(item));

@@ -23,6 +23,11 @@ export const EditApontamentoModal: React.FC<Props> = ({ apontamento, isOpen, onC
 
   const editorUser = useMemo<User | null>(() => { if (!apontamento) return null; const usedLines = [...apontamento.producoes.map((x) => x.linha), ...apontamento.faltas.map((x) => x.linha), ...apontamento.observacoes.map((x) => x.linha)].filter(Boolean) as Linha[]; let lines = apontamento.linhasPermitidas?.filter(Boolean) || []; if (!lines.length) lines = [...new Set(usedLines)]; if (!lines.length) lines = apontamento.setor === 'EPOXI' ? ['EPO'] : ['MON', 'TRI']; return { id: apontamento.userId, name: apontamento.userName, perfil: 'APONTADOR', setor: apontamento.setor, linhas: lines }; }, [apontamento]);
   if (!apontamento || !editorUser) return null;
+  const observationLine = (() => {
+    if (!['MONTAGEM FINAL', 'MPA'].includes(apontamento.setor)) return undefined;
+    const candidate = producoes[0]?.linha || apontamento.linhasPermitidas?.[0];
+    return candidate === 'MON' || candidate === 'TRI' ? candidate : undefined;
+  })();
   const isImported = apontamento.origemProducao === 'IMPORTADO';
   const totalProducao = producoes.reduce((sum, x) => sum + Number(x.quantidade || 0), 0);
   const totalFaltas = faltas.reduce((sum, x) => sum + (typeof x.quantidade === 'number' ? x.quantidade : 1), 0);
@@ -39,7 +44,7 @@ export const EditApontamentoModal: React.FC<Props> = ({ apontamento, isOpen, onC
     <div hidden={step !== 3}><ParadasMaquinaSection itens={paradasMaquina} onAdd={(x) => setParadasMaquina((c) => [...c, x])} onUpdate={(x) => setParadasMaquina((c) => c.map((e) => e.id === x.id ? x : e))} onDelete={(id) => setParadasMaquina((c) => c.filter((e) => e.id !== id))} /></div>
     <div hidden={step !== 4}><NaoConformidadesSection itens={naoConformidades} onAdd={(x) => setNaoConformidades((c) => [...c, x])} onUpdate={(x) => setNaoConformidades((c) => c.map((e) => e.id === x.id ? x : e))} onDelete={(id) => setNaoConformidades((c) => c.filter((e) => e.id !== id))} /></div>
     <div hidden={step !== 5}><FaltasSection faltas={faltas} onAdd={(x) => setFaltas((c) => [...c, x])} onUpdate={(x) => setFaltas((c) => c.map((e) => e.id === x.id ? x : e))} onDelete={(id) => setFaltas((c) => c.filter((e) => e.id !== id))} /></div>
-    <div hidden={step !== 6}><ObservacoesSection observacoes={observacoes} onAdd={(x) => setObservacoes((c) => [...c, x])} onUpdate={(x) => setObservacoes((c) => c.map((e) => e.id === x.id ? x : e))} onDelete={(id) => setObservacoes((c) => c.filter((e) => e.id !== id))} /></div>
+    <div hidden={step !== 6}><ObservacoesSection observacoes={observacoes} fixedLine={observationLine} onAdd={(x) => setObservacoes((c) => [...c, x])} onUpdate={(x) => setObservacoes((c) => c.map((e) => e.id === x.id ? x : e))} onDelete={(id) => setObservacoes((c) => c.filter((e) => e.id !== id))} /></div>
     <FieldError role="alert">{error}</FieldError></div>
   </ModalShell>;
 };

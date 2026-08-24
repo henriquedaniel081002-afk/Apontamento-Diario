@@ -69,6 +69,12 @@ export const ApontamentoPage: React.FC<Props> = ({ user, onNavigateToHistory }) 
     setCurrentStep(1); setSaveError(null); setDraftResetVersion((v) => v + 1);
   }, [selected?.id]);
 
+  const observationLine = useMemo(() => {
+    if (!selected || !['MONTAGEM FINAL', 'MPA'].includes(selected.setor)) return undefined;
+    const candidate = selected.producoes[0]?.linha || selected.linhasPermitidas?.[0];
+    return candidate === 'MON' || candidate === 'TRI' ? candidate : undefined;
+  }, [selected]);
+
   const producoes = selected?.producoes || [];
   const totalProducao = producoes.reduce((sum, item) => sum + Number(item.quantidade || 0), 0);
   const totalFaltas = faltas.reduce((sum, item) => sum + (typeof item.quantidade === 'number' ? item.quantidade : 1), 0);
@@ -124,7 +130,7 @@ export const ApontamentoPage: React.FC<Props> = ({ user, onNavigateToHistory }) 
         <div hidden={currentStep !== 3}><ParadasMaquinaSection key={`maquina-${selected.id}-${draftResetVersion}`} itens={paradasMaquina} onAdd={(item) => setParadasMaquina((c) => [...c, item])} onUpdate={(item) => setParadasMaquina((c) => c.map((x) => x.id === item.id ? item : x))} onDelete={(id) => setParadasMaquina((c) => c.filter((x) => x.id !== id))} /></div>
         <div hidden={currentStep !== 4}><NaoConformidadesSection key={`nc-${selected.id}-${draftResetVersion}`} itens={naoConformidades} onAdd={(item) => setNaoConformidades((c) => [...c, item])} onUpdate={(item) => setNaoConformidades((c) => c.map((x) => x.id === item.id ? item : x))} onDelete={(id) => setNaoConformidades((c) => c.filter((x) => x.id !== id))} /></div>
         <div hidden={currentStep !== 5}><FaltasSection key={`faltas-${selected.id}-${draftResetVersion}`} faltas={faltas} onAdd={(item) => setFaltas((c) => [...c, item])} onUpdate={(item) => setFaltas((c) => c.map((x) => x.id === item.id ? item : x))} onDelete={(id) => setFaltas((c) => c.filter((x) => x.id !== id))} /></div>
-        <div hidden={currentStep !== 6}><ObservacoesSection key={`obs-${selected.id}-${draftResetVersion}`} observacoes={observacoes} onAdd={(item) => setObservacoes((c) => [...c, item])} onUpdate={(item) => setObservacoes((c) => c.map((x) => x.id === item.id ? item : x))} onDelete={(id) => setObservacoes((c) => c.filter((x) => x.id !== id))} /></div>
+        <div hidden={currentStep !== 6}><ObservacoesSection key={`obs-${selected.id}-${draftResetVersion}`} observacoes={observacoes} fixedLine={observationLine} onAdd={(item) => setObservacoes((c) => [...c, item])} onUpdate={(item) => setObservacoes((c) => c.map((x) => x.id === item.id ? item : x))} onDelete={(id) => setObservacoes((c) => c.filter((x) => x.id !== id))} /></div>
         <div hidden={currentStep !== 7}><ReviewSection user={user} selectedDate={selected.data} tipoBobina={selected.tipoBobina || ''} producoes={producoes} paradasFaltaMaterial={paradasFaltaMaterial} paradasMaquina={paradasMaquina} naoConformidades={naoConformidades} faltas={faltas} observacoes={observacoes} onEditStep={(step) => goToStep(step)} productionReadOnly /></div>
       </div>
       {saveError && <div role="alert" className="rounded-xl border border-[var(--danger-border)] bg-[var(--danger-soft)] px-4 py-3 text-sm font-medium text-[var(--danger)]">{saveError}</div>}

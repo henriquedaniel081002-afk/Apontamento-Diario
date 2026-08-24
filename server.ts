@@ -443,34 +443,33 @@ async function insertOccurrenceCollections(client: any, apontamentoId: number, d
     );
   }
   for (const item of occurrenceList(data.faltas)) {
-    if (isLegacyFalta(item)) {
-      await client.query(
-        `INSERT INTO faltas(apontamento_id, linha_id, turno, quantidade, justificativa)
-         VALUES($1, $2, $3, $4, $5)`,
-        [apontamentoId, item.linha ? lineMap.get(item.linha) || null : null, item.turno ? String(item.turno).toUpperCase() : null, item.quantidade ?? null, item.justificativa || null],
-      );
-    } else {
-      await client.query(
-        `INSERT INTO faltas(apontamento_id, linha_id, turno, quantidade, justificativa, nome, motivo_justificativa, atestado)
-         VALUES($1, NULL, NULL, NULL, NULL, $2, $3, $4)`,
-        [apontamentoId, String(item.nome || '').trim() || null, String(item.motivoJustificativa || '').trim() || null, typeof item.atestado === 'boolean' ? item.atestado : null],
-      );
-    }
+    await client.query(
+      `INSERT INTO faltas(apontamento_id, linha_id, turno, quantidade, justificativa, nome, motivo_justificativa, atestado)
+       VALUES($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        apontamentoId,
+        item.linha ? lineMap.get(item.linha) || null : null,
+        item.turno ? String(item.turno).toUpperCase() : null,
+        item.quantidade ?? null,
+        String(item.justificativa || '').trim() || null,
+        String(item.nome || '').trim() || null,
+        String(item.motivoJustificativa || '').trim() || null,
+        typeof item.atestado === 'boolean' ? item.atestado : null,
+      ],
+    );
   }
   for (const item of occurrenceList(data.observacoes)) {
-    if (isLegacyObservacao(item)) {
-      await client.query(
-        `INSERT INTO observacoes(apontamento_id, linha_id, turno, observacao)
-         VALUES($1, $2, $3, $4)`,
-        [apontamentoId, item.linha ? lineMap.get(item.linha) || null : null, item.turno ? String(item.turno).toUpperCase() : null, item.observacao || null],
-      );
-    } else {
-      await client.query(
-        `INSERT INTO observacoes(apontamento_id, linha_id, turno, observacao, justificativa_meta)
-         VALUES($1, NULL, NULL, $2, $3)`,
-        [apontamentoId, String(item.observacao || '').trim(), String(item.justificativaMeta || '').trim() || null],
-      );
-    }
+    await client.query(
+      `INSERT INTO observacoes(apontamento_id, linha_id, turno, observacao, justificativa_meta)
+       VALUES($1, $2, $3, $4, $5)`,
+      [
+        apontamentoId,
+        item.linha ? lineMap.get(item.linha) || null : null,
+        item.turno ? String(item.turno).toUpperCase() : null,
+        String(item.observacao || '').trim(),
+        String(item.justificativaMeta || '').trim() || null,
+      ],
+    );
   }
 }
 
@@ -932,6 +931,7 @@ app.get('/api/coordenacao/dashboard', auth, requireCoordenacao, async (_req: any
           JOIN apontamentos a ON a.id = f.apontamento_id
           JOIN setores s ON s.id = a.setor_id
           LEFT JOIN linhas l ON l.id = f.linha_id
+         WHERE a.status_aprovacao = 'APROVADO'
          ORDER BY a.data, s.nome, f.id
       `),
       pool.query(`
@@ -940,6 +940,7 @@ app.get('/api/coordenacao/dashboard', auth, requireCoordenacao, async (_req: any
           JOIN apontamentos a ON a.id = o.apontamento_id
           JOIN setores s ON s.id = a.setor_id
           LEFT JOIN linhas l ON l.id = o.linha_id
+         WHERE a.status_aprovacao = 'APROVADO'
          ORDER BY a.data, s.nome, o.id
       `),
       pool.query(`
@@ -947,6 +948,7 @@ app.get('/api/coordenacao/dashboard', auth, requireCoordenacao, async (_req: any
           FROM paradas_falta_material pfm
           JOIN apontamentos a ON a.id = pfm.apontamento_id
           JOIN setores s ON s.id = a.setor_id
+         WHERE a.status_aprovacao = 'APROVADO'
          ORDER BY a.data, s.nome, pfm.id
       `),
       pool.query(`
@@ -954,6 +956,7 @@ app.get('/api/coordenacao/dashboard', auth, requireCoordenacao, async (_req: any
           FROM paradas_maquina pm
           JOIN apontamentos a ON a.id = pm.apontamento_id
           JOIN setores s ON s.id = a.setor_id
+         WHERE a.status_aprovacao = 'APROVADO'
          ORDER BY a.data, s.nome, pm.id
       `),
       pool.query(`
@@ -961,6 +964,7 @@ app.get('/api/coordenacao/dashboard', auth, requireCoordenacao, async (_req: any
           FROM nao_conformidades nc
           JOIN apontamentos a ON a.id = nc.apontamento_id
           JOIN setores s ON s.id = a.setor_id
+         WHERE a.status_aprovacao = 'APROVADO'
          ORDER BY a.data, s.nome, nc.id
       `),
     ]);

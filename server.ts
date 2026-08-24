@@ -845,7 +845,11 @@ app.post('/api/coordenacao/importar-producao', auth, requireCoordenacao, async (
     const prepared = await prepareImportGroups(client, groups);
     const unitGroups = new Map<string, PreparedImportGroup[]>();
     for (const group of prepared) {
-      const key = `${group.usuarioId}|${group.setorId}|${importUnitKey(group)}`;
+      // O apontamento importado é identificado por usuário + setor + tipo de bobina.
+      // MPA pode ter EPO associado ao mesmo apontador de MON/TRI; nesse caso as linhas
+      // precisam permanecer no mesmo apontamento para que uma não sobrescreva a outra
+      // durante a reimportação (ex.: MON 80 + TRI 90 + EPO 15 = total MPA 185).
+      const key = `${group.usuarioId}|${group.setorId}|${group.tipoBobina || ''}`;
       const bucket = unitGroups.get(key) || [];
       bucket.push(group);
       unitGroups.set(key, bucket);

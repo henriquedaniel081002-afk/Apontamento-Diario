@@ -47,19 +47,21 @@ export function ImportedProductionSection({ producoes }: ImportedProductionSecti
           />
         ) : (
           <div className="overflow-hidden rounded-2xl border border-[var(--border-subtle)]">
-            <div className="hidden grid-cols-[120px_1fr_160px] gap-3 border-b border-[var(--border-subtle)] bg-[var(--surface-muted)] px-4 py-3 text-xs font-bold uppercase tracking-wider text-[var(--text-tertiary)] sm:grid">
+            <div className="hidden grid-cols-[100px_1fr_120px_140px] gap-3 border-b border-[var(--border-subtle)] bg-[var(--surface-muted)] px-4 py-3 text-xs font-bold uppercase tracking-wider text-[var(--text-tertiary)] sm:grid">
               <span>Linha</span>
               <span>Potência</span>
+              <span>Turno</span>
               <span className="text-right">Quantidade</span>
             </div>
             <ul className="divide-y divide-[var(--border-subtle)]">
               {producoes.map((item) => (
-                <li key={item.id} className="grid grid-cols-2 gap-2 px-4 py-3 sm:grid-cols-[120px_1fr_160px] sm:items-center sm:gap-3">
+                <li key={item.id} className="grid grid-cols-2 gap-2 px-4 py-3 sm:grid-cols-[100px_1fr_120px_140px] sm:items-center sm:gap-3">
                   <span className="text-sm font-black text-[var(--accent)]">{item.linha}</span>
                   <span className="text-sm font-semibold text-[var(--text-primary)]">
                     {item.potenciaFormatted || formatPotencia(item.potencia)} kVA
                   </span>
-                  <span className="col-span-2 text-sm font-bold text-[var(--text-secondary)] sm:col-span-1 sm:text-right">
+                  <span className="text-sm font-bold text-[var(--text-secondary)]">{item.turno ? `${item.turno} turno` : '—'}</span>
+                  <span className="text-right text-sm font-bold text-[var(--text-secondary)]">
                     {item.quantidade} {item.quantidade === 1 ? 'unidade' : 'unidades'}
                   </span>
                 </li>

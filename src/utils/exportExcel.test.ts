@@ -40,7 +40,7 @@ describe('estrutura da exportação Excel', () => {
     const workbook = buildApontamentosWorkbookData([apontamento]);
 
     expect(workbook.produzido).toEqual([
-      { data: '13/ago', potencia: 112.5, qtde: 8, setor: 'BOBINA AT', linha: 'MON', status: 'APROVADO' },
+      { data: '13/ago', potencia: 112.5, qtde: 8, setor: 'BOBINA AT', linha: 'MON', turno: '', status: 'APROVADO' },
     ]);
     expect(workbook.faltas).toEqual([
       { data: '13/ago', faltas: 1, turno: 2, setor: 'BOBINA AT', linha: 'TRI', status: 'APROVADO' },

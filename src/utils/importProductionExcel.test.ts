@@ -116,6 +116,26 @@ describe('equivalências da importação de produção', () => {
     ]);
   });
 
+  it('mantém 1º e 2º turno separados na mesma linha e potência', () => {
+    const preview: ProductionImportPreview = {
+      fileName: 'Apontamento 2026.xlsx',
+      data: '2026-08-24',
+      rowsProcessed: 30,
+      rowsMatched: 30,
+      ignoredWithoutPower: 0,
+      validGroups: [
+        { setor: 'PINTURA', linha: 'MON', potencia: 10, turno: '1º', quantidade: 12 },
+        { setor: 'PINTURA', linha: 'MON', potencia: 10, turno: '2º', quantidade: 18 },
+      ],
+      issues: [],
+    };
+
+    expect(buildFinalImportGroups(preview, {})).toEqual([
+      { setor: 'PINTURA', linha: 'MON', potencia: 10, turno: '1º', quantidade: 12 },
+      { setor: 'PINTURA', linha: 'MON', potencia: 10, turno: '2º', quantidade: 18 },
+    ]);
+  });
+
   it('reconhece Ferragem e Corte do Núcleo para o Dashboard', () => {
     expect(classifyRawProductionGroup({
       id: 'ferragem',

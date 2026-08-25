@@ -82,7 +82,7 @@ export const DetailModal: React.FC<Props> = ({ apontamento, isOpen, onClose }) =
             <div className="space-y-2">
               {apontamento.producoes.map((item) => (
                 <div key={item.id} className="flex min-w-0 flex-col gap-1 rounded-xl bg-white/[0.035] px-3 py-2 min-[380px]:flex-row min-[380px]:items-center min-[380px]:justify-between min-[380px]:gap-3">
-                  <span className={`min-w-0 text-sm text-slate-200 ${textWrapClass}`}>{item.linha} · {item.potenciaFormatted || formatPotencia(item.potencia)} kVA</span>
+                  <span className={`min-w-0 text-sm text-slate-200 ${textWrapClass}`}>{item.linha} · {item.potenciaFormatted || formatPotencia(item.potencia)} kVA{item.turno ? ` · ${item.turno} turno` : ''}</span>
                   <strong className="shrink-0 text-sm text-emerald-300">{item.quantidade} unid.</strong>
                 </div>
               ))}

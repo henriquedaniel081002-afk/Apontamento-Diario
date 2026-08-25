@@ -39,7 +39,7 @@ export function EpoxiDashboard({
   const [diaSelecionado, setDiaSelecionado] = useState<string | null>(null);
 
   const calculado = useMemo(() => {
-    const producao = detalhes.filter(r => r.data.startsWith(mes) && r.setor === 'EPOXI' && (!r.linha || r.linha === 'EPO'));
+    const producao = detalhes.filter(r => r.data.startsWith(mes) && r.setor === 'EPOXI' && (!r.linha || r.linha === 'EPO') && (turno === 'Todos' || r.turno === turno));
     const faltasFiltradas = faltas.filter(r => r.data.startsWith(mes) && r.setor === 'EPOXI' && (!r.linha || r.linha === 'EPO') && (turno === 'Todos' || r.turno === turno));
     const obs = observacoes.filter(r => r.data.startsWith(mes) && r.setor === 'EPOXI' && (!r.linha || r.linha === 'EPO'));
     const [ano, numeroMes] = mes.split('-').map(Number);
@@ -112,8 +112,8 @@ export function EpoxiDashboard({
       </section>
 
       <section className="epoxi-tables">
-        <EpoxiTable title="Detalhes de produção" subtitle="Registros de produção do período" icon={ClipboardList} columns={['Data','Potência','Linha','Quantidade']} empty="Nenhum registro de produção no período.">
-          {calculado.producao.map((r,i)=><tr key={`${r.data}-${r.potencia}-${i}`}><td>{fmtDate(r.data)}</td><td>{r.potencia} kVA</td><td>{r.linha}</td><td><strong>{fmt(Number(r.quantidade||0))}</strong></td></tr>)}
+        <EpoxiTable title="Detalhes de produção" subtitle="Registros de produção do período" icon={ClipboardList} columns={['Data','Potência','Linha','Turno','Quantidade']} empty="Nenhum registro de produção no período.">
+          {calculado.producao.map((r,i)=><tr key={`${r.data}-${r.potencia}-${r.turno||'sem-turno'}-${i}`}><td>{fmtDate(r.data)}</td><td>{r.potencia} kVA</td><td>{r.linha}</td><td>{r.turno ? `${r.turno} turno` : '—'}</td><td><strong>{fmt(Number(r.quantidade||0))}</strong></td></tr>)}
         </EpoxiTable>
 
         <EpoxiTable title="Faltas" subtitle="Faltas registradas no período" icon={UsersRound} columns={['Data','Turno','Quantidade']} empty="Nenhuma falta registrada no período.">

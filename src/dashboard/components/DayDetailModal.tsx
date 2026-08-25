@@ -14,7 +14,7 @@ import {
 import { ModalShell } from '../../components/common/ModalShell';
 import type { EvolutionItem } from './Charts';
 
-export type DetalheProducao = { data:string; linha:string; setor:string; potencia:number|string; quantidade:number };
+export type DetalheProducao = { data:string; linha:string; setor:string; potencia:number|string; quantidade:number; turno?:string };
 export type Falta = { data:string; linha:string; setor:string; turno:string; quantidade:number };
 export type Observacao = { data:string; linha:string; setor:string; turno?:string; observacao?:string; texto?:string; justificativaMeta?:string };
 export type DetalheFalta = {
@@ -130,17 +130,17 @@ export function DayDetailModal({
   // Mantém cada combinação Potência + Linha separada. Isso preserva a regra
   // existente e evita misturar, por exemplo, 30 kVA MON com 30 kVA TRI.
   const potencias = detalhes
-    .filter(r=>r.data===item.data && r.setor===setor && (linha==='Todas'||!r.linha||r.linha===linha))
-    .reduce<Map<string,{potencia:string;linha:string;quantidade:number}>>((acc,r)=>{
+    .filter(r=>r.data===item.data && r.setor===setor && (linha==='Todas'||!r.linha||r.linha===linha) && (turno==='Todos'||r.turno===turno))
+    .reduce<Map<string,{potencia:string;linha:string;turno?:string;quantidade:number}>>((acc,r)=>{
       const potencia=String(r.potencia);
-      const chave=`${potencia}||${r.linha}`;
+      const chave=`${potencia}||${r.linha}||${r.turno||''}`;
       const atual=acc.get(chave);
-      acc.set(chave,{potencia,linha:r.linha,quantidade:(atual?.quantidade||0)+Number(r.quantidade||0)});
+      acc.set(chave,{potencia,linha:r.linha,turno:r.turno,quantidade:(atual?.quantidade||0)+Number(r.quantidade||0)});
       return acc;
     },new Map());
   const potenciaRows=[...potencias.values()].sort((a,b)=>{
     const dif=Number(a.potencia.replace(',','.'))-Number(b.potencia.replace(',','.'));
-    return dif!==0?dif:a.linha.localeCompare(b.linha,'pt-BR');
+    return dif!==0?dif:a.linha.localeCompare(b.linha,'pt-BR')||String(a.turno||'').localeCompare(String(b.turno||''),'pt-BR');
   });
 
   // A estrutura antiga continua sendo usada para o total por turno.
@@ -182,9 +182,9 @@ export function DayDetailModal({
     <div className="day-detail-card-title"><Gauge className="size-4"/><div><h3>Produção por potência</h3><p>Composição do volume produzido no dia</p></div><b>{fmt(totalDetalhado)}</b></div>
     {potenciaRows.length ? <div className="day-detail-table-scroll" tabIndex={0} role="region" aria-label="Produção por potência">
       <table className="day-detail-table">
-        <thead><tr><th scope="col">Potência</th><th scope="col" className="day-detail-line">Linha</th><th scope="col">Produzido</th></tr></thead>
-        <tbody>{potenciaRows.map(r=><tr key={`${r.potencia}-${r.linha}`}><td>{r.potencia} kVA</td><td className="day-detail-line">{r.linha}</td><td><strong>{fmt(r.quantidade)}</strong></td></tr>)}</tbody>
-        <tfoot><tr><th scope="row">Total detalhado</th><td/><td><strong>{fmt(totalDetalhado)}</strong></td></tr></tfoot>
+        <thead><tr><th scope="col">Potência</th><th scope="col" className="day-detail-line">Linha</th><th scope="col">Turno</th><th scope="col">Produzido</th></tr></thead>
+        <tbody>{potenciaRows.map(r=><tr key={`${r.potencia}-${r.linha}-${r.turno||'sem-turno'}`}><td>{r.potencia} kVA</td><td className="day-detail-line">{r.linha}</td><td>{r.turno ? `${r.turno} turno` : '—'}</td><td><strong>{fmt(r.quantidade)}</strong></td></tr>)}</tbody>
+        <tfoot><tr><th scope="row">Total detalhado</th><td/><td/><td><strong>{fmt(totalDetalhado)}</strong></td></tr></tfoot>
       </table>
     </div> : <Empty text="Nenhum detalhamento por potência registrado para este dia."/>}
   </article>;

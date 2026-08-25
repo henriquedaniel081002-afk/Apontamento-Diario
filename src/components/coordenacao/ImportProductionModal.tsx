@@ -344,7 +344,7 @@ export function ImportProductionModal({
               </div>
               {summary.length === 0 ? <p className="p-4 text-sm text-slate-500">Nenhum grupo válido para importar.</p> : (
                 <div className="grid grid-cols-1 gap-2 p-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {summary.map((item) => <div key={item.label} className="rounded-xl border border-white/10 bg-white/[0.035] p-3"><p className="text-sm font-black text-slate-100">{item.label}</p><p className="mt-1 text-xs text-slate-500">{item.groups} combinação(ões) de data/linha/potência</p><p className="mt-2 text-lg font-black text-emerald-300">{item.quantidade.toLocaleString('pt-BR')} un.</p></div>)}
+                  {summary.map((item) => <div key={item.label} className="rounded-xl border border-white/10 bg-white/[0.035] p-3"><p className="text-sm font-black text-slate-100">{item.label}</p><p className="mt-1 text-xs text-slate-500">{item.groups} combinação(ões) de data/linha/potência/turno</p><p className="mt-2 text-lg font-black text-emerald-300">{item.quantidade.toLocaleString('pt-BR')} un.</p></div>)}
                 </div>
               )}
             </section>

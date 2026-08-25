@@ -130,6 +130,7 @@ type ImportGroup = {
   potencia: number;
   quantidade: number;
   tipoBobina?: 'AT' | 'BT';
+  turno?: '1º' | '2º';
 };
 
 type PreparedImportGroup = ImportGroup & {
@@ -171,11 +172,13 @@ function validateImportGroups(value: unknown): ImportGroup[] {
     const potencia = Number(item?.potencia);
     const quantidade = Number(item?.quantidade);
     const tipoBobina = String(item?.tipoBobina || '').trim().toUpperCase();
+    const turno = dashboardTurno(item?.turno);
 
     if (!IMPORT_SECTORS.has(setor)) throw new Error(`Setor de importação inválido: ${setor || 'não informado'}.`);
     if (!IMPORT_LINES.has(linha)) throw new Error(`Linha de importação inválida: ${linha || 'não informada'}.`);
     if (!Number.isFinite(potencia) || potencia <= 0) throw new Error('A potência importada precisa ser maior que zero.');
     if (!Number.isInteger(quantidade) || quantidade <= 0) throw new Error('A quantidade importada precisa ser um inteiro maior que zero.');
+    if (turno && !['1º', '2º'].includes(turno)) throw new Error(`Turno de importação inválido: ${String(item?.turno || '').trim()}.`);
     if (setor === 'EPOXI' && linha !== 'EPO') throw new Error('Epóxi aceita somente registros da linha EPO.');
     if (setor === 'BOBINA AT/BT' && !['AT', 'BT'].includes(tipoBobina)) {
       throw new Error('A produção de Bobinagem precisa identificar AT ou BT.');
@@ -187,6 +190,7 @@ function validateImportGroups(value: unknown): ImportGroup[] {
       potencia,
       quantidade,
       tipoBobina: setor === 'BOBINA AT/BT' ? tipoBobina as 'AT' | 'BT' : undefined,
+      turno: turno ? turno as '1º' | '2º' : undefined,
     };
   });
 }
@@ -329,7 +333,7 @@ async function loadApontamento(id: number) {
 
   const [p, material, maquina, nc, f, o, acessos] = await Promise.all([
     pool.query(
-      `SELECT p.id, l.nome linha, p.potencia, p.quantidade
+      `SELECT p.id, l.nome linha, p.potencia, p.quantidade, p.turno
          FROM producao p
          JOIN linhas l ON l.id = p.linha_id
         WHERE p.apontamento_id = $1
@@ -401,6 +405,7 @@ async function loadApontamento(id: number) {
     producoes: p.rows.map((r: any) => ({
       id: String(r.id), linha: r.linha, potencia: Number(r.potencia),
       potenciaFormatted: String(r.potencia).replace('.', ','), quantidade: r.quantidade,
+      turno: dashboardTurno(r.turno) || undefined,
     })),
     paradasFaltaMaterial: material.rows.map((r: any) => ({
       id: String(r.id), causaMotivo: r.causa_motivo || '', material: r.material || '',
@@ -546,7 +551,7 @@ async function loadApontamentosBatch(): Promise<any[]> {
 
   const [p, material, maquina, nc, f, o, acessos] = await Promise.all([
     pool.query(
-      `SELECT p.apontamento_id, p.id, l.nome linha, p.potencia, p.quantidade
+      `SELECT p.apontamento_id, p.id, l.nome linha, p.potencia, p.quantidade, p.turno
          FROM producao p
          JOIN linhas l ON l.id = p.linha_id
         WHERE p.apontamento_id = ANY($1::bigint[])
@@ -633,6 +638,7 @@ async function loadApontamentosBatch(): Promise<any[]> {
       producoes: (producoesById.get(id) || []).map((r: any) => ({
         id: String(r.id), linha: r.linha, potencia: Number(r.potencia),
         potenciaFormatted: String(r.potencia).replace('.', ','), quantidade: r.quantidade,
+        turno: dashboardTurno(r.turno) || undefined,
       })),
       paradasFaltaMaterial: (materialById.get(id) || []).map((r: any) => ({
         id: String(r.id), causaMotivo: r.causa_motivo || '', material: r.material || '',
@@ -885,8 +891,8 @@ app.put('/api/apontamentos/:id', auth, async (req: any, res) => {
       await client.query('DELETE FROM producao WHERE apontamento_id = $1', [id]);
       for (const item of occurrenceList(data.producoes)) {
         await client.query(
-          'INSERT INTO producao(apontamento_id, linha_id, potencia, quantidade) VALUES($1, $2, $3, $4)',
-          [id, allowed.get(item.linha), item.potencia, item.quantidade],
+          'INSERT INTO producao(apontamento_id, linha_id, potencia, quantidade, turno) VALUES($1, $2, $3, $4, $5)',
+          [id, allowed.get(item.linha), item.potencia, item.quantidade, dashboardTurno(item.turno) || null],
         );
       }
     }
@@ -1030,8 +1036,8 @@ async function replaceImportedProductionForDate(
     await client.query('DELETE FROM producao WHERE apontamento_id = $1', [apontamentoId]);
     for (const group of unit) {
       await client.query(
-        'INSERT INTO producao(apontamento_id, linha_id, potencia, quantidade) VALUES($1, $2, $3, $4)',
-        [apontamentoId, group.linhaId, group.potencia, group.quantidade],
+        'INSERT INTO producao(apontamento_id, linha_id, potencia, quantidade, turno) VALUES($1, $2, $3, $4, $5)',
+        [apontamentoId, group.linhaId, group.potencia, group.quantidade, group.turno || null],
       );
     }
   }
@@ -1069,7 +1075,7 @@ app.post('/api/coordenacao/importar-producao', auth, requireCoordenacao, async (
     await client.query('ROLLBACK');
     console.error(e);
     if (e?.code === '42703') {
-      return res.status(500).json({ error: 'Execute o script NEON_IMPORTACAO_PRODUCAO.sql no Neon antes da primeira importação.' });
+      return res.status(500).json({ error: 'Execute o script NEON_TURNO_PRODUCAO.sql no Neon antes de importar a produção por turno.' });
     }
     res.status(500).json({ error: e instanceof Error ? e.message : 'Falha ao importar a produção.' });
   } finally {
@@ -1141,6 +1147,9 @@ app.post('/api/coordenacao/importar-producao-mes', auth, requireCoordenacao, asy
   } catch (e: any) {
     await client.query('ROLLBACK');
     console.error(e);
+    if (e?.code === '42703') {
+      return res.status(500).json({ error: 'Execute o script NEON_TURNO_PRODUCAO.sql no Neon antes de importar a produção por turno.' });
+    }
     res.status(500).json({ error: e instanceof Error ? e.message : 'Falha ao importar a produção mensal.' });
   } finally {
     client.release();
@@ -1320,7 +1329,7 @@ app.get('/api/coordenacao/dashboard', auth, async (req: any, res) => {
          ORDER BY data_programada, setor, linha
       `),
       pool.query(`
-        SELECT a.data, a.usuario_id AS user_id, s.nome setor, a.tipo_bobina, l.nome linha, p.potencia, p.quantidade
+        SELECT a.data, a.usuario_id AS user_id, s.nome setor, a.tipo_bobina, l.nome linha, p.potencia, p.quantidade, p.turno
           FROM producao p
           JOIN apontamentos a ON a.id = p.apontamento_id
           JOIN setores s ON s.id = a.setor_id
@@ -1389,11 +1398,12 @@ app.get('/api/coordenacao/dashboard', auth, async (req: any, res) => {
       const linha = String(row.linha || '').trim();
       const data = dateOnly(row.data);
       const quantidade = Number(row.quantidade) || 0;
+      const turno = dashboardTurno(row.turno) || 'Todos';
       for (const setor of expandedDashboardSectors(String(row.setor), linha, row.tipo_bobina)) {
         if (!dashboardItemAllowed(setor, linha)) continue;
-        detalhesProducao.push({ data, linha, setor, potencia: Number(row.potencia), quantidade });
-        const key = `${data}|${setor}|${linha}`;
-        const current = apontamentoMap.get(key) || { data, linha, setor, turno: 'Todos', quantidade: 0 };
+        detalhesProducao.push({ data, linha, setor, potencia: Number(row.potencia), quantidade, turno: turno === 'Todos' ? undefined : turno });
+        const key = `${data}|${setor}|${linha}|${turno}`;
+        const current = apontamentoMap.get(key) || { data, linha, setor, turno, quantidade: 0 };
         current.quantidade += quantidade;
         apontamentoMap.set(key, current);
       }
@@ -1459,7 +1469,7 @@ app.get('/api/coordenacao/dashboard', auth, async (req: any, res) => {
 
     const linhas = [...new Set([...programacao, ...apontamento].map((row: any) => row.linha).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'pt-BR'));
     const setores = [...new Set([...programacao, ...apontamento].map((row: any) => row.setor).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'pt-BR'));
-    const turnos = [...new Set([...faltas, ...observacoes, ...faltasMaterial, ...maquinasQuebradas, ...naoConformidades].map((row: any) => row.turno).filter((value: any) => Boolean(value) && value !== 'Todos'))].sort((a, b) => String(a).localeCompare(String(b), 'pt-BR'));
+    const turnos = [...new Set([...apontamento, ...faltas, ...observacoes, ...faltasMaterial, ...maquinasQuebradas, ...naoConformidades].map((row: any) => row.turno).filter((value: any) => Boolean(value) && value !== 'Todos'))].sort((a, b) => String(a).localeCompare(String(b), 'pt-BR'));
 
     const mesesVisiveis = isCoordination
       ? monthsResult.rows.map((row: any) => String(row.mes)).filter(Boolean)
@@ -1551,8 +1561,8 @@ app.put('/api/coordenacao/apontamentos/:id', auth, requireCoordenacao, async (re
       await client.query('DELETE FROM producao WHERE apontamento_id = $1', [id]);
       for (const item of occurrenceList(data.producoes)) {
         await client.query(
-          'INSERT INTO producao(apontamento_id, linha_id, potencia, quantidade) VALUES($1, $2, $3, $4)',
-          [id, lineMap.get(item.linha), item.potencia, item.quantidade],
+          'INSERT INTO producao(apontamento_id, linha_id, potencia, quantidade, turno) VALUES($1, $2, $3, $4, $5)',
+          [id, lineMap.get(item.linha), item.potencia, item.quantidade, dashboardTurno(item.turno) || null],
         );
       }
     }

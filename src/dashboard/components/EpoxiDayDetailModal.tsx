@@ -19,18 +19,18 @@ export function EpoxiDayDetailModal({data,detalhes,faltas,observacoes,faltasMate
   turno:string;
   onClose:()=>void;
 }) {
-  const producao = detalhes.filter(r=>r.data===data && r.setor==='EPOXI' && (!r.linha || r.linha==='EPO'));
+  const producao = detalhes.filter(r=>r.data===data && r.setor==='EPOXI' && (!r.linha || r.linha==='EPO') && (turno==='Todos'||r.turno===turno));
   const faltasDia = faltas.filter(r=>r.data===data && r.setor==='EPOXI' && (!r.linha || r.linha==='EPO') && (turno==='Todos'||r.turno===turno));
   const obsDia = observacoes.filter(r=>r.data===data && r.setor==='EPOXI' && (!r.linha || r.linha==='EPO') && (turno==='Todos'||!r.turno||r.turno===turno));
   const materialDia = faltasMaterial.filter(r=>r.data===data && r.setor==='EPOXI' && (turno==='Todos'||!r.turno||r.turno===turno));
   const maquinasDia = maquinasQuebradas.filter(r=>r.data===data && r.setor==='EPOXI' && (turno==='Todos'||!r.turno||r.turno===turno));
   const ncDia = naoConformidades.filter(r=>r.data===data && r.setor==='EPOXI' && (turno==='Todos'||!r.turno||r.turno===turno));
-  const potencias = [...producao.reduce<Map<string,{potencia:string;quantidade:number}>>((acc,r)=>{
-    const key=String(r.potencia);
+  const potencias = [...producao.reduce<Map<string,{potencia:string;turno?:string;quantidade:number}>>((acc,r)=>{
+    const key=`${String(r.potencia)}|${r.turno||''}`;
     const atual=acc.get(key);
-    acc.set(key,{potencia:key,quantidade:(atual?.quantidade||0)+Number(r.quantidade||0)});
+    acc.set(key,{potencia:String(r.potencia),turno:r.turno,quantidade:(atual?.quantidade||0)+Number(r.quantidade||0)});
     return acc;
-  },new Map()).values()].sort((a,b)=>Number(a.potencia)-Number(b.potencia));
+  },new Map()).values()].sort((a,b)=>Number(a.potencia)-Number(b.potencia)||String(a.turno||'').localeCompare(String(b.turno||''),'pt-BR'));
   const totalProducao=potencias.reduce((acc,r)=>acc+r.quantidade,0);
   const totalFaltas=faltasDia.reduce((acc,r)=>acc+Number(r.quantidade||0),0);
 
@@ -49,8 +49,8 @@ export function EpoxiDayDetailModal({data,detalhes,faltas,observacoes,faltasMate
         <section className="epoxi-day-section">
           <div className="epoxi-day-section-title"><Box className="size-4"/><h3>Produção</h3><span>{fmt(totalProducao)} un.</span></div>
           {potencias.length ? <div className="epoxi-table-scroll"><table className="epoxi-day-table">
-            <thead><tr><th scope="col">Potência</th><th scope="col">Linha</th><th scope="col">Quantidade</th></tr></thead>
-            <tbody>{potencias.map(r=><tr key={r.potencia}><td>{r.potencia} kVA</td><td>EPO</td><td><strong>{fmt(r.quantidade)}</strong></td></tr>)}</tbody>
+            <thead><tr><th scope="col">Potência</th><th scope="col">Linha</th><th scope="col">Turno</th><th scope="col">Quantidade</th></tr></thead>
+            <tbody>{potencias.map(r=><tr key={`${r.potencia}-${r.turno||'sem-turno'}`}><td>{r.potencia} kVA</td><td>EPO</td><td>{r.turno ? `${r.turno} turno` : '—'}</td><td><strong>{fmt(r.quantidade)}</strong></td></tr>)}</tbody>
           </table></div> : <Empty text="Nenhuma produção registrada."/>}
         </section>
 

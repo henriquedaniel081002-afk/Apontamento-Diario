@@ -21,6 +21,7 @@ export type Perfil = 'APONTADOR' | 'COORDENACAO';
 export type StatusAprovacao = 'PENDENTE' | 'APROVADO';
 export type OrigemProducao = 'MANUAL' | 'IMPORTADO';
 export type Turno = '1º turno' | '2º turno';
+export type ProductionTurno = '1º' | '2º';
 
 export interface User {
   id: string;
@@ -36,6 +37,7 @@ export interface ProducaoItem {
   potencia: number;
   potenciaFormatted?: string;
   quantidade: number;
+  turno?: ProductionTurno;
 }
 
 export interface ParadaFaltaMaterialItem {
@@ -142,6 +144,7 @@ export interface ProductionImportGroup {
   potencia: number;
   quantidade: number;
   tipoBobina?: TipoBobina;
+  turno?: ProductionTurno;
 }
 
 export interface ProductionImportRequest {

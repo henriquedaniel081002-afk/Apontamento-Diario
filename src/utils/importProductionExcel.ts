@@ -1,9 +1,10 @@
-import { Linha, ProductionImportGroup, Setor, TipoBobina } from '../types';
+import { Linha, ProductionImportGroup, ProductionTurno, Setor, TipoBobina } from '../types';
 
 export interface RawProductionGroup {
   id: string;
   setorOriginal: string;
   linhaOriginal: string;
+  turno?: ProductionTurno;
   potencia: number;
   quantidade: number;
 }
@@ -58,6 +59,21 @@ function normalizeText(value: unknown): string {
     .toUpperCase();
 }
 
+function normalizeProductionTurno(value: unknown): ProductionTurno | null {
+  const raw = String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/\s*turno\s*$/i, '')
+    .trim();
+
+  if (/^(1|1[º°o]|primeiro)$/.test(raw)) return '1º';
+  if (/^(2|2[º°o]|segundo)$/.test(raw)) return '2º';
+  return null;
+}
+
 function sectorRule(rawSector: string): SectorRule | null {
   const sector = normalizeText(rawSector);
   const rules: Record<string, SectorRule> = {
@@ -83,7 +99,7 @@ function sectorRule(rawSector: string): SectorRule | null {
 }
 
 function importKey(group: ProductionImportGroup): string {
-  return [group.setor, group.tipoBobina || '', group.linha, Number(group.potencia)].join('|');
+  return [group.setor, group.tipoBobina || '', group.linha, Number(group.potencia), group.turno || ''].join('|');
 }
 
 function aggregateImportGroups(groups: ProductionImportGroup[]): ProductionImportGroup[] {
@@ -98,7 +114,8 @@ function aggregateImportGroups(groups: ProductionImportGroup[]): ProductionImpor
     String(a.setor).localeCompare(String(b.setor), 'pt-BR')
     || String(a.tipoBobina || '').localeCompare(String(b.tipoBobina || ''), 'pt-BR')
     || String(a.linha).localeCompare(String(b.linha), 'pt-BR')
-    || a.potencia - b.potencia,
+    || a.potencia - b.potencia
+    || String(a.turno || '').localeCompare(String(b.turno || ''), 'pt-BR'),
   );
 }
 
@@ -114,6 +131,7 @@ export function classifyRawProductionGroup(group: RawProductionGroup):
       group: {
         setor: 'EPOXI',
         linha: 'EPO',
+        ...(group.turno ? { turno: group.turno } : {}),
         potencia: group.potencia,
         quantidade: group.quantidade,
       },
@@ -148,6 +166,7 @@ export function classifyRawProductionGroup(group: RawProductionGroup):
       setor: rule.setor,
       tipoBobina: rule.tipoBobina,
       linha: rawLine as Linha,
+      ...(group.turno ? { turno: group.turno } : {}),
       potencia: group.potencia,
       quantidade: group.quantidade,
     },
@@ -171,6 +190,7 @@ export function buildFinalImportGroups(
       setor: rule.setor,
       tipoBobina: rule.tipoBobina,
       linha: selectedLine,
+      ...(issue.turno ? { turno: issue.turno } : {}),
       potencia: issue.potencia,
       quantidade: issue.quantidade,
     });
@@ -317,8 +337,8 @@ function parseRowCells(rowXml: string, sharedStrings: string[]): Map<string, str
   return cells;
 }
 
-function rawGroupId(setor: string, linha: string, potencia: number): string {
-  return `${normalizeText(setor)}|${normalizeText(linha)}|${potencia}`;
+function rawGroupId(setor: string, linha: string, potencia: number, turno?: ProductionTurno): string {
+  return `${normalizeText(setor)}|${normalizeText(linha)}|${potencia}|${turno || ''}`;
 }
 
 function excelSerialToYmd(serial: number): string {
@@ -378,7 +398,7 @@ async function readProductionImportExcelPeriod(
   let rowsProcessed = 0;
   let rowsMatched = 0;
   let ignoredWithoutPower = 0;
-  let headerColumns: Record<'date' | 'power' | 'line' | 'sector', string> | null = null;
+  let headerColumns: Record<'date' | 'power' | 'line' | 'sector' | 'turno', string> | null = null;
 
   const stream = await entryByteStream(buffer, sheetEntry);
   const reader = stream.pipeThrough(new TextDecoderStream('utf-8')).getReader();
@@ -394,10 +414,11 @@ async function readProductionImportExcelPeriod(
       const powerColumn = byHeader.get('POTENCIA');
       const lineColumn = byHeader.get('LINHA');
       const sectorColumn = byHeader.get('SETOR');
-      if (!dateColumn || !powerColumn || !lineColumn || !sectorColumn) {
-        throw new Error('A aba “Apontamento Final” precisa conter as colunas DATA PRODUZIDA, POTÊNCIA, LINHA e SETOR.');
+      const turnoColumn = byHeader.get('TURNO');
+      if (!dateColumn || !powerColumn || !lineColumn || !sectorColumn || !turnoColumn) {
+        throw new Error('A aba “Apontamento Final” precisa conter as colunas DATA PRODUZIDA, POTÊNCIA, LINHA, SETOR e TURNO.');
       }
-      headerColumns = { date: dateColumn, power: powerColumn, line: lineColumn, sector: sectorColumn };
+      headerColumns = { date: dateColumn, power: powerColumn, line: lineColumn, sector: sectorColumn, turno: turnoColumn };
       return;
     }
 
@@ -418,18 +439,23 @@ async function readProductionImportExcelPeriod(
 
     const setor = (cells.get(headerColumns.sector) || '').trim();
     const linha = (cells.get(headerColumns.line) || '').trim();
+    const turnoRaw = (cells.get(headerColumns.turno) || '').trim();
+    const turno = normalizeProductionTurno(turnoRaw);
     if (!setor || !linha) return;
+    if (!turno) {
+      throw new Error(`Turno inválido na produção de ${rowDate}: “${turnoRaw || 'vazio'}”. Use 1º ou 2º turno no Excel.`);
+    }
 
     let dayGroups = rawGroupsByDate.get(rowDate);
     if (!dayGroups) {
       dayGroups = new Map<string, RawProductionGroup>();
       rawGroupsByDate.set(rowDate, dayGroups);
     }
-    const baseId = rawGroupId(setor, linha, potencia);
+    const baseId = rawGroupId(setor, linha, potencia, turno);
     const id = `${rowDate}|${baseId}`;
     const existing = dayGroups.get(id);
     if (existing) existing.quantidade += 1;
-    else dayGroups.set(id, { id, setorOriginal: setor, linhaOriginal: linha, potencia, quantidade: 1 });
+    else dayGroups.set(id, { id, setorOriginal: setor, linhaOriginal: linha, turno, potencia, quantidade: 1 });
   };
 
   while (true) {
@@ -509,9 +535,10 @@ export async function readProductionImportExcelMonth(
   return readProductionImportExcelPeriod(file, { mode: 'MONTH', value: mesReferencia }, onProgress);
 }
 
-export function importUnitLabel(group: Pick<ProductionImportGroup, 'setor' | 'linha' | 'tipoBobina'>): string {
-  if (group.setor === 'BOBINA AT/BT' && group.tipoBobina) return `Bobina ${group.tipoBobina}`;
-  if (group.setor === 'MONTAGEM FINAL' || group.setor === 'MPA') return `${group.setor === 'MPA' ? 'MPA' : 'Montagem Final'} ${group.linha}`;
+export function importUnitLabel(group: Pick<ProductionImportGroup, 'setor' | 'linha' | 'tipoBobina' | 'turno'>): string {
+  const turno = group.turno ? ` · ${group.turno} turno` : '';
+  if (group.setor === 'BOBINA AT/BT' && group.tipoBobina) return `Bobina ${group.tipoBobina}${turno}`;
+  if (group.setor === 'MONTAGEM FINAL' || group.setor === 'MPA') return `${group.setor === 'MPA' ? 'MPA' : 'Montagem Final'} ${group.linha}${turno}`;
   const labels: Partial<Record<Setor, string>> = {
     'CORTE LASER': 'Corte do Laser',
     'CORTE DO NUCLEO': 'Corte do Núcleo',
@@ -522,5 +549,5 @@ export function importUnitLabel(group: Pick<ProductionImportGroup, 'setor' | 'li
     SOLDA: 'Solda',
     EPOXI: 'Epóxi',
   };
-  return labels[group.setor] || String(group.setor);
+  return `${labels[group.setor] || String(group.setor)}${turno}`;
 }

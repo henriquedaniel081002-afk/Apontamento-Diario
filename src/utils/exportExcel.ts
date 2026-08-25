@@ -213,6 +213,7 @@ export function buildApontamentosWorkbookData(apontamentos: Apontamento[]): Apon
       qtde: Number(item.quantidade),
       setor: setorParaExcel(String(apt.setor)),
       linha: item.linha,
+      turno: item.turno || '',
       status: apt.statusAprovacao === 'APROVADO' ? 'APROVADO' : 'PENDENTE',
     })),
   );
@@ -323,7 +324,7 @@ export function exportApontamentosExcel(apontamentos: Apontamento[]): void {
   <Relationship Id="rId6" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet6.xml"/>
 </Relationships>`,
     },
-    { name: 'xl/worksheets/sheet1.xml', content: sheetXml(produzido, ['data', 'potencia', 'qtde', 'setor', 'linha', 'status'], [12, 12, 10, 28, 10, 14]) },
+    { name: 'xl/worksheets/sheet1.xml', content: sheetXml(produzido, ['data', 'potencia', 'qtde', 'setor', 'linha', 'turno', 'status'], [12, 12, 10, 28, 10, 12, 14]) },
     { name: 'xl/worksheets/sheet2.xml', content: sheetXml(faltaMaterial, ['data', 'causa_motivo', 'material', 'hora_inicio', 'hora_fim', 'setor', 'status'], [12, 45, 30, 14, 14, 28, 14]) },
     { name: 'xl/worksheets/sheet3.xml', content: sheetXml(maquina, ['data', 'maquina_equipamento', 'hora_inicio', 'hora_fim', 'observacao', 'setor', 'status'], [12, 30, 14, 14, 60, 28, 14]) },
     { name: 'xl/worksheets/sheet4.xml', content: sheetXml(naoConformidades, ['data', 'causa', 'op', 'numero_serie', 'setor', 'status'], [12, 60, 20, 24, 28, 14]) },

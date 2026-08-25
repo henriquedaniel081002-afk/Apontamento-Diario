@@ -15,6 +15,7 @@ import { CoordenacaoPage } from './pages/CoordenacaoPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { invalidateDashboardCache } from './services/dashboardService';
 import { Header } from './components/common/Header';
+import { GlobalLoadingOverlay } from './components/common/GlobalLoadingOverlay';
 import { AppShell, LoadingState } from './components/common/ui';
 
 type AppTab = 'apontamento' | 'historico' | 'dashboard';
@@ -149,29 +150,37 @@ export default function App() {
 
   if (isInitializing) {
     return (
-      <AppShell className="flex items-center justify-center px-4">
-        <LoadingState
-          label="Carregando sistema ITAM..."
-          description="Preparando sua sessão e o contexto operacional."
-          className="w-full max-w-md"
-        />
-      </AppShell>
+      <>
+        <AppShell className="flex items-center justify-center px-4">
+          <LoadingState
+            label="Carregando sistema ITAM..."
+            description="Preparando sua sessão e o contexto operacional."
+            className="w-full max-w-md"
+          />
+        </AppShell>
+        <GlobalLoadingOverlay />
+      </>
     );
   }
 
   if (!currentUser) {
     return (
-      <LoginPage
-        onLoginSuccess={handleLoginSuccess}
-        authLogin={authService.login}
-        initialMessage={loginMessage}
-      />
+      <>
+        <GlobalLoadingOverlay />
+        <LoginPage
+          onLoginSuccess={handleLoginSuccess}
+          authLogin={authService.login}
+          initialMessage={loginMessage}
+        />
+      </>
     );
   }
 
   const isCoordenacao = currentUser.perfil === 'COORDENACAO';
 
   return (
+    <>
+    <GlobalLoadingOverlay />
     <AppShell className="flex flex-col bg-transparent font-sans text-slate-100 antialiased selection:bg-emerald-400/20 selection:text-emerald-50">
       <Header
         user={currentUser}
@@ -199,5 +208,6 @@ export default function App() {
         <p>ITAM — Sistema de Apontamento Diário de Produção © {new Date().getFullYear()}</p>
       </footer>
     </AppShell>
+    </>
   );
 }

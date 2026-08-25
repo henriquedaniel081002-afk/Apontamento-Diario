@@ -167,6 +167,21 @@ export function DayDetailModal({
 
   const totalFaltas=faltasDia.reduce((sum,r)=>sum+Number(r.quantidade||0),0);
   const totalDetalhado=potenciaRows.reduce((a,r)=>a+r.quantidade,0);
+  const productionTurnGroups=[...potenciaRows.reduce<Map<string,typeof potenciaRows>>((acc,row)=>{
+    const key=String(row.turno||'').trim()||'sem-turno';
+    const rows=acc.get(key)||[];
+    rows.push(row);
+    acc.set(key,rows);
+    return acc;
+  },new Map()).entries()].map(([key,rows])=>({
+    key,
+    label:key==='sem-turno'?'Turno não informado':key.toLowerCase().includes('turno')?key:`${key} turno`,
+    rows,
+    total:rows.reduce((sum,row)=>sum+row.quantidade,0),
+  })).sort((a,b)=>{
+    const rank=(value:string)=>/^(1|1º|primeiro)/i.test(value)?0:/^(2|2º|segundo)/i.test(value)?1:2;
+    return rank(a.key)-rank(b.key)||a.label.localeCompare(b.label,'pt-BR');
+  });
 
   const tabs:{id:TabId;label:string;icon:typeof LayoutDashboard;count?:number}[]=[
     {id:'resumo',label:'Resumo',icon:LayoutDashboard},
@@ -179,13 +194,16 @@ export function DayDetailModal({
   ];
 
   const ProductionCard=({full=false}:{full?:boolean}) => <article className={`day-detail-card day-detail-production${full?' day-detail-card--full':''}`}>
-    <div className="day-detail-card-title"><Gauge className="size-4"/><div><h3>Produção por potência</h3><p>Composição do volume produzido no dia</p></div><b>{fmt(totalDetalhado)}</b></div>
-    {potenciaRows.length ? <div className="day-detail-table-scroll" tabIndex={0} role="region" aria-label="Produção por potência">
-      <table className="day-detail-table">
-        <thead><tr><th scope="col">Potência</th><th scope="col" className="day-detail-line">Linha</th><th scope="col">Turno</th><th scope="col">Produzido</th></tr></thead>
-        <tbody>{potenciaRows.map(r=><tr key={`${r.potencia}-${r.linha}-${r.turno||'sem-turno'}`}><td>{r.potencia} kVA</td><td className="day-detail-line">{r.linha}</td><td>{r.turno ? `${r.turno} turno` : '—'}</td><td><strong>{fmt(r.quantidade)}</strong></td></tr>)}</tbody>
-        <tfoot><tr><th scope="row">Total detalhado</th><td/><td/><td><strong>{fmt(totalDetalhado)}</strong></td></tr></tfoot>
-      </table>
+    <div className="day-detail-card-title"><Gauge className="size-4"/><div><h3>Produção por potência</h3><p>Produção separada por turno, linha e potência</p></div><b>{fmt(totalDetalhado)}</b></div>
+    {productionTurnGroups.length ? <div className="day-detail-table-scroll day-detail-turn-groups" tabIndex={0} role="region" aria-label="Produção por potência">
+      {productionTurnGroups.map(group=><section key={group.key} className="day-detail-turn-group">
+        <header className="day-detail-turn-header"><div><strong>{group.label}</strong><span>{group.rows.length} combinação(ões)</span></div><b>{fmt(group.total)} un.</b></header>
+        <table className="day-detail-table">
+          <thead><tr><th scope="col">Potência</th><th scope="col" className="day-detail-line">Linha</th><th scope="col">Produzido</th></tr></thead>
+          <tbody>{group.rows.map(r=><tr key={`${r.potencia}-${r.linha}-${r.turno||'sem-turno'}`}><td>{r.potencia} kVA</td><td className="day-detail-line">{r.linha}</td><td><strong>{fmt(r.quantidade)}</strong></td></tr>)}</tbody>
+          <tfoot><tr><th scope="row">Total do {group.label.toLowerCase()}</th><td/><td><strong>{fmt(group.total)}</strong></td></tr></tfoot>
+        </table>
+      </section>)}
     </div> : <Empty text="Nenhum detalhamento por potência registrado para este dia."/>}
   </article>;
 

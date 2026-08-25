@@ -3,6 +3,7 @@ import { CalendarRange, CheckCircle2, FileSpreadsheet, FileUp, Loader2 } from 'l
 import { ModalShell } from '../common/ModalShell';
 import { Button } from '../common/ui';
 import { readProgramacaoExcel, type ProgramacaoImportGroup, type ProgramacaoImportPreview } from '../../utils/importProgramacaoExcel';
+import { finishLoadingProgress, startLoadingProgress } from '../../services/loadingProgressService';
 
 interface Props {
   isOpen: boolean;
@@ -31,11 +32,16 @@ export function ImportProgramacaoModal({ isOpen, onClose, onImport }: Props) {
   const handleFile = async (file?: File) => {
     if (!file) return;
     setProcessing(true); setError(null); setPreview(null); setProgress(0);
+    const loadingId = startLoadingProgress(
+      'Analisando programação do Excel',
+      'Lendo a aba BASE PROG 2026 e consolidando a programação do mês selecionado.',
+    );
     try {
       setPreview(await readProgramacaoExcel(file, mes, setProgress));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Falha ao analisar a programação.');
     } finally {
+      finishLoadingProgress(loadingId);
       setProcessing(false);
       if (inputRef.current) inputRef.current.value = '';
     }

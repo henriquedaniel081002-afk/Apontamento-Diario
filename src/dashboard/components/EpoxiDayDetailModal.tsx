@@ -32,6 +32,21 @@ export function EpoxiDayDetailModal({data,detalhes,faltas,observacoes,faltasMate
     return acc;
   },new Map()).values()].sort((a,b)=>Number(a.potencia)-Number(b.potencia)||String(a.turno||'').localeCompare(String(b.turno||''),'pt-BR'));
   const totalProducao=potencias.reduce((acc,r)=>acc+r.quantidade,0);
+  const productionTurnGroups=[...potencias.reduce<Map<string,typeof potencias>>((acc,row)=>{
+    const key=String(row.turno||'').trim()||'sem-turno';
+    const rows=acc.get(key)||[];
+    rows.push(row);
+    acc.set(key,rows);
+    return acc;
+  },new Map()).entries()].map(([key,rows])=>({
+    key,
+    label:key==='sem-turno'?'Turno não informado':key.toLowerCase().includes('turno')?key:`${key} turno`,
+    rows,
+    total:rows.reduce((sum,row)=>sum+row.quantidade,0),
+  })).sort((a,b)=>{
+    const rank=(value:string)=>/^(1|1º|primeiro)/i.test(value)?0:/^(2|2º|segundo)/i.test(value)?1:2;
+    return rank(a.key)-rank(b.key)||a.label.localeCompare(b.label,'pt-BR');
+  });
   const totalFaltas=faltasDia.reduce((acc,r)=>acc+Number(r.quantidade||0),0);
 
   return <ModalShell
@@ -48,10 +63,13 @@ export function EpoxiDayDetailModal({data,detalhes,faltas,observacoes,faltasMate
       <div className="epoxi-day-modal-body" aria-label="Detalhes do dia no setor EPOXI">
         <section className="epoxi-day-section">
           <div className="epoxi-day-section-title"><Box className="size-4"/><h3>Produção</h3><span>{fmt(totalProducao)} un.</span></div>
-          {potencias.length ? <div className="epoxi-table-scroll"><table className="epoxi-day-table">
-            <thead><tr><th scope="col">Potência</th><th scope="col">Linha</th><th scope="col">Turno</th><th scope="col">Quantidade</th></tr></thead>
-            <tbody>{potencias.map(r=><tr key={`${r.potencia}-${r.turno||'sem-turno'}`}><td>{r.potencia} kVA</td><td>EPO</td><td>{r.turno ? `${r.turno} turno` : '—'}</td><td><strong>{fmt(r.quantidade)}</strong></td></tr>)}</tbody>
-          </table></div> : <Empty text="Nenhuma produção registrada."/>}
+          {productionTurnGroups.length ? <div className="epoxi-production-turns">{productionTurnGroups.map(group=><section key={group.key} className="epoxi-production-turn-group">
+            <header><div><strong>{group.label}</strong><span>{group.rows.length} combinação(ões)</span></div><b>{fmt(group.total)} un.</b></header>
+            <div className="epoxi-table-scroll"><table className="epoxi-day-table">
+              <thead><tr><th scope="col">Potência</th><th scope="col">Linha</th><th scope="col">Quantidade</th></tr></thead>
+              <tbody>{group.rows.map(r=><tr key={`${r.potencia}-${r.turno||'sem-turno'}`}><td>{r.potencia} kVA</td><td>EPO</td><td><strong>{fmt(r.quantidade)}</strong></td></tr>)}</tbody>
+            </table></div>
+          </section>)}</div> : <Empty text="Nenhuma produção registrada."/>}
         </section>
 
         <section className="epoxi-day-section">

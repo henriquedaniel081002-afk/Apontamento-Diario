@@ -718,13 +718,13 @@ export function ProgressLoadingState({
 }: ProgressLoadingStateProps) {
   const normalizedProgress = Math.max(0, Math.min(100, Math.round(progress)));
   const stage = normalizedProgress < 25
-    ? 'Conectando ao banco de dados'
+    ? 'Iniciando carregamento'
     : normalizedProgress < 60
-      ? 'Buscando informações'
+      ? 'Processando informações'
       : normalizedProgress < 90
         ? 'Organizando os dados'
         : normalizedProgress < 100
-          ? 'Finalizando a tela'
+          ? 'Finalizando operação'
           : 'Tudo pronto';
 
   return (

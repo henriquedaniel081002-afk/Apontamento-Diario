@@ -110,7 +110,18 @@ export function getOperationalUnitLabel(apontamento: Apontamento): string {
   const base = baseLabels[apontamento.setor] || String(apontamento.setor);
   const lines = getApontamentoLines(apontamento);
 
-  if ((apontamento.setor === 'MONTAGEM FINAL' || apontamento.setor === 'MPA') && lines.length) {
+  if (apontamento.setor === 'MPA') {
+    const responsible = String(apontamento.userName || '').trim().toUpperCase();
+    if (responsible.startsWith('MPA MON')) return 'MPA MON';
+    if (responsible.startsWith('MPA TRI')) return 'MPA TRI';
+
+    // A linha EPO pode fazer parte da produção do mesmo apontador de MPA, mas não
+    // deve alterar o nome da unidade operacional exibida no card/detalhamento.
+    const primaryLines = lines.filter((line) => line !== 'EPO');
+    if (primaryLines.length) return `${base} ${primaryLines.join(' / ')}`;
+  }
+
+  if (apontamento.setor === 'MONTAGEM FINAL' && lines.length) {
     return `${base} ${lines.join(' / ')}`;
   }
   return base;

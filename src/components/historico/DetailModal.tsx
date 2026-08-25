@@ -47,6 +47,15 @@ export const DetailModal: React.FC<Props> = ({ apontamento, isOpen, onClose }) =
   const material = apontamento.paradasFaltaMaterial || [];
   const maquina = apontamento.paradasMaquina || [];
   const nc = apontamento.naoConformidades || [];
+  const productionGroups = [
+    { key: '1º', label: '1º turno', items: apontamento.producoes.filter((item) => item.turno === '1º') },
+    { key: '2º', label: '2º turno', items: apontamento.producoes.filter((item) => item.turno === '2º') },
+    { key: 'sem-turno', label: 'Turno não informado', items: apontamento.producoes.filter((item) => !item.turno) },
+  ].filter((group) => group.items.length > 0).map((group) => ({
+    ...group,
+    items: [...group.items].sort((a, b) => a.linha.localeCompare(b.linha, 'pt-BR') || Number(a.potencia) - Number(b.potencia)),
+    total: group.items.reduce((sum, item) => sum + Number(item.quantidade || 0), 0),
+  }));
 
   return (
     <ModalShell
@@ -78,14 +87,28 @@ export const DetailModal: React.FC<Props> = ({ apontamento, isOpen, onClose }) =
         </div>
 
         <Block title="Produção" icon={<Zap className="h-4 w-4" />} count={apontamento.producoes.length}>
-          {apontamento.producoes.length ? (
-            <div className="space-y-2">
-              {apontamento.producoes.map((item) => (
-                <div key={item.id} className="flex min-w-0 flex-col gap-1 rounded-xl bg-white/[0.035] px-3 py-2 min-[380px]:flex-row min-[380px]:items-center min-[380px]:justify-between min-[380px]:gap-3">
-                  <span className={`min-w-0 text-sm text-slate-200 ${textWrapClass}`}>{item.linha} · {item.potenciaFormatted || formatPotencia(item.potencia)} kVA{item.turno ? ` · ${item.turno} turno` : ''}</span>
-                  <strong className="shrink-0 text-sm text-emerald-300">{item.quantidade} unid.</strong>
-                </div>
+          {productionGroups.length ? (
+            <div className="space-y-3">
+              {productionGroups.map((group) => (
+                <section key={group.key} className="overflow-hidden rounded-2xl border border-white/10 bg-black/10">
+                  <div className="flex items-center justify-between gap-3 border-b border-white/10 bg-white/[0.035] px-3 py-2.5 min-[420px]:px-4">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.08em] text-slate-300">{group.label}</p>
+                      <p className="mt-0.5 text-[11px] font-semibold text-slate-500">{group.items.length} combinação(ões) de linha e potência</p>
+                    </div>
+                    <Badge variant="success">{group.total} unid.</Badge>
+                  </div>
+                  <div className="space-y-2 p-3 min-[420px]:p-4">
+                    {group.items.map((item) => (
+                      <div key={item.id} className="flex min-w-0 flex-col gap-1 rounded-xl bg-white/[0.035] px-3 py-2 min-[380px]:flex-row min-[380px]:items-center min-[380px]:justify-between min-[380px]:gap-3">
+                        <span className={`min-w-0 text-sm text-slate-200 ${textWrapClass}`}>{item.linha} · {item.potenciaFormatted || formatPotencia(item.potencia)} kVA</span>
+                        <strong className="shrink-0 text-sm text-emerald-300">{item.quantidade} unid.</strong>
+                      </div>
+                    ))}
+                  </div>
+                </section>
               ))}
+              <p className="text-right text-xs font-semibold text-slate-500">Total produzido: <strong className="text-slate-200">{totals.producao} unid.</strong></p>
             </div>
           ) : <Empty text="Sem produção registrada." />}
         </Block>

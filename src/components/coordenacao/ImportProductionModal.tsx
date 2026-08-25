@@ -22,6 +22,7 @@ import {
 import { ModalShell } from '../common/ModalShell';
 import { Badge, Button, FieldError } from '../common/ui';
 import { CustomSelect } from '../common/CustomSelect';
+import { finishLoadingProgress, startLoadingProgress } from '../../services/loadingProgressService';
 
 type ImportMode = 'DAY' | 'MONTH';
 
@@ -120,6 +121,12 @@ export function ImportProductionModal({
     }
 
     setProcessing(true);
+    const loadingId = startLoadingProgress(
+      mode === 'DAY' ? 'Analisando produção do Excel' : 'Analisando produção mensal',
+      mode === 'DAY'
+        ? 'Lendo a aba Apontamento Final e preparando a produção da data selecionada.'
+        : 'Lendo a aba Apontamento Final e organizando todos os dias do mês selecionado.',
+    );
     setProgressRows(0);
     setError(null);
     try {
@@ -135,6 +142,7 @@ export function ImportProductionModal({
       setPreviews([]);
       setError(readError instanceof Error ? readError.message : 'Não foi possível analisar o Excel.');
     } finally {
+      finishLoadingProgress(loadingId);
       setProcessing(false);
     }
   };

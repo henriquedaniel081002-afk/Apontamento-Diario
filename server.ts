@@ -52,6 +52,11 @@ function isoDateTime(value: any) {
   return Number.isNaN(d.getTime()) ? String(value ?? '') : d.toISOString();
 }
 
+function displayLoginName(value: any): string {
+  const login = String(value || '').trim();
+  return login.toUpperCase() === 'MPA MON/EPO' ? 'MPA MON' : login;
+}
+
 app.get('/api/health', async (_req, res) => {
   try {
     await pool.query('SELECT 1');
@@ -66,7 +71,12 @@ app.post('/api/auth/login', async (req, res) => {
   if (!login || !password) return res.status(400).json({ error: 'Informe usuário e senha.' });
 
   try {
-    const result = await pool.query('SELECT * FROM autenticar_usuario($1, $2)', [login, password]);
+    let result = await pool.query('SELECT * FROM autenticar_usuario($1, $2)', [login, password]);
+    // Compatibilidade com bancos em que o login antigo ainda está salvo como MPA MON/EPO.
+    // A interface e a sessão passam a exibir somente MPA MON, sem exigir renomear o usuário no Neon.
+    if (!result.rows.length && String(login).trim().toUpperCase() === 'MPA MON') {
+      result = await pool.query('SELECT * FROM autenticar_usuario($1, $2)', ['MPA MON/EPO', password]);
+    }
     if (!result.rows.length) return res.status(401).json({ error: 'Usuário ou senha incorretos.' });
 
     const first = result.rows[0];
@@ -81,7 +91,7 @@ app.post('/api/auth/login', async (req, res) => {
 
     const user = {
       id: String(first.usuario_id),
-      name: first.login,
+      name: displayLoginName(first.login),
       perfil,
       setor: first.setor || null,
       linhas,
@@ -305,7 +315,7 @@ async function loadApontamento(id: number) {
   const h = await pool.query(
     `SELECT a.id, a.data, a.usuario_id, a.setor_id, a.tipo_bobina, u.login usuario, s.nome setor,
             a.criado_em, a.atualizado_em, a.status_aprovacao, a.aprovado_em, a.aprovado_por,
-            a.origem_producao, a.complementado, aprovador.login aprovado_por_nome
+            a.origem_producao, a.complementado, a.turno1_complementado, a.turno2_complementado, aprovador.login aprovado_por_nome
        FROM apontamentos a
        JOIN usuarios u ON u.id = a.usuario_id
        JOIN setores s ON s.id = a.setor_id
@@ -327,21 +337,21 @@ async function loadApontamento(id: number) {
       [id],
     ),
     pool.query(
-      `SELECT id, causa_motivo, material, hora_inicio, hora_fim
+      `SELECT id, causa_motivo, material, hora_inicio, hora_fim, turno
          FROM paradas_falta_material
         WHERE apontamento_id = $1
         ORDER BY id`,
       [id],
     ),
     pool.query(
-      `SELECT id, maquina_equipamento, hora_inicio, hora_fim, observacao
+      `SELECT id, maquina_equipamento, hora_inicio, hora_fim, observacao, turno
          FROM paradas_maquina
         WHERE apontamento_id = $1
         ORDER BY id`,
       [id],
     ),
     pool.query(
-      `SELECT id, causa_nao_conformidade, op, numero_serie
+      `SELECT id, causa_nao_conformidade, op, numero_serie, turno
          FROM nao_conformidades
         WHERE apontamento_id = $1
         ORDER BY id`,
@@ -386,7 +396,7 @@ async function loadApontamento(id: number) {
     setor: setorExibicao,
     tipoBobina: tipoBobina || undefined,
     userId: String(x.usuario_id),
-    userName: x.usuario,
+    userName: displayLoginName(x.usuario),
     linhasPermitidas: acessos.rows.map((r: any) => r.linha).filter(Boolean),
     producoes: p.rows.map((r: any) => ({
       id: String(r.id), linha: r.linha, potencia: Number(r.potencia),
@@ -394,14 +404,14 @@ async function loadApontamento(id: number) {
     })),
     paradasFaltaMaterial: material.rows.map((r: any) => ({
       id: String(r.id), causaMotivo: r.causa_motivo || '', material: r.material || '',
-      horaInicio: shortTime(r.hora_inicio), horaFim: shortTime(r.hora_fim),
+      horaInicio: shortTime(r.hora_inicio), horaFim: shortTime(r.hora_fim), turno: r.turno ? String(r.turno).toLowerCase() : undefined,
     })),
     paradasMaquina: maquina.rows.map((r: any) => ({
       id: String(r.id), maquinaEquipamento: r.maquina_equipamento || '',
-      horaInicio: shortTime(r.hora_inicio), horaFim: shortTime(r.hora_fim), observacao: r.observacao || '',
+      horaInicio: shortTime(r.hora_inicio), horaFim: shortTime(r.hora_fim), observacao: r.observacao || '', turno: r.turno ? String(r.turno).toLowerCase() : undefined,
     })),
     naoConformidades: nc.rows.map((r: any) => ({
-      id: String(r.id), causaNaoConformidade: r.causa_nao_conformidade || '', op: r.op || '', numeroSerie: r.numero_serie || '',
+      id: String(r.id), causaNaoConformidade: r.causa_nao_conformidade || '', op: r.op || '', numeroSerie: r.numero_serie || '', turno: r.turno ? String(r.turno).toLowerCase() : undefined,
     })),
     faltas: f.rows.map((r: any) => ({
       id: String(r.id),
@@ -426,6 +436,8 @@ async function loadApontamento(id: number) {
     aprovadoPorNome: x.aprovado_por_nome || undefined,
     origemProducao: String(x.origem_producao || 'MANUAL').toUpperCase() === 'IMPORTADO' ? 'IMPORTADO' : 'MANUAL',
     complementado: x.complementado !== false,
+    turno1Complementado: x.turno1_complementado === true,
+    turno2Complementado: x.turno2_complementado === true,
   };
 }
 
@@ -448,37 +460,41 @@ function validateOccurrencePayload(_data: any): string | null {
   return null;
 }
 
-async function deleteOccurrenceCollections(client: any, apontamentoId: number, data: any) {
-  // Substitui apenas coleções explicitamente enviadas. Isso mantém compatibilidade
-  // com uma versão antiga do frontend eventualmente ainda aberta/em cache.
+async function deleteOccurrenceCollections(client: any, apontamentoId: number, data: any, turno?: string | null) {
+  // Substitui apenas coleções explicitamente enviadas. Em Pintura/Solda a exclusão
+  // é limitada ao turno selecionado para nunca apagar o que o outro turno registrou.
   const has = (key: string) => Object.prototype.hasOwnProperty.call(data || {}, key);
-  if (has('paradasFaltaMaterial')) await client.query('DELETE FROM paradas_falta_material WHERE apontamento_id = $1', [apontamentoId]);
-  if (has('paradasMaquina')) await client.query('DELETE FROM paradas_maquina WHERE apontamento_id = $1', [apontamentoId]);
-  if (has('naoConformidades')) await client.query('DELETE FROM nao_conformidades WHERE apontamento_id = $1', [apontamentoId]);
-  if (has('faltas')) await client.query('DELETE FROM faltas WHERE apontamento_id = $1', [apontamentoId]);
-  if (has('observacoes')) await client.query('DELETE FROM observacoes WHERE apontamento_id = $1', [apontamentoId]);
+  const deleteCollection = async (table: string) => {
+    if (turno) await client.query(`DELETE FROM ${table} WHERE apontamento_id = $1 AND UPPER(COALESCE(turno, '')) = UPPER($2)`, [apontamentoId, turno]);
+    else await client.query(`DELETE FROM ${table} WHERE apontamento_id = $1`, [apontamentoId]);
+  };
+  if (has('paradasFaltaMaterial')) await deleteCollection('paradas_falta_material');
+  if (has('paradasMaquina')) await deleteCollection('paradas_maquina');
+  if (has('naoConformidades')) await deleteCollection('nao_conformidades');
+  if (has('faltas')) await deleteCollection('faltas');
+  if (has('observacoes')) await deleteCollection('observacoes');
 }
 
 async function insertOccurrenceCollections(client: any, apontamentoId: number, data: any, lineMap: Map<any, any>) {
   for (const item of occurrenceList(data.paradasFaltaMaterial)) {
     await client.query(
-      `INSERT INTO paradas_falta_material(apontamento_id, causa_motivo, material, hora_inicio, hora_fim)
-       VALUES($1, $2, $3, $4, $5)`,
-      [apontamentoId, String(item.causaMotivo || '').trim(), String(item.material || '').trim(), item.horaInicio || null, item.horaFim || null],
+      `INSERT INTO paradas_falta_material(apontamento_id, causa_motivo, material, hora_inicio, hora_fim, turno)
+       VALUES($1, $2, $3, $4, $5, $6)`,
+      [apontamentoId, String(item.causaMotivo || '').trim(), String(item.material || '').trim(), item.horaInicio || null, item.horaFim || null, item.turno ? String(item.turno).toUpperCase() : null],
     );
   }
   for (const item of occurrenceList(data.paradasMaquina)) {
     await client.query(
-      `INSERT INTO paradas_maquina(apontamento_id, maquina_equipamento, hora_inicio, hora_fim, observacao)
-       VALUES($1, $2, $3, $4, $5)`,
-      [apontamentoId, String(item.maquinaEquipamento || '').trim(), item.horaInicio || null, item.horaFim || null, String(item.observacao || '').trim()],
+      `INSERT INTO paradas_maquina(apontamento_id, maquina_equipamento, hora_inicio, hora_fim, observacao, turno)
+       VALUES($1, $2, $3, $4, $5, $6)`,
+      [apontamentoId, String(item.maquinaEquipamento || '').trim(), item.horaInicio || null, item.horaFim || null, String(item.observacao || '').trim(), item.turno ? String(item.turno).toUpperCase() : null],
     );
   }
   for (const item of occurrenceList(data.naoConformidades)) {
     await client.query(
-      `INSERT INTO nao_conformidades(apontamento_id, causa_nao_conformidade, op, numero_serie)
-       VALUES($1, $2, $3, $4)`,
-      [apontamentoId, String(item.causaNaoConformidade || '').trim(), String(item.op || '').trim(), String(item.numeroSerie || '').trim()],
+      `INSERT INTO nao_conformidades(apontamento_id, causa_nao_conformidade, op, numero_serie, turno)
+       VALUES($1, $2, $3, $4, $5)`,
+      [apontamentoId, String(item.causaNaoConformidade || '').trim(), String(item.op || '').trim(), String(item.numeroSerie || '').trim(), item.turno ? String(item.turno).toUpperCase() : null],
     );
   }
   for (const item of occurrenceList(data.faltas)) {
@@ -517,7 +533,7 @@ async function loadApontamentosBatch(): Promise<any[]> {
   const headers = await pool.query(
     `SELECT a.id, a.data, a.usuario_id, a.setor_id, a.tipo_bobina, u.login usuario, s.nome setor,
             a.criado_em, a.atualizado_em, a.status_aprovacao, a.aprovado_em, a.aprovado_por,
-            a.origem_producao, a.complementado, aprovador.login aprovado_por_nome
+            a.origem_producao, a.complementado, a.turno1_complementado, a.turno2_complementado, aprovador.login aprovado_por_nome
        FROM apontamentos a
        JOIN usuarios u ON u.id = a.usuario_id
        JOIN setores s ON s.id = a.setor_id
@@ -537,19 +553,19 @@ async function loadApontamentosBatch(): Promise<any[]> {
         ORDER BY p.apontamento_id, p.id`, [ids],
     ),
     pool.query(
-      `SELECT apontamento_id, id, causa_motivo, material, hora_inicio, hora_fim
+      `SELECT apontamento_id, id, causa_motivo, material, hora_inicio, hora_fim, turno
          FROM paradas_falta_material
         WHERE apontamento_id = ANY($1::bigint[])
         ORDER BY apontamento_id, id`, [ids],
     ),
     pool.query(
-      `SELECT apontamento_id, id, maquina_equipamento, hora_inicio, hora_fim, observacao
+      `SELECT apontamento_id, id, maquina_equipamento, hora_inicio, hora_fim, observacao, turno
          FROM paradas_maquina
         WHERE apontamento_id = ANY($1::bigint[])
         ORDER BY apontamento_id, id`, [ids],
     ),
     pool.query(
-      `SELECT apontamento_id, id, causa_nao_conformidade, op, numero_serie
+      `SELECT apontamento_id, id, causa_nao_conformidade, op, numero_serie, turno
          FROM nao_conformidades
         WHERE apontamento_id = ANY($1::bigint[])
         ORDER BY apontamento_id, id`, [ids],
@@ -612,7 +628,7 @@ async function loadApontamentosBatch(): Promise<any[]> {
       setor: setorExibicao,
       tipoBobina: tipoBobina || undefined,
       userId: String(x.usuario_id),
-      userName: x.usuario,
+      userName: displayLoginName(x.usuario),
       linhasPermitidas: (acessosById.get(id) || []).map((r: any) => r.linha).filter(Boolean),
       producoes: (producoesById.get(id) || []).map((r: any) => ({
         id: String(r.id), linha: r.linha, potencia: Number(r.potencia),
@@ -620,14 +636,14 @@ async function loadApontamentosBatch(): Promise<any[]> {
       })),
       paradasFaltaMaterial: (materialById.get(id) || []).map((r: any) => ({
         id: String(r.id), causaMotivo: r.causa_motivo || '', material: r.material || '',
-        horaInicio: shortTime(r.hora_inicio), horaFim: shortTime(r.hora_fim),
+        horaInicio: shortTime(r.hora_inicio), horaFim: shortTime(r.hora_fim), turno: r.turno ? String(r.turno).toLowerCase() : undefined,
       })),
       paradasMaquina: (maquinaById.get(id) || []).map((r: any) => ({
         id: String(r.id), maquinaEquipamento: r.maquina_equipamento || '',
-        horaInicio: shortTime(r.hora_inicio), horaFim: shortTime(r.hora_fim), observacao: r.observacao || '',
+        horaInicio: shortTime(r.hora_inicio), horaFim: shortTime(r.hora_fim), observacao: r.observacao || '', turno: r.turno ? String(r.turno).toLowerCase() : undefined,
       })),
       naoConformidades: (ncById.get(id) || []).map((r: any) => ({
-        id: String(r.id), causaNaoConformidade: r.causa_nao_conformidade || '', op: r.op || '', numeroSerie: r.numero_serie || '',
+        id: String(r.id), causaNaoConformidade: r.causa_nao_conformidade || '', op: r.op || '', numeroSerie: r.numero_serie || '', turno: r.turno ? String(r.turno).toLowerCase() : undefined,
       })),
       faltas: (faltasById.get(id) || []).map((r: any) => ({
         id: String(r.id), nome: r.nome || undefined, motivoJustificativa: r.motivo_justificativa || undefined,
@@ -647,6 +663,8 @@ async function loadApontamentosBatch(): Promise<any[]> {
       aprovadoPorNome: x.aprovado_por_nome || undefined,
       origemProducao: String(x.origem_producao || 'MANUAL').toUpperCase() === 'IMPORTADO' ? 'IMPORTADO' : 'MANUAL',
       complementado: x.complementado !== false,
+      turno1Complementado: x.turno1_complementado === true,
+      turno2Complementado: x.turno2_complementado === true,
     };
   });
 }
@@ -729,9 +747,11 @@ app.put('/api/apontamentos/:id/complemento', auth, async (req: any, res) => {
     if (validation) return res.status(400).json({ error: validation });
 
     const current = await client.query(
-      `SELECT id, usuario_id, setor_id, origem_producao
-         FROM apontamentos
-        WHERE id = $1 AND usuario_id = $2`,
+      `SELECT a.id, a.usuario_id, a.setor_id, a.origem_producao, s.nome setor,
+              a.turno1_complementado, a.turno2_complementado
+         FROM apontamentos a
+         JOIN setores s ON s.id = a.setor_id
+        WHERE a.id = $1 AND a.usuario_id = $2`,
       [id, req.auth.userId],
     );
     if (!current.rows.length) return res.status(404).json({ error: 'Produção importada não encontrada.' });
@@ -739,12 +759,28 @@ app.put('/api/apontamentos/:id/complemento', auth, async (req: any, res) => {
       return res.status(400).json({ error: 'Este registro não foi criado por importação de produção.' });
     }
 
+    const setor = String(current.rows[0].setor || '').trim().toUpperCase();
+    const usesTurnFlow = setor === 'PINTURA' || setor === 'SOLDA';
+    const turno = String(data.turno || '').trim().toLowerCase();
+    if (usesTurnFlow && !['1º turno', '2º turno'].includes(turno)) {
+      return res.status(400).json({ error: 'Selecione o 1º ou o 2º turno antes de finalizar.' });
+    }
+    const turnoDb = usesTurnFlow ? turno.toUpperCase() : null;
+    const scopedData = usesTurnFlow ? {
+      ...data,
+      paradasFaltaMaterial: occurrenceList(data.paradasFaltaMaterial).map((item) => ({ ...item, turno })),
+      paradasMaquina: occurrenceList(data.paradasMaquina).map((item) => ({ ...item, turno })),
+      naoConformidades: occurrenceList(data.naoConformidades).map((item) => ({ ...item, turno })),
+      faltas: occurrenceList(data.faltas).map((item) => ({ ...item, turno })),
+      observacoes: occurrenceList(data.observacoes).map((item) => ({ ...item, turno })),
+    } : data;
+
     const access = await getUserAccess(req.auth.userId);
     const setorId = Number(current.rows[0].setor_id);
     const allowed = new Map(
       access.filter((row: any) => Number(row.setor_id) === setorId).map((row: any) => [row.linha, row.linha_id]),
     );
-    const lineBearingItems = [...occurrenceList(data.faltas), ...occurrenceList(data.observacoes)];
+    const lineBearingItems = [...occurrenceList(scopedData.faltas), ...occurrenceList(scopedData.observacoes)];
     for (const item of lineBearingItems) {
       if (item.linha && !allowed.has(item.linha)) {
         return res.status(403).json({ error: `Linha ${item.linha} não permitida para este usuário/setor.` });
@@ -752,25 +788,41 @@ app.put('/api/apontamentos/:id/complemento', auth, async (req: any, res) => {
     }
 
     await client.query('BEGIN');
-    await client.query(
-      `UPDATE apontamentos
-          SET complementado = TRUE,
-              atualizado_em = NOW(),
-              status_aprovacao = 'PENDENTE',
-              aprovado_em = NULL,
-              aprovado_por = NULL
-        WHERE id = $1 AND usuario_id = $2`,
-      [id, req.auth.userId],
-    );
-    await deleteOccurrenceCollections(client, id, data);
-    await insertOccurrenceCollections(client, id, data, allowed);
+    if (usesTurnFlow) {
+      const firstTurn = turno === '1º turno';
+      await client.query(
+        `UPDATE apontamentos
+            SET turno1_complementado = CASE WHEN $3::boolean THEN TRUE ELSE turno1_complementado END,
+                turno2_complementado = CASE WHEN $3::boolean THEN turno2_complementado ELSE TRUE END,
+                complementado = CASE WHEN $3::boolean THEN turno2_complementado ELSE turno1_complementado END,
+                atualizado_em = NOW(),
+                status_aprovacao = 'PENDENTE',
+                aprovado_em = NULL,
+                aprovado_por = NULL
+          WHERE id = $1 AND usuario_id = $2`,
+        [id, req.auth.userId, firstTurn],
+      );
+    } else {
+      await client.query(
+        `UPDATE apontamentos
+            SET complementado = TRUE,
+                atualizado_em = NOW(),
+                status_aprovacao = 'PENDENTE',
+                aprovado_em = NULL,
+                aprovado_por = NULL
+          WHERE id = $1 AND usuario_id = $2`,
+        [id, req.auth.userId],
+      );
+    }
+    await deleteOccurrenceCollections(client, id, scopedData, turnoDb);
+    await insertOccurrenceCollections(client, id, scopedData, allowed);
     await client.query('COMMIT');
     res.json(await loadApontamento(id));
   } catch (e: any) {
     await client.query('ROLLBACK').catch(() => undefined);
     console.error(e);
     if (e?.code === '42P01' || e?.code === '42703') {
-      return res.status(500).json({ error: 'A estrutura de ocorrências do Neon não está atualizada. Execute o SQL de migração das novas ocorrências.' });
+      return res.status(500).json({ error: 'A estrutura de turnos do Neon não está atualizada. Execute o SQL de migração de Pintura/Solda.' });
     }
     res.status(500).json({ error: 'Falha ao salvar as ocorrências do apontamento.' });
   } finally {
@@ -1188,6 +1240,19 @@ function dashboardSectorName(setor: string, tipoBobina?: string | null): string 
   return value;
 }
 
+function dashboardTurno(value: any): string {
+  const raw = String(value || '').trim().replace(/\s*turno$/i, '').trim().toLowerCase();
+  if (!raw) return '';
+  if (['1', '1º', 'primeiro'].includes(raw)) return '1º';
+  if (['2', '2º', 'segundo'].includes(raw)) return '2º';
+  return raw;
+}
+
+function occurrenceDashboardSector(setor: string, tipoBobina?: string | null): string | null {
+  const base = dashboardSectorName(setor, tipoBobina);
+  return base === 'ESTAMPARIA' ? null : base;
+}
+
 function expandedDashboardSectors(setor: string, linha?: string | null, tipoBobina?: string | null): string[] {
   const base = dashboardSectorName(setor, tipoBobina);
   if (base === 'ESTAMPARIA') return [];
@@ -1283,7 +1348,7 @@ app.get('/api/coordenacao/dashboard', auth, async (req: any, res) => {
          ORDER BY a.data, s.nome, o.id
       `, userQueryParams),
       pool.query(`
-        SELECT a.data, a.usuario_id AS user_id, s.nome setor, a.tipo_bobina, pfm.causa_motivo, pfm.material, pfm.hora_inicio, pfm.hora_fim
+        SELECT a.data, a.usuario_id AS user_id, s.nome setor, a.tipo_bobina, pfm.causa_motivo, pfm.material, pfm.hora_inicio, pfm.hora_fim, pfm.turno
           FROM paradas_falta_material pfm
           JOIN apontamentos a ON a.id = pfm.apontamento_id
           JOIN setores s ON s.id = a.setor_id
@@ -1291,7 +1356,7 @@ app.get('/api/coordenacao/dashboard', auth, async (req: any, res) => {
          ORDER BY a.data, s.nome, pfm.id
       `, userQueryParams),
       pool.query(`
-        SELECT a.data, a.usuario_id AS user_id, s.nome setor, a.tipo_bobina, pm.maquina_equipamento, pm.hora_inicio, pm.hora_fim, pm.observacao
+        SELECT a.data, a.usuario_id AS user_id, s.nome setor, a.tipo_bobina, pm.maquina_equipamento, pm.hora_inicio, pm.hora_fim, pm.observacao, pm.turno
           FROM paradas_maquina pm
           JOIN apontamentos a ON a.id = pm.apontamento_id
           JOIN setores s ON s.id = a.setor_id
@@ -1299,7 +1364,7 @@ app.get('/api/coordenacao/dashboard', auth, async (req: any, res) => {
          ORDER BY a.data, s.nome, pm.id
       `, userQueryParams),
       pool.query(`
-        SELECT a.data, a.usuario_id AS user_id, s.nome setor, a.tipo_bobina, nc.causa_nao_conformidade, nc.op, nc.numero_serie
+        SELECT a.data, a.usuario_id AS user_id, s.nome setor, a.tipo_bobina, nc.causa_nao_conformidade, nc.op, nc.numero_serie, nc.turno
           FROM nao_conformidades nc
           JOIN apontamentos a ON a.id = nc.apontamento_id
           JOIN setores s ON s.id = a.setor_id
@@ -1341,18 +1406,17 @@ app.get('/api/coordenacao/dashboard', auth, async (req: any, res) => {
       if (!rawApontamentoAllowed(row)) continue;
       const data = dateOnly(row.data);
       const linha = String(row.linha || '').trim();
-      const turno = row.turno ? String(row.turno).replace(/\s*turno$/i, '').trim() : 'Todos';
+      const turno = dashboardTurno(row.turno) || 'Todos';
       const quantidade = row.quantidade == null ? (String(row.nome || '').trim() ? 1 : 0) : Number(row.quantidade) || 0;
-      for (const setor of expandedDashboardSectors(String(row.setor), linha, row.tipo_bobina)) {
-        if (!dashboardItemAllowed(setor, linha)) continue;
-        faltas.push({ data, linha, setor, turno, quantidade });
-        detalhesFaltas.push({
-          data, setor, linha: linha || undefined, turno: turno === 'Todos' ? undefined : turno,
-          quantidade: row.quantidade == null ? null : Number(row.quantidade),
-          nome: row.nome || '', motivoJustificativa: row.motivo_justificativa || '',
-          atestado: typeof row.atestado === 'boolean' ? (row.atestado ? 'Sim' : 'Não') : '',
-        });
-      }
+      const setor = occurrenceDashboardSector(String(row.setor), row.tipo_bobina);
+      if (!setor || !dashboardItemAllowed(setor, linha)) continue;
+      faltas.push({ data, linha, setor, turno, quantidade });
+      detalhesFaltas.push({
+        data, setor, linha: linha || undefined, turno: turno === 'Todos' ? undefined : turno,
+        quantidade: row.quantidade == null ? null : Number(row.quantidade),
+        nome: row.nome || '', motivoJustificativa: row.motivo_justificativa || '',
+        atestado: typeof row.atestado === 'boolean' ? (row.atestado ? 'Sim' : 'Não') : '',
+      });
     }
 
     const observacoes: any[] = [];
@@ -1361,43 +1425,41 @@ app.get('/api/coordenacao/dashboard', auth, async (req: any, res) => {
       if (!rawApontamentoAllowed(row)) continue;
       const data = dateOnly(row.data);
       const linha = String(row.linha || '').trim();
-      for (const setor of expandedDashboardSectors(String(row.setor), linha, row.tipo_bobina)) {
-        if (!dashboardItemAllowed(setor, linha)) continue;
-        const item = { data, linha, setor, observacao: row.observacao || '', justificativaMeta: row.justificativa_meta || '' };
-        observacoes.push(item);
-        detalhesObservacoes.push(item);
-      }
+      const setor = occurrenceDashboardSector(String(row.setor), row.tipo_bobina);
+      if (!setor || !dashboardItemAllowed(setor, linha)) continue;
+      const turno = dashboardTurno(row.turno) || undefined;
+      const item = { data, linha, setor, turno, observacao: row.observacao || '', justificativaMeta: row.justificativa_meta || '' };
+      observacoes.push(item);
+      detalhesObservacoes.push(item);
     }
 
     const faltasMaterial: any[] = [];
     for (const row of materialResult.rows) {
       if (!rawApontamentoAllowed(row)) continue;
-      for (const setor of expandedDashboardSectors(String(row.setor), null, row.tipo_bobina)) {
-        if (!dashboardItemAllowed(setor)) continue;
-        faltasMaterial.push({ data: dateOnly(row.data), setor, causaMotivo: row.causa_motivo || '', material: row.material || '', horaInicio: String(row.hora_inicio || '').slice(0,5), horaFim: String(row.hora_fim || '').slice(0,5) });
-      }
+      const setor = occurrenceDashboardSector(String(row.setor), row.tipo_bobina);
+      if (!setor || !dashboardItemAllowed(setor)) continue;
+      faltasMaterial.push({ data: dateOnly(row.data), setor, turno: dashboardTurno(row.turno) || undefined, causaMotivo: row.causa_motivo || '', material: row.material || '', horaInicio: String(row.hora_inicio || '').slice(0,5), horaFim: String(row.hora_fim || '').slice(0,5) });
     }
 
     const maquinasQuebradas: any[] = [];
     for (const row of maquinaResult.rows) {
       if (!rawApontamentoAllowed(row)) continue;
-      for (const setor of expandedDashboardSectors(String(row.setor), null, row.tipo_bobina)) {
-        if (!dashboardItemAllowed(setor)) continue;
-        maquinasQuebradas.push({ data: dateOnly(row.data), setor, maquinaEquipamento: row.maquina_equipamento || '', horaInicio: String(row.hora_inicio || '').slice(0,5), horaFim: String(row.hora_fim || '').slice(0,5), observacao: row.observacao || '' });
-      }
+      const setor = occurrenceDashboardSector(String(row.setor), row.tipo_bobina);
+      if (!setor || !dashboardItemAllowed(setor)) continue;
+      maquinasQuebradas.push({ data: dateOnly(row.data), setor, turno: dashboardTurno(row.turno) || undefined, maquinaEquipamento: row.maquina_equipamento || '', horaInicio: String(row.hora_inicio || '').slice(0,5), horaFim: String(row.hora_fim || '').slice(0,5), observacao: row.observacao || '' });
     }
 
     const naoConformidades: any[] = [];
     for (const row of ncResult.rows) {
       if (!rawApontamentoAllowed(row)) continue;
-      for (const setor of expandedDashboardSectors(String(row.setor), null, row.tipo_bobina)) {
-        if (!dashboardItemAllowed(setor)) continue;
-        naoConformidades.push({ data: dateOnly(row.data), setor, causa: row.causa_nao_conformidade || '', op: row.op || '', numeroSerie: row.numero_serie || '' });
-      }
+      const setor = occurrenceDashboardSector(String(row.setor), row.tipo_bobina);
+      if (!setor || !dashboardItemAllowed(setor)) continue;
+      naoConformidades.push({ data: dateOnly(row.data), setor, turno: dashboardTurno(row.turno) || undefined, causa: row.causa_nao_conformidade || '', op: row.op || '', numeroSerie: row.numero_serie || '' });
     }
 
     const linhas = [...new Set([...programacao, ...apontamento].map((row: any) => row.linha).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'pt-BR'));
     const setores = [...new Set([...programacao, ...apontamento].map((row: any) => row.setor).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'pt-BR'));
+    const turnos = [...new Set([...faltas, ...observacoes, ...faltasMaterial, ...maquinasQuebradas, ...naoConformidades].map((row: any) => row.turno).filter((value: any) => Boolean(value) && value !== 'Todos'))].sort((a, b) => String(a).localeCompare(String(b), 'pt-BR'));
 
     const mesesVisiveis = isCoordination
       ? monthsResult.rows.map((row: any) => String(row.mes)).filter(Boolean)
@@ -1406,7 +1468,7 @@ app.get('/api/coordenacao/dashboard', auth, async (req: any, res) => {
     res.json({
       geradoEm: new Date().toISOString(),
       periodo: { meses: mesesVisiveis },
-      filtros: { linhas, setores, turnos: [] },
+      filtros: { linhas, setores, turnos },
       escopo: isCoordination ? null : {
         setores: [...allowedDashboardSectors],
         linhas: restrictLine ? [...allowedLines] : [],

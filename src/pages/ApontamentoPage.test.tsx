@@ -40,6 +40,8 @@ const pendingRecord: Apontamento = {
   statusAprovacao: 'PENDENTE',
   origemProducao: 'IMPORTADO',
   complementado: false,
+  turno1Complementado: false,
+  turno2Complementado: false,
 };
 
 afterEach(cleanup);
@@ -55,6 +57,8 @@ describe('ApontamentoPage', () => {
       <ApontamentoPage user={apontador} onNavigateToHistory={vi.fn()} />,
     );
 
+    expect(await screen.findByRole('heading', { name: 'Qual turno você está apontando?' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: /1º turno/i }));
     expect(await screen.findByRole('heading', { name: 'Produção do dia' })).toBeVisible();
 
     const stepper = screen.getByRole('navigation', {

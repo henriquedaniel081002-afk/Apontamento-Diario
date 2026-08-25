@@ -16,7 +16,7 @@ import type { EvolutionItem } from './Charts';
 
 export type DetalheProducao = { data:string; linha:string; setor:string; potencia:number|string; quantidade:number };
 export type Falta = { data:string; linha:string; setor:string; turno:string; quantidade:number };
-export type Observacao = { data:string; linha:string; setor:string; observacao?:string; texto?:string; justificativaMeta?:string };
+export type Observacao = { data:string; linha:string; setor:string; turno?:string; observacao?:string; texto?:string; justificativaMeta?:string };
 export type DetalheFalta = {
   data:string;
   nome?:string;
@@ -34,6 +34,7 @@ export type DetalheObservacao = {
   observacao?:string;
   texto?:string;
   justificativaMeta?:string;
+  turno?:string;
 };
 export type FaltaMaterial = {
   data:string;
@@ -41,6 +42,7 @@ export type FaltaMaterial = {
   material?:string;
   horaInicio?:string;
   horaFim?:string;
+  turno?:string;
   setor:string;
 };
 export type MaquinaQuebrada = {
@@ -49,6 +51,7 @@ export type MaquinaQuebrada = {
   horaInicio?:string;
   horaFim?:string;
   observacao?:string;
+  turno?:string;
   setor:string;
 };
 export type NaoConformidade = {
@@ -56,6 +59,7 @@ export type NaoConformidade = {
   causa?:string;
   op?:string;
   numeroSerie?:string;
+  turno?:string;
   setor:string;
 };
 
@@ -141,7 +145,7 @@ export function DayDetailModal({
 
   // A estrutura antiga continua sendo usada para o total por turno.
   const faltasDia=faltas.filter(r=>r.data===item.data && r.setor===setor && (linha==='Todas'||!r.linha||r.linha===linha) && (turno==='Todos'||r.turno===turno));
-  const obsDia=observacoes.filter(r=>r.data===item.data && r.setor===setor && (linha==='Todas'||!r.linha||r.linha===linha));
+  const obsDia=observacoes.filter(r=>r.data===item.data && r.setor===setor && (linha==='Todas'||!r.linha||r.linha===linha) && (turno==='Todos'||!r.turno||r.turno===turno));
 
   // Estruturas novas são opcionais. JSONs antigos funcionam normalmente.
   const detalhesFaltasDia=detalhesFaltas.filter(r=>
@@ -151,14 +155,15 @@ export function DayDetailModal({
     (turno==='Todos'||!r.turno||r.turno===turno)
   );
   const detalhesObsDia=detalhesObservacoes.filter(r=>
-    r.data===item.data && r.setor===setor && (linha==='Todas'||!r.linha||r.linha===linha)
+    r.data===item.data && r.setor===setor && (linha==='Todas'||!r.linha||r.linha===linha) &&
+    (turno==='Todos'||!r.turno||r.turno===turno)
   );
   const ocorrenciasDia:DetalheObservacao[] = detalhesObsDia.length ? detalhesObsDia : obsDia;
 
   // Estas fontes não possuem campo linha no JSON; por isso respeitam data + setor.
-  const materialDia=faltasMaterial.filter(r=>r.data===item.data && r.setor===setor);
-  const maquinasDia=maquinasQuebradas.filter(r=>r.data===item.data && r.setor===setor);
-  const ncDia=naoConformidades.filter(r=>r.data===item.data && r.setor===setor);
+  const materialDia=faltasMaterial.filter(r=>r.data===item.data && r.setor===setor && (turno==='Todos'||!r.turno||r.turno===turno));
+  const maquinasDia=maquinasQuebradas.filter(r=>r.data===item.data && r.setor===setor && (turno==='Todos'||!r.turno||r.turno===turno));
+  const ncDia=naoConformidades.filter(r=>r.data===item.data && r.setor===setor && (turno==='Todos'||!r.turno||r.turno===turno));
 
   const totalFaltas=faltasDia.reduce((sum,r)=>sum+Number(r.quantidade||0),0);
   const totalDetalhado=potenciaRows.reduce((a,r)=>a+r.quantidade,0);
@@ -244,7 +249,7 @@ export function DayDetailModal({
               <article className="day-detail-card">
                 <div className="day-detail-card-title"><AlertTriangle className="size-4"/><div><h3>Ocorrências</h3><p>Observações operacionais do dia</p></div><b>{ocorrenciasDia.length}</b></div>
                 {ocorrenciasDia.length ? <div className="day-detail-notes">{ocorrenciasDia.slice(0,3).map((r,i)=><div className="day-detail-note" key={`${r.linha||'sem-linha'}-${i}`}>
-                  <span>{r.linha||'GERAL'}</span>
+                  <span>{r.turno ? `${r.turno} turno · ` : ''}{r.linha||'GERAL'}</span>
                   {r.observacao||r.texto ? <p>{r.observacao ?? r.texto}</p> : null}
                   {r.justificativaMeta ? <small><b>Justificativa da meta:</b> {r.justificativaMeta}</small> : null}
                 </div>)}</div> : <Empty text="Nenhuma ocorrência registrada."/>}
@@ -282,7 +287,7 @@ export function DayDetailModal({
               <div className="day-detail-card-title"><AlertTriangle className="size-4"/><div><h3>Ocorrências e justificativas</h3><p>Observações operacionais e justificativa por não atingir a meta</p></div><b>{ocorrenciasDia.length}</b></div>
               {ocorrenciasDia.length ? <div className="day-detail-records day-detail-records--notes">
                 {ocorrenciasDia.map((r,i)=><div className="day-detail-record day-detail-record--note" key={`${r.linha||'obs'}-${i}`}>
-                  <div className="day-detail-record-heading"><span className="day-detail-line-badge">{r.linha||'GERAL'}</span><div><h4>Registro operacional</h4><p>{setor}</p></div></div>
+                  <div className="day-detail-record-heading"><span className="day-detail-line-badge">{r.linha||'GERAL'}</span><div><h4>Registro operacional</h4><p>{setor}{r.turno ? ` • ${r.turno} turno` : ''}</p></div></div>
                   <div className="day-detail-record-fields day-detail-record-fields--stack">
                     <div><span>Observação</span><p>{display(r.observacao ?? r.texto,'Nenhuma observação informada')}</p></div>
                     <div><span>Justificativa da meta</span><p>{display(r.justificativaMeta,'Nenhuma justificativa informada')}</p></div>
@@ -299,7 +304,7 @@ export function DayDetailModal({
                 {materialDia.map((r,i)=>{
                   const duracao=durationLabel(r.horaInicio,r.horaFim);
                   return <div className="day-detail-record" key={`${r.material||'material'}-${i}`}>
-                    <div className="day-detail-record-heading"><span className="day-detail-record-icon"><PackageX className="size-4"/></span><div><h4>{display(r.material,'Material não informado')}</h4><p>Registro por setor • {setor}</p></div>{duracao ? <strong className="day-detail-duration">{duracao}</strong> : null}</div>
+                    <div className="day-detail-record-heading"><span className="day-detail-record-icon"><PackageX className="size-4"/></span><div><h4>{display(r.material,'Material não informado')}</h4><p>Registro por setor • {setor}{r.turno ? ` • ${r.turno} turno` : ''}</p></div>{duracao ? <strong className="day-detail-duration">{duracao}</strong> : null}</div>
                     <div className="day-detail-record-fields day-detail-record-fields--3">
                       <div><span>Causa / motivo</span><p>{display(r.causaMotivo)}</p></div>
                       <div><span>Início</span><p>{display(r.horaInicio)}</p></div>
@@ -318,7 +323,7 @@ export function DayDetailModal({
                 {maquinasDia.map((r,i)=>{
                   const duracao=durationLabel(r.horaInicio,r.horaFim);
                   return <div className="day-detail-record" key={`${r.maquinaEquipamento||'maquina'}-${i}`}>
-                    <div className="day-detail-record-heading"><span className="day-detail-record-icon"><Wrench className="size-4"/></span><div><h4>{display(r.maquinaEquipamento,'Máquina não informada')}</h4><p>Registro por setor • {setor}</p></div>{duracao ? <strong className="day-detail-duration">{duracao}</strong> : null}</div>
+                    <div className="day-detail-record-heading"><span className="day-detail-record-icon"><Wrench className="size-4"/></span><div><h4>{display(r.maquinaEquipamento,'Máquina não informada')}</h4><p>Registro por setor • {setor}{r.turno ? ` • ${r.turno} turno` : ''}</p></div>{duracao ? <strong className="day-detail-duration">{duracao}</strong> : null}</div>
                     <div className="day-detail-record-fields day-detail-record-fields--3">
                       <div><span>Observação</span><p>{display(r.observacao)}</p></div>
                       <div><span>Início</span><p>{display(r.horaInicio)}</p></div>
@@ -335,7 +340,7 @@ export function DayDetailModal({
               <div className="day-detail-card-title"><BadgeAlert className="size-4"/><div><h3>Não conformidades</h3><p>Ocorrências relacionadas a OP e número de série</p></div><b>{ncDia.length}</b></div>
               {ncDia.length ? <div className="day-detail-records">
                 {ncDia.map((r,i)=><div className="day-detail-record" key={`${r.op||'nc'}-${r.numeroSerie||i}`}>
-                  <div className="day-detail-record-heading"><span className="day-detail-record-icon"><BadgeAlert className="size-4"/></span><div><h4>{display(r.causa,'Causa não informada')}</h4><p>Registro por setor • {setor}</p></div></div>
+                  <div className="day-detail-record-heading"><span className="day-detail-record-icon"><BadgeAlert className="size-4"/></span><div><h4>{display(r.causa,'Causa não informada')}</h4><p>Registro por setor • {setor}{r.turno ? ` • ${r.turno} turno` : ''}</p></div></div>
                   <div className="day-detail-record-fields">
                     <div><span>OP</span><p>{display(r.op)}</p></div>
                     <div><span>Número de série</span><p>{display(r.numeroSerie)}</p></div>

@@ -68,7 +68,7 @@ export function MonthlyDashboard({ dados, scope }: { dados: DashboardData; scope
     const prog = dados.programacao.filter(r => r.data.startsWith(mes) && (linha==='Todas'||r.linha===linha) && r.setor===setor);
     // O sistema de apontamento atual registra a produção em nível diário, não por turno.
     // Por isso os dados de produção chegam com turno "Todos" e permanecem visíveis no consolidado.
-    const prod = dados.apontamento.filter(r => r.data.startsWith(mes) && (linha==='Todas'||r.linha===linha) && r.setor===setor && (turno==='Todos'||r.turno===turno));
+    const prod = dados.apontamento.filter(r => r.data.startsWith(mes) && (linha==='Todas'||r.linha===linha) && r.setor===setor);
     const [ano, numeroMes] = mes.split('-').map(Number);
     const diasMes = new Date(ano, numeroMes, 0).getDate();
     const fimMesSelecionado = new Date(ano, numeroMes, 0, 23,59,59);
@@ -124,6 +124,9 @@ export function MonthlyDashboard({ dados, scope }: { dados: DashboardData; scope
               detalhes={dados.detalhesProducao ?? []}
               faltas={dados.faltas ?? []}
               observacoes={dados.observacoes ?? []}
+              faltasMaterial={dados.faltasMaterial ?? []}
+              maquinasQuebradas={dados.maquinasQuebradas ?? []}
+              naoConformidades={dados.naoConformidades ?? []}
             />
           ) : (
             <section className="dashboard-main" aria-label="Indicadores e evolução mensal">

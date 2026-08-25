@@ -44,6 +44,7 @@ export interface ParadaFaltaMaterialItem {
   material: string;
   horaInicio: string;
   horaFim: string;
+  turno?: Turno;
 }
 
 export interface ParadaMaquinaItem {
@@ -52,6 +53,7 @@ export interface ParadaMaquinaItem {
   horaInicio: string;
   horaFim: string;
   observacao: string;
+  turno?: Turno;
 }
 
 export interface NaoConformidadeItem {
@@ -59,6 +61,7 @@ export interface NaoConformidadeItem {
   causaNaoConformidade: string;
   op: string;
   numeroSerie: string;
+  turno?: Turno;
 }
 
 /**
@@ -110,9 +113,12 @@ export interface Apontamento {
   aprovadoPorNome?: string;
   origemProducao?: OrigemProducao;
   complementado?: boolean;
+  turno1Complementado?: boolean;
+  turno2Complementado?: boolean;
 }
 
 export interface ApontamentoComplementoPayload {
+  turno?: Turno;
   paradasFaltaMaterial: ParadaFaltaMaterialItem[];
   paradasMaquina: ParadaMaquinaItem[];
   naoConformidades: NaoConformidadeItem[];

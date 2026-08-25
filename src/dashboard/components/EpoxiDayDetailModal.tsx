@@ -1,6 +1,6 @@
-import { AlertTriangle, Box, UsersRound } from 'lucide-react';
+import { AlertTriangle, BadgeAlert, Box, PackageX, UsersRound, Wrench } from 'lucide-react';
 import { ModalShell } from '../../components/common/ModalShell';
-import type { DetalheProducao, Falta, Observacao } from './DayDetailModal';
+import type { DetalheProducao, Falta, FaltaMaterial, MaquinaQuebrada, NaoConformidade, Observacao } from './DayDetailModal';
 
 const fmt = (value:number) => Math.round(value).toLocaleString('pt-BR');
 const formatDate = (value:string) => {
@@ -8,17 +8,23 @@ const formatDate = (value:string) => {
   return new Intl.DateTimeFormat('pt-BR',{day:'2-digit',month:'long',year:'numeric'}).format(new Date(y,m-1,d));
 };
 
-export function EpoxiDayDetailModal({data,detalhes,faltas,observacoes,turno,onClose}:{
+export function EpoxiDayDetailModal({data,detalhes,faltas,observacoes,faltasMaterial,maquinasQuebradas,naoConformidades,turno,onClose}:{
   data:string;
   detalhes:DetalheProducao[];
   faltas:Falta[];
   observacoes:Observacao[];
+  faltasMaterial:FaltaMaterial[];
+  maquinasQuebradas:MaquinaQuebrada[];
+  naoConformidades:NaoConformidade[];
   turno:string;
   onClose:()=>void;
 }) {
   const producao = detalhes.filter(r=>r.data===data && r.setor==='EPOXI' && (!r.linha || r.linha==='EPO'));
   const faltasDia = faltas.filter(r=>r.data===data && r.setor==='EPOXI' && (!r.linha || r.linha==='EPO') && (turno==='Todos'||r.turno===turno));
-  const obsDia = observacoes.filter(r=>r.data===data && r.setor==='EPOXI' && (!r.linha || r.linha==='EPO'));
+  const obsDia = observacoes.filter(r=>r.data===data && r.setor==='EPOXI' && (!r.linha || r.linha==='EPO') && (turno==='Todos'||!r.turno||r.turno===turno));
+  const materialDia = faltasMaterial.filter(r=>r.data===data && r.setor==='EPOXI' && (turno==='Todos'||!r.turno||r.turno===turno));
+  const maquinasDia = maquinasQuebradas.filter(r=>r.data===data && r.setor==='EPOXI' && (turno==='Todos'||!r.turno||r.turno===turno));
+  const ncDia = naoConformidades.filter(r=>r.data===data && r.setor==='EPOXI' && (turno==='Todos'||!r.turno||r.turno===turno));
   const potencias = [...producao.reduce<Map<string,{potencia:string;quantidade:number}>>((acc,r)=>{
     const key=String(r.potencia);
     const atual=acc.get(key);
@@ -56,6 +62,21 @@ export function EpoxiDayDetailModal({data,detalhes,faltas,observacoes,turno,onCl
         <section className="epoxi-day-section epoxi-day-section--notes">
           <div className="epoxi-day-section-title"><AlertTriangle className="size-4"/><h3>Ocorrências / observações</h3><span>{obsDia.length}</span></div>
           {obsDia.length ? <div className="epoxi-day-notes">{obsDia.map((r,i)=><div key={i}>{r.observacao ?? r.texto ?? '—'}</div>)}</div> : <Empty text="Nenhuma ocorrência registrada."/>}
+        </section>
+
+        <section className="epoxi-day-section">
+          <div className="epoxi-day-section-title"><PackageX className="size-4"/><h3>Falta de material</h3><span>{materialDia.length}</span></div>
+          {materialDia.length ? <div className="epoxi-day-notes">{materialDia.map((r,i)=><div key={`${r.material||'material'}-${i}`}><strong>{r.material || 'Material não informado'}</strong>{r.causaMotivo ? ` • ${r.causaMotivo}` : ''}{r.turno ? ` • ${r.turno} turno` : ''}</div>)}</div> : <Empty text="Nenhuma falta de material registrada."/>}
+        </section>
+
+        <section className="epoxi-day-section">
+          <div className="epoxi-day-section-title"><Wrench className="size-4"/><h3>Máquinas / equipamentos</h3><span>{maquinasDia.length}</span></div>
+          {maquinasDia.length ? <div className="epoxi-day-notes">{maquinasDia.map((r,i)=><div key={`${r.maquinaEquipamento||'maquina'}-${i}`}><strong>{r.maquinaEquipamento || 'Máquina não informada'}</strong>{r.observacao ? ` • ${r.observacao}` : ''}{r.turno ? ` • ${r.turno} turno` : ''}</div>)}</div> : <Empty text="Nenhuma parada de máquina registrada."/>}
+        </section>
+
+        <section className="epoxi-day-section">
+          <div className="epoxi-day-section-title"><BadgeAlert className="size-4"/><h3>Não conformidades</h3><span>{ncDia.length}</span></div>
+          {ncDia.length ? <div className="epoxi-day-notes">{ncDia.map((r,i)=><div key={`${r.op||'nc'}-${i}`}><strong>{r.causa || 'Causa não informada'}</strong>{r.op ? ` • OP ${r.op}` : ''}{r.numeroSerie ? ` • Série ${r.numeroSerie}` : ''}{r.turno ? ` • ${r.turno} turno` : ''}</div>)}</div> : <Empty text="Nenhuma não conformidade registrada."/>}
         </section>
       </div>
   </ModalShell>;

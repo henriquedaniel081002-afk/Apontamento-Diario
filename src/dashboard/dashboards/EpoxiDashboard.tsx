@@ -8,7 +8,7 @@ import {
   Info,
   UsersRound,
 } from 'lucide-react';
-import type { DetalheProducao, Falta, Observacao } from '../components/DayDetailModal';
+import type { DetalheProducao, Falta, FaltaMaterial, MaquinaQuebrada, NaoConformidade, Observacao } from '../components/DayDetailModal';
 import { EpoxiDayDetailModal } from '../components/EpoxiDayDetailModal';
 
 const fmt = (value: number) => Math.round(value).toLocaleString('pt-BR');
@@ -23,12 +23,18 @@ export function EpoxiDashboard({
   detalhes,
   faltas,
   observacoes,
+  faltasMaterial = [],
+  maquinasQuebradas = [],
+  naoConformidades = [],
 }: {
   mes: string;
   turno: string;
   detalhes: DetalheProducao[];
   faltas: Falta[];
   observacoes: Observacao[];
+  faltasMaterial?: FaltaMaterial[];
+  maquinasQuebradas?: MaquinaQuebrada[];
+  naoConformidades?: NaoConformidade[];
 }) {
   const [diaSelecionado, setDiaSelecionado] = useState<string | null>(null);
 
@@ -119,7 +125,7 @@ export function EpoxiDashboard({
         </EpoxiTable>
       </section>
 
-      {diaSelecionado && <EpoxiDayDetailModal data={diaSelecionado} detalhes={detalhes} faltas={faltas} observacoes={observacoes} turno={turno} onClose={()=>setDiaSelecionado(null)}/>}      
+      {diaSelecionado && <EpoxiDayDetailModal data={diaSelecionado} detalhes={detalhes} faltas={faltas} observacoes={observacoes} faltasMaterial={faltasMaterial} maquinasQuebradas={maquinasQuebradas} naoConformidades={naoConformidades} turno={turno} onClose={()=>setDiaSelecionado(null)}/>}      
     </section>
   );
 }

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ArrowRight, CalendarDays, ClipboardCheck, Inbox, Loader2, RefreshCw, Save, Sparkles } from 'lucide-react';
-import { Apontamento, FaltaItem, NaoConformidadeItem, ObservacaoItem, ParadaFaltaMaterialItem, ParadaMaquinaItem, User } from '../types';
+import { ArrowLeft, ArrowRight, CalendarDays, CheckCircle2, ClipboardCheck, Clock3, Inbox, Loader2, RefreshCw, Save, Sparkles } from 'lucide-react';
+import { Apontamento, FaltaItem, NaoConformidadeItem, ObservacaoItem, ParadaFaltaMaterialItem, ParadaMaquinaItem, Turno, User } from '../types';
 import { apontamentoService } from '../services/apontamentoService';
 import { formatDateBR } from '../utils/formatters';
 import { ImportedProductionSection } from '../components/apontamento/ImportedProductionSection';
@@ -17,6 +17,7 @@ import { Badge, Button, EmptyState, PageContainer, PageHeader, Stepper, Surface 
 interface Props { user: User; onNavigateToHistory: () => void; }
 type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 const stepLabels = ['Produção importada', 'Falta de material', 'Máquina quebrada', 'Não conformidade', 'Faltas', 'Observações', 'Revisão e envio'] as const;
+const TURNOS: Turno[] = ['1º turno', '2º turno'];
 
 function recordLabel(record: Apontamento): string {
   if (record.setor === 'BOBINA AT' || record.setor === 'BOBINA BT') return record.setor.replace('BOBINA', 'Bobina');
@@ -27,10 +28,13 @@ function recordLabel(record: Apontamento): string {
 }
 
 const clone = <T,>(items: T[] | undefined): T[] => (items || []).map((item) => ({ ...item }));
+const sameTurn = (value: string | undefined, turno: Turno) => String(value || '').trim().toLowerCase() === turno.toLowerCase();
 
 export const ApontamentoPage: React.FC<Props> = ({ user, onNavigateToHistory }) => {
+  const usesTurnFlow = user.setor === 'PINTURA' || user.setor === 'SOLDA';
   const [pendingImports, setPendingImports] = useState<Apontamento[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedTurn, setSelectedTurn] = useState<Turno | null>(null);
   const [currentStep, setCurrentStep] = useState<Step>(1);
   const [paradasFaltaMaterial, setParadasFaltaMaterial] = useState<ParadaFaltaMaterialItem[]>([]);
   const [paradasMaquina, setParadasMaquina] = useState<ParadaMaquinaItem[]>([]);
@@ -45,6 +49,7 @@ export const ApontamentoPage: React.FC<Props> = ({ user, onNavigateToHistory }) 
   const [draftResetVersion, setDraftResetVersion] = useState(0);
 
   const selected = useMemo(() => pendingImports.find((r) => r.id === selectedId) || pendingImports[0] || null, [pendingImports, selectedId]);
+
   const loadPending = useCallback(async (showFeedback = false) => {
     setLoading(true); setLoadError(null);
     try {
@@ -59,15 +64,28 @@ export const ApontamentoPage: React.FC<Props> = ({ user, onNavigateToHistory }) 
   }, []);
 
   useEffect(() => { void loadPending(); }, [loadPending]);
+
   useEffect(() => {
-    if (!selected) { setParadasFaltaMaterial([]); setParadasMaquina([]); setNaoConformidades([]); setFaltas([]); setObservacoes([]); return; }
-    setParadasFaltaMaterial(clone(selected.paradasFaltaMaterial));
-    setParadasMaquina(clone(selected.paradasMaquina));
-    setNaoConformidades(clone(selected.naoConformidades));
-    setFaltas(clone(selected.faltas));
-    setObservacoes(clone(selected.observacoes));
+    setSelectedTurn(null);
+  }, [selected?.id, usesTurnFlow]);
+
+  useEffect(() => {
+    if (!selected || (usesTurnFlow && !selectedTurn)) {
+      setParadasFaltaMaterial([]); setParadasMaquina([]); setNaoConformidades([]); setFaltas([]); setObservacoes([]);
+      setCurrentStep(1); setSaveError(null); setDraftResetVersion((v) => v + 1);
+      return;
+    }
+    const pick = <T extends { turno?: Turno }>(items: T[] | undefined): T[] => {
+      const copied = clone(items);
+      return usesTurnFlow && selectedTurn ? copied.filter((item) => sameTurn(item.turno, selectedTurn)) : copied;
+    };
+    setParadasFaltaMaterial(pick(selected.paradasFaltaMaterial));
+    setParadasMaquina(pick(selected.paradasMaquina));
+    setNaoConformidades(pick(selected.naoConformidades));
+    setFaltas(pick(selected.faltas));
+    setObservacoes(pick(selected.observacoes));
     setCurrentStep(1); setSaveError(null); setDraftResetVersion((v) => v + 1);
-  }, [selected?.id]);
+  }, [selected?.id, selectedTurn, usesTurnFlow]);
 
   const observationLine = useMemo(() => {
     if (!selected || !['MONTAGEM FINAL', 'MPA'].includes(selected.setor)) return undefined;
@@ -93,18 +111,40 @@ export const ApontamentoPage: React.FC<Props> = ({ user, onNavigateToHistory }) 
   const goBack = () => currentStep > 1 && goToStep((currentStep - 1) as Step);
 
   const handleSave = async () => {
-    if (!selected || isSaving) return;
+    if (!selected || isSaving || (usesTurnFlow && !selectedTurn)) return;
     setIsSaving(true); setSaveError(null);
     try {
-      await apontamentoService.completeImported(selected.id, { paradasFaltaMaterial, paradasMaquina, naoConformidades, faltas, observacoes });
-      const remaining = pendingImports.filter((r) => r.id !== selected.id);
-      setPendingImports(remaining); setSelectedId(remaining[0]?.id || null); setCurrentStep(1);
-      setToast({ id: Date.now().toString(), type: 'success', message: `Apontamento de ${formatDateBR(selected.data)} finalizado com sucesso.`, action: { label: 'Ver histórico', onClick: onNavigateToHistory } });
+      const stampTurn = <T extends { turno?: Turno }>(items: T[]): T[] => selectedTurn ? items.map((item) => ({ ...item, turno: selectedTurn })) : items;
+      await apontamentoService.completeImported(selected.id, {
+        turno: selectedTurn || undefined,
+        paradasFaltaMaterial: stampTurn(paradasFaltaMaterial),
+        paradasMaquina: stampTurn(paradasMaquina),
+        naoConformidades: stampTurn(naoConformidades),
+        faltas: stampTurn(faltas),
+        observacoes: stampTurn(observacoes),
+      });
+
+      if (usesTurnFlow) {
+        const finishedTurn = selectedTurn;
+        const records = await apontamentoService.getPendingImported();
+        setPendingImports(records);
+        setSelectedId(records.some((r) => r.id === selected.id) ? selected.id : records[0]?.id || null);
+        setSelectedTurn(null);
+        setCurrentStep(1);
+        setToast({ id: Date.now().toString(), type: 'success', message: `${finishedTurn} finalizado com sucesso em ${formatDateBR(selected.data)}.`, action: records.some((r) => r.id === selected.id) ? undefined : { label: 'Ver histórico', onClick: onNavigateToHistory } });
+      } else {
+        const remaining = pendingImports.filter((r) => r.id !== selected.id);
+        setPendingImports(remaining); setSelectedId(remaining[0]?.id || null); setCurrentStep(1);
+        setToast({ id: Date.now().toString(), type: 'success', message: `Apontamento de ${formatDateBR(selected.data)} finalizado com sucesso.`, action: { label: 'Ver histórico', onClick: onNavigateToHistory } });
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Não foi possível finalizar o apontamento.';
       setSaveError(message); setToast({ id: Date.now().toString(), type: 'error', message });
     } finally { setIsSaving(false); }
   };
+
+  const turnDone = (turno: Turno) => turno === '1º turno' ? selected?.turno1Complementado === true : selected?.turno2Complementado === true;
+  const canShowForm = Boolean(selected && (!usesTurnFlow || selectedTurn));
 
   return <PageContainer className="app-page space-y-5 py-6 sm:py-8" aria-busy={loading || isSaving || undefined}>
     <PageHeader
@@ -122,19 +162,28 @@ export const ApontamentoPage: React.FC<Props> = ({ user, onNavigateToHistory }) 
     : selected && <>
       <Surface tone="base" padding="md"><div className="mb-3"><h2 className="text-sm font-bold text-[var(--text-primary)]">Selecione o dia para completar</h2><p className="mt-1 text-xs text-[var(--text-tertiary)]">A produção permanece bloqueada para edição.</p></div><div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">{pendingImports.map((record) => { const active = record.id === selected.id; const total = record.producoes.reduce((sum, item) => sum + Number(item.quantidade || 0), 0); return <button key={record.id} type="button" onClick={() => !isSaving && setSelectedId(record.id)} aria-pressed={active} className={`rounded-xl border p-3 text-left transition-colors ${active ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : 'border-[var(--border-subtle)] bg-[var(--surface-muted)] hover:border-[var(--accent-border)]'}`}><div className="flex items-center justify-between gap-2"><span className={`text-sm font-black ${active ? 'text-[var(--accent)]' : 'text-[var(--text-primary)]'}`}>{formatDateBR(record.data)}</span>{active && <Badge variant="success">Selecionado</Badge>}</div><p className="mt-1 text-xs font-semibold text-[var(--text-secondary)]">{recordLabel(record)}</p><p className="mt-2 text-xs text-[var(--text-tertiary)]">{total} unidades · {record.producoes.length} combinação(ões)</p></button>; })}</div></Surface>
       <Surface tone="raised" padding="md" className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--accent-soft)] text-[var(--accent)]"><CalendarDays className="h-5 w-5" /></span><div><p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-tertiary)]">Complete o apontamento de</p><h2 className="mt-1 text-lg font-black text-[var(--text-primary)]">{formatDateBR(selected.data)} · {recordLabel(selected)}</h2></div></div><Badge variant="warning">Aguardando complemento</Badge></Surface>
-      <Surface tone="base" padding="sm" className="filter-panel"><Stepper steps={steps} activeStep={currentStep - 1} onStepChange={(index) => goToStep((index + 1) as Step)} ariaLabel="Etapas do complemento do apontamento" /></Surface>
-      <SummaryHeader totalProducao={totalProducao} totalParadasMaterial={paradasFaltaMaterial.length} totalParadasMaquina={paradasMaquina.length} totalNaoConformidades={naoConformidades.length} totalFaltas={totalFaltas} totalObservacoes={observacoes.length} />
-      <div>
-        <div hidden={currentStep !== 1}><ImportedProductionSection producoes={producoes} /></div>
-        <div hidden={currentStep !== 2}><ParadasFaltaMaterialSection key={`material-${selected.id}-${draftResetVersion}`} itens={paradasFaltaMaterial} onAdd={(item) => setParadasFaltaMaterial((c) => [...c, item])} onUpdate={(item) => setParadasFaltaMaterial((c) => c.map((x) => x.id === item.id ? item : x))} onDelete={(id) => setParadasFaltaMaterial((c) => c.filter((x) => x.id !== id))} /></div>
-        <div hidden={currentStep !== 3}><ParadasMaquinaSection key={`maquina-${selected.id}-${draftResetVersion}`} itens={paradasMaquina} onAdd={(item) => setParadasMaquina((c) => [...c, item])} onUpdate={(item) => setParadasMaquina((c) => c.map((x) => x.id === item.id ? item : x))} onDelete={(id) => setParadasMaquina((c) => c.filter((x) => x.id !== id))} /></div>
-        <div hidden={currentStep !== 4}><NaoConformidadesSection key={`nc-${selected.id}-${draftResetVersion}`} itens={naoConformidades} onAdd={(item) => setNaoConformidades((c) => [...c, item])} onUpdate={(item) => setNaoConformidades((c) => c.map((x) => x.id === item.id ? item : x))} onDelete={(id) => setNaoConformidades((c) => c.filter((x) => x.id !== id))} /></div>
-        <div hidden={currentStep !== 5}><FaltasSection key={`faltas-${selected.id}-${draftResetVersion}`} faltas={faltas} onAdd={(item) => setFaltas((c) => [...c, item])} onUpdate={(item) => setFaltas((c) => c.map((x) => x.id === item.id ? item : x))} onDelete={(id) => setFaltas((c) => c.filter((x) => x.id !== id))} /></div>
-        <div hidden={currentStep !== 6}><ObservacoesSection key={`obs-${selected.id}-${draftResetVersion}`} observacoes={observacoes} fixedLine={observationLine} onAdd={(item) => setObservacoes((c) => [...c, item])} onUpdate={(item) => setObservacoes((c) => c.map((x) => x.id === item.id ? item : x))} onDelete={(id) => setObservacoes((c) => c.filter((x) => x.id !== id))} /></div>
-        <div hidden={currentStep !== 7}><ReviewSection user={user} selectedDate={selected.data} tipoBobina={selected.tipoBobina || ''} producoes={producoes} paradasFaltaMaterial={paradasFaltaMaterial} paradasMaquina={paradasMaquina} naoConformidades={naoConformidades} faltas={faltas} observacoes={observacoes} onEditStep={(step) => goToStep(step)} productionReadOnly /></div>
-      </div>
-      {saveError && <div role="alert" className="rounded-xl border border-[var(--danger-border)] bg-[var(--danger-soft)] px-4 py-3 text-sm font-medium text-[var(--danger)]">{saveError}</div>}
-      <div className="sticky-action-bar sticky bottom-3 z-20 rounded-2xl border p-3 backdrop-blur-2xl sm:p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-semibold text-[var(--text-primary)]">Etapa {currentStep} de 7 · {stepLabels[currentStep - 1]}</p><p className="mt-0.5 hidden text-xs text-[var(--text-tertiary)] sm:block">Nenhuma ocorrência é obrigatória. A produção não pode ser alterada.</p></div><div className="grid grid-cols-1 gap-2 min-[380px]:grid-cols-2 sm:flex">{currentStep > 1 && <Button variant="secondary" disabled={isSaving} leftIcon={<ArrowLeft className="h-4 w-4" />} onClick={goBack}>Voltar</Button>}{currentStep < 7 ? <Button className={currentStep === 1 ? 'min-[380px]:col-span-2 sm:col-span-1' : undefined} rightIcon={<ArrowRight className="h-4 w-4" />} onClick={goNext}>Avançar</Button> : <Button isLoading={isSaving} loadingLabel="Salvando…" leftIcon={<Save className="h-4 w-4" />} onClick={() => void handleSave()}>Finalizar apontamento</Button>}</div></div></div>
+
+      {usesTurnFlow && <Surface tone="base" padding="md" className="space-y-4">
+        <div><p className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--accent)]">Controle por turno</p><h2 className="mt-1 text-lg font-black text-[var(--text-primary)]">Qual turno você está apontando?</h2><p className="mt-1 text-sm text-[var(--text-secondary)]">Cada turno é finalizado separadamente. O apontamento do dia só fica completo quando os dois estiverem OK.</p></div>
+        <div className="grid gap-3 sm:grid-cols-2">{TURNOS.map((turno) => { const done = turnDone(turno); const active = selectedTurn === turno; return <button key={turno} type="button" disabled={isSaving} onClick={() => setSelectedTurn(turno)} aria-pressed={active} className={`rounded-2xl border p-4 text-left transition-colors ${active ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : 'border-[var(--border-subtle)] bg-[var(--surface-muted)] hover:border-[var(--accent-border)]'}`}><div className="flex items-center justify-between gap-3"><div className="flex items-center gap-3">{done ? <CheckCircle2 className="h-5 w-5 text-[var(--success)]" /> : <Clock3 className="h-5 w-5 text-[var(--warning)]" />}<div><p className="font-black text-[var(--text-primary)]">{turno}</p><p className="mt-0.5 text-xs font-semibold text-[var(--text-tertiary)]">{done ? 'OK · finalizado' : 'Pendente · falta finalizar'}</p></div></div><Badge variant={done ? 'success' : 'warning'}>{done ? 'OK' : 'Pendente'}</Badge></div></button>; })}</div>
+        {!selectedTurn && <div className="rounded-xl border border-[var(--warning-border)] bg-[var(--warning-soft)] px-4 py-3 text-sm font-semibold text-[var(--warning)]">Selecione o 1º ou o 2º turno para liberar o preenchimento das ocorrências.</div>}
+      </Surface>}
+
+      {canShowForm && <>
+        <Surface tone="base" padding="sm" className="filter-panel"><Stepper steps={steps} activeStep={currentStep - 1} onStepChange={(index) => goToStep((index + 1) as Step)} ariaLabel="Etapas do complemento do apontamento" /></Surface>
+        <SummaryHeader totalProducao={totalProducao} totalParadasMaterial={paradasFaltaMaterial.length} totalParadasMaquina={paradasMaquina.length} totalNaoConformidades={naoConformidades.length} totalFaltas={totalFaltas} totalObservacoes={observacoes.length} />
+        <div>
+          <div hidden={currentStep !== 1}><ImportedProductionSection producoes={producoes} /></div>
+          <div hidden={currentStep !== 2}><ParadasFaltaMaterialSection key={`material-${selected.id}-${selectedTurn || 'geral'}-${draftResetVersion}`} itens={paradasFaltaMaterial} onAdd={(item) => setParadasFaltaMaterial((c) => [...c, item])} onUpdate={(item) => setParadasFaltaMaterial((c) => c.map((x) => x.id === item.id ? item : x))} onDelete={(id) => setParadasFaltaMaterial((c) => c.filter((x) => x.id !== id))} /></div>
+          <div hidden={currentStep !== 3}><ParadasMaquinaSection key={`maquina-${selected.id}-${selectedTurn || 'geral'}-${draftResetVersion}`} itens={paradasMaquina} onAdd={(item) => setParadasMaquina((c) => [...c, item])} onUpdate={(item) => setParadasMaquina((c) => c.map((x) => x.id === item.id ? item : x))} onDelete={(id) => setParadasMaquina((c) => c.filter((x) => x.id !== id))} /></div>
+          <div hidden={currentStep !== 4}><NaoConformidadesSection key={`nc-${selected.id}-${selectedTurn || 'geral'}-${draftResetVersion}`} itens={naoConformidades} onAdd={(item) => setNaoConformidades((c) => [...c, item])} onUpdate={(item) => setNaoConformidades((c) => c.map((x) => x.id === item.id ? item : x))} onDelete={(id) => setNaoConformidades((c) => c.filter((x) => x.id !== id))} /></div>
+          <div hidden={currentStep !== 5}><FaltasSection key={`faltas-${selected.id}-${selectedTurn || 'geral'}-${draftResetVersion}`} faltas={faltas} onAdd={(item) => setFaltas((c) => [...c, item])} onUpdate={(item) => setFaltas((c) => c.map((x) => x.id === item.id ? item : x))} onDelete={(id) => setFaltas((c) => c.filter((x) => x.id !== id))} /></div>
+          <div hidden={currentStep !== 6}><ObservacoesSection key={`obs-${selected.id}-${selectedTurn || 'geral'}-${draftResetVersion}`} observacoes={observacoes} fixedLine={observationLine} onAdd={(item) => setObservacoes((c) => [...c, item])} onUpdate={(item) => setObservacoes((c) => c.map((x) => x.id === item.id ? item : x))} onDelete={(id) => setObservacoes((c) => c.filter((x) => x.id !== id))} /></div>
+          <div hidden={currentStep !== 7}><ReviewSection user={user} selectedDate={selected.data} tipoBobina={selected.tipoBobina || ''} producoes={producoes} paradasFaltaMaterial={paradasFaltaMaterial} paradasMaquina={paradasMaquina} naoConformidades={naoConformidades} faltas={faltas} observacoes={observacoes} onEditStep={(step) => goToStep(step)} productionReadOnly /></div>
+        </div>
+        {saveError && <div role="alert" className="rounded-xl border border-[var(--danger-border)] bg-[var(--danger-soft)] px-4 py-3 text-sm font-medium text-[var(--danger)]">{saveError}</div>}
+        <div className="sticky-action-bar sticky bottom-3 z-20 rounded-2xl border p-3 backdrop-blur-2xl sm:p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-semibold text-[var(--text-primary)]">{selectedTurn ? `${selectedTurn} · ` : ''}Etapa {currentStep} de 7 · {stepLabels[currentStep - 1]}</p><p className="mt-0.5 hidden text-xs text-[var(--text-tertiary)] sm:block">Nenhuma ocorrência é obrigatória. A produção não pode ser alterada.</p></div><div className="grid grid-cols-1 gap-2 min-[380px]:grid-cols-2 sm:flex">{currentStep > 1 && <Button variant="secondary" disabled={isSaving} leftIcon={<ArrowLeft className="h-4 w-4" />} onClick={goBack}>Voltar</Button>}{currentStep < 7 ? <Button className={currentStep === 1 ? 'min-[380px]:col-span-2 sm:col-span-1' : undefined} rightIcon={<ArrowRight className="h-4 w-4" />} onClick={goNext}>Avançar</Button> : <Button isLoading={isSaving} loadingLabel="Salvando…" leftIcon={<Save className="h-4 w-4" />} onClick={() => void handleSave()}>{selectedTurn ? `Finalizar ${selectedTurn}` : 'Finalizar apontamento'}</Button>}</div></div></div>
+      </>}
     </>}
     <Toast toast={toast} onClose={() => setToast(null)} />
   </PageContainer>;

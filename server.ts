@@ -194,14 +194,20 @@ async function prepareImportGroups(client: any, groups: ImportGroup[], fallbackU
   for (const sector of sectorNames) {
     if (sectorMap.has(sector)) continue;
     if (!DASHBOARD_ONLY_IMPORT_SECTORS.has(sector)) throw new Error(`Setor ${sector} não encontrado no Neon.`);
-    const inserted = await client.query(
-      `INSERT INTO setores(nome)
-       SELECT $1
-        WHERE NOT EXISTS (SELECT 1 FROM setores WHERE nome = $1)
-       RETURNING id, nome`,
+    // Evita reutilizar o mesmo placeholder em contextos SQL diferentes. Em alguns
+    // esquemas antigos do Neon, isso faz o PostgreSQL inferir tipos incompatíveis
+    // para $1 (ex.: varchar/text) e abortar a importação com HTTP 500.
+    const existingSector = await client.query(
+      'SELECT id, nome FROM setores WHERE nome::text = $1::text LIMIT 1',
       [sector],
     );
-    const row = inserted.rows[0] || (await client.query('SELECT id, nome FROM setores WHERE nome = $1 LIMIT 1', [sector])).rows[0];
+    const inserted = existingSector.rows.length
+      ? existingSector
+      : await client.query(
+          'INSERT INTO setores(nome) VALUES($1::text) RETURNING id, nome',
+          [sector],
+        );
+    const row = inserted.rows[0];
     if (!row) throw new Error(`Não foi possível preparar o setor ${sector} para a importação.`);
     sectorMap.set(String(row.nome), Number(row.id));
   }
@@ -942,7 +948,7 @@ async function replaceImportedProductionForDate(
               AND usuario_id = $2
               AND setor_id = $3
               AND origem_producao = 'IMPORTADO'
-              AND (($4::text IS NULL AND tipo_bobina IS NULL) OR tipo_bobina = $4)
+              AND (($4::text IS NULL AND tipo_bobina IS NULL) OR tipo_bobina::text = $4::text)
             ORDER BY id DESC
             LIMIT 1`,
           [data, first.usuarioId, first.setorId, tipoBobina],

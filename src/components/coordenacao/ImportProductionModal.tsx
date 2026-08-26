@@ -9,7 +9,7 @@ import {
   Info,
   RotateCcw,
 } from 'lucide-react';
-import { Linha, ProductionImportGroup, ProductionImportMonthDay } from '../../types';
+import { ImportSectorFilter, Linha, ProductionImportGroup, ProductionImportMonthDay, Setor } from '../../types';
 import { formatDateBR, formatPotencia } from '../../utils/formatters';
 import {
   buildFinalImportGroups,
@@ -18,6 +18,7 @@ import {
   ProductionImportPreview,
   readProductionImportExcel,
   readProductionImportExcelMonth,
+  productionImportSectorForRawGroup,
 } from '../../utils/importProductionExcel';
 import { ModalShell } from '../common/ModalShell';
 import { Badge, Button, FieldError } from '../common/ui';
@@ -29,8 +30,27 @@ type ImportMode = 'DAY' | 'MONTH';
 interface ImportProductionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onImportDay: (data: string, groups: ProductionImportGroup[]) => Promise<void>;
-  onImportMonth: (mesReferencia: string, dias: ProductionImportMonthDay[]) => Promise<void>;
+  onImportDay: (data: string, groups: ProductionImportGroup[], setorFiltro: ImportSectorFilter) => Promise<void>;
+  onImportMonth: (mesReferencia: string, dias: ProductionImportMonthDay[], setorFiltro: ImportSectorFilter) => Promise<void>;
+}
+
+const IMPORT_SECTOR_OPTIONS: Array<{ value: ImportSectorFilter; label: string }> = [
+  { value: 'ALL', label: 'Todos' },
+  { value: 'BOBINA AT/BT', label: 'Bobina AT/BT' },
+  { value: 'CORTE LASER', label: 'Corte do Laser' },
+  { value: 'CORTE DO NUCLEO', label: 'Corte do Núcleo' },
+  { value: 'FERRAGEM', label: 'Ferragem' },
+  { value: 'ISOLANTE', label: 'Isolante' },
+  { value: 'MONTAGEM NUCLEO', label: 'Montagem do Núcleo' },
+  { value: 'MONTAGEM FINAL', label: 'Montagem Final' },
+  { value: 'MPA', label: 'MPA' },
+  { value: 'PINTURA', label: 'Pintura' },
+  { value: 'SOLDA', label: 'Solda' },
+  { value: 'EPOXI', label: 'Epóxi' },
+];
+
+function sectorLabel(value: ImportSectorFilter): string {
+  return IMPORT_SECTOR_OPTIONS.find((option) => option.value === value)?.label || value;
 }
 
 function currentMonth() {
@@ -48,6 +68,7 @@ export function ImportProductionModal({
   const [file, setFile] = useState<File | null>(null);
   const [data, setData] = useState('');
   const [mes, setMes] = useState(currentMonth);
+  const [setorFiltro, setSetorFiltro] = useState<ImportSectorFilter>('ALL');
   const [previews, setPreviews] = useState<ProductionImportPreview[]>([]);
   const [corrections, setCorrections] = useState<Record<string, Linha | undefined>>({});
   const [processing, setProcessing] = useState(false);
@@ -61,6 +82,7 @@ export function ImportProductionModal({
     setFile(null);
     setData('');
     setMes(currentMonth());
+    setSetorFiltro('ALL');
     setPreviews([]);
     setCorrections({});
     setProcessing(false);
@@ -71,14 +93,17 @@ export function ImportProductionModal({
 
   const finalDays = useMemo(() => previews.map((preview) => ({
     data: preview.data,
-    grupos: buildFinalImportGroups(preview, corrections),
-  })), [corrections, previews]);
+    grupos: buildFinalImportGroups(preview, corrections)
+      .filter((group) => setorFiltro === 'ALL' || group.setor === setorFiltro),
+  })), [corrections, previews, setorFiltro]);
 
   const unresolved = useMemo(
-    () => previews.flatMap((preview) => getUnresolvedLineIssues(preview, corrections)),
-    [corrections, previews],
+    () => previews.flatMap((preview) => getUnresolvedLineIssues(preview, corrections))
+      .filter((issue) => setorFiltro === 'ALL' || productionImportSectorForRawGroup(issue.setorOriginal, issue.linhaOriginal) === setorFiltro),
+    [corrections, previews, setorFiltro],
   );
-  const sectorIssues = previews.flatMap((preview) => preview.issues.filter((issue) => issue.kind === 'SETOR'));
+  const sectorIssues = previews.flatMap((preview) => preview.issues.filter((issue) => issue.kind === 'SETOR'))
+    .filter((issue) => setorFiltro === 'ALL' || productionImportSectorForRawGroup(issue.setorOriginal, issue.linhaOriginal) === setorFiltro);
   const allGroups = finalDays.flatMap((day) => day.grupos);
 
   const summary = useMemo(() => {
@@ -97,8 +122,12 @@ export function ImportProductionModal({
   }, [allGroups]);
 
   const totalQuantidade = allGroups.reduce((sum, item) => sum + item.quantidade, 0);
-  const rowsMatched = previews.reduce((sum, item) => sum + item.rowsMatched, 0);
-  const ignoredWithoutPower = previews.reduce((sum, item) => sum + item.ignoredWithoutPower, 0);
+  const rowsMatched = setorFiltro === 'ALL'
+    ? previews.reduce((sum, item) => sum + item.rowsMatched, 0)
+    : previews.reduce((sum, preview) => sum
+      + preview.validGroups.filter((group) => group.setor === setorFiltro).reduce((subtotal, group) => subtotal + group.quantidade, 0)
+      + preview.issues.filter((issue) => productionImportSectorForRawGroup(issue.setorOriginal, issue.linhaOriginal) === setorFiltro).reduce((subtotal, issue) => subtotal + issue.quantidade, 0), 0);
+  const ignoredWithoutPower = setorFiltro === 'ALL' ? previews.reduce((sum, item) => sum + item.ignoredWithoutPower, 0) : 0;
 
   const invalidatePreview = () => {
     setPreviews([]);
@@ -163,9 +192,9 @@ export function ImportProductionModal({
     setError(null);
     try {
       if (mode === 'DAY') {
-        await onImportDay(validDays[0].data, validDays[0].grupos);
+        await onImportDay(validDays[0].data, validDays[0].grupos, setorFiltro);
       } else {
-        await onImportMonth(mes, validDays);
+        await onImportMonth(mes, validDays, setorFiltro);
       }
       onClose();
     } catch (saveError) {
@@ -191,7 +220,9 @@ export function ImportProductionModal({
       footer={
         <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="max-w-2xl text-xs leading-5 text-slate-500">
-            A nova importação substitui somente a produção do período escolhido. Faltas, paradas, não conformidades, observações e demais informações dos apontadores permanecem salvas.
+            {setorFiltro === 'ALL'
+              ? 'A nova importação substitui a produção do período escolhido. Faltas, paradas, não conformidades, observações e demais informações dos apontadores permanecem salvas.'
+              : `A nova importação substitui somente a produção de ${sectorLabel(setorFiltro)} no período escolhido. Os demais setores e as informações dos apontadores permanecem salvos.`}
           </p>
           <div className="grid w-full grid-cols-1 gap-2 min-[380px]:grid-cols-2 sm:w-auto sm:flex sm:shrink-0">
             <Button variant="secondary" onClick={onClose} disabled={busy}>Cancelar</Button>
@@ -242,7 +273,7 @@ export function ImportProductionModal({
           </div>
         </section>
 
-        <section className="grid grid-cols-1 gap-4 rounded-2xl border border-white/10 bg-black/15 p-4 md:grid-cols-2">
+        <section className="grid grid-cols-1 gap-4 rounded-2xl border border-white/10 bg-black/15 p-4 md:grid-cols-3">
           <label className="block">
             <span className="mb-1.5 flex items-center gap-2 text-xs font-bold text-slate-300">
               <FileSpreadsheet className="size-4 text-emerald-400" aria-hidden="true" />
@@ -285,6 +316,19 @@ export function ImportProductionModal({
             )}
             <p className="mt-1.5 text-xs text-slate-500">Filtro aplicado sobre a coluna DATA PRODUZIDA.</p>
           </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-bold text-slate-300">Setor</span>
+            <CustomSelect
+              value={setorFiltro}
+              onChange={(value) => setSetorFiltro(value as ImportSectorFilter)}
+              disabled={busy}
+              ariaLabel="Setor da importação de produção"
+              className="min-h-11 text-sm font-bold"
+              options={IMPORT_SECTOR_OPTIONS}
+            />
+            <p className="mt-1.5 text-xs text-slate-500">Por padrão, todos os setores são importados.</p>
+          </label>
         </section>
 
         {processing && (
@@ -307,10 +351,20 @@ export function ImportProductionModal({
 
             <section className="flex items-start gap-2 rounded-xl border border-sky-400/20 bg-sky-400/[0.05] p-3 text-xs leading-5 text-sky-100/80">
               <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-              {mode === 'MONTH'
-                ? 'A importação mensal substitui a fotografia completa do mês. Produções antigas de dias que não estiverem no novo arquivo também serão retiradas, sem apagar ocorrências digitadas pelos apontadores.'
-                : 'A importação diária substitui integralmente a produção importada daquela data, sem acumular com a importação anterior.'}
+              {setorFiltro === 'ALL'
+                ? (mode === 'MONTH'
+                  ? 'A importação mensal substitui a fotografia completa do mês. Produções antigas de dias que não estiverem no novo arquivo também serão retiradas, sem apagar ocorrências digitadas pelos apontadores.'
+                  : 'A importação diária substitui integralmente a produção importada daquela data, sem acumular com a importação anterior.')
+                : (mode === 'MONTH'
+                  ? `A importação mensal substitui somente ${sectorLabel(setorFiltro)} no mês escolhido, inclusive removendo dias antigos desse setor que não estiverem no novo arquivo. Os demais setores não são alterados.`
+                  : `A importação diária substitui somente ${sectorLabel(setorFiltro)} na data escolhida. Os demais setores não são alterados.`)}
             </section>
+
+            {setorFiltro !== 'ALL' && allGroups.length === 0 && (
+              <section className="rounded-xl border border-amber-400/20 bg-amber-400/[0.06] p-3 text-xs font-semibold leading-5 text-amber-100">
+                Nenhum registro válido de {sectorLabel(setorFiltro)} foi encontrado no período selecionado. Escolha outro setor ou verifique o arquivo.
+              </section>
+            )}
 
             {(unresolved.length > 0 || sectorIssues.length > 0 || ignoredWithoutPower > 0) && (
               <section className="overflow-hidden rounded-2xl border border-amber-400/20" aria-labelledby="import-issues-title">

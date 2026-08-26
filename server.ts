@@ -155,6 +155,46 @@ const IMPORT_SECTORS = new Set([
 const IMPORT_LINES = new Set<ImportLine>(['MON', 'TRI', 'EPO']);
 const DASHBOARD_ONLY_IMPORT_SECTORS = new Set(['CORTE DO NUCLEO', 'FERRAGEM']);
 
+type ImportSectorFilter = 'ALL' | string;
+
+function validateImportSectorFilter(value: unknown): ImportSectorFilter {
+  const raw = String(value ?? 'ALL').trim().toUpperCase() || 'ALL';
+  if (raw === 'ALL') return 'ALL';
+  if (!IMPORT_SECTORS.has(raw)) throw new Error(`Setor selecionado para importação é inválido: ${raw}.`);
+  return raw;
+}
+
+function normalizeProgramacaoImportSector(value: unknown): string | null {
+  const sector = String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toUpperCase();
+  const aliases: Record<string, string> = {
+    'BOBINA AT': 'BOBINA AT/BT',
+    'BOBINA BT': 'BOBINA AT/BT',
+    'BOBINA AT/BT': 'BOBINA AT/BT',
+    'CORTE DO LASER': 'CORTE LASER',
+    'CORTE LASER': 'CORTE LASER',
+    'CORTE DO NUCLEO': 'CORTE DO NUCLEO',
+    'CORTE NUCLEO': 'CORTE DO NUCLEO',
+    'FERRAGEM': 'FERRAGEM',
+    'FERRAGEM PA': 'FERRAGEM',
+    'FERRAGEM PA / ACESSORIOS': 'FERRAGEM',
+    'FERRAGEM PA/ACESSORIOS': 'FERRAGEM',
+    'ISOLANTE': 'ISOLANTE',
+    'MONTAGEM DO NUCLEO': 'MONTAGEM NUCLEO',
+    'MONTAGEM NUCLEO': 'MONTAGEM NUCLEO',
+    'MONTAGEM FINAL': 'MONTAGEM FINAL',
+    'MPA': 'MPA',
+    'PINTURA': 'PINTURA',
+    'SOLDA': 'SOLDA',
+    'EPOXI': 'EPOXI',
+  };
+  return aliases[sector] || null;
+}
+
 function importUnitKey(group: Pick<ImportGroup, 'setor' | 'linha' | 'tipoBobina'>): string {
   if (group.setor === 'BOBINA AT/BT') return `${group.setor}|${group.tipoBobina || ''}`;
   if (group.setor === 'MONTAGEM FINAL' || group.setor === 'MPA') return `${group.setor}|${group.linha}`;
@@ -969,6 +1009,7 @@ async function replaceImportedProductionForDate(
   data: string,
   groups: ImportGroup[],
   fallbackUserId: number,
+  setorFiltro: ImportSectorFilter = 'ALL',
 ): Promise<{ usedIds: Set<number>; totalUnidades: number }> {
   const prepared = await prepareImportGroups(client, groups, fallbackUserId);
   const unitGroups = new Map<string, PreparedImportGroup[]>();
@@ -1042,7 +1083,16 @@ async function replaceImportedProductionForDate(
     }
   }
 
-  await cleanupUnusedImportedProduction(client, 'a.data = $1::date', [data], usedIds);
+  if (setorFiltro === 'ALL') {
+    await cleanupUnusedImportedProduction(client, 'a.data = $1::date', [data], usedIds);
+  } else {
+    await cleanupUnusedImportedProduction(
+      client,
+      'a.data = $1::date AND a.setor_id = (SELECT id FROM setores WHERE nome = $2 LIMIT 1)',
+      [data, setorFiltro],
+      usedIds,
+    );
+  }
   return { usedIds, totalUnidades: unitGroups.size };
 }
 
@@ -1053,14 +1103,19 @@ app.post('/api/coordenacao/importar-producao', auth, requireCoordenacao, async (
     if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return res.status(400).json({ error: 'Informe uma data válida para a importação.' });
 
     let groups: ImportGroup[];
+    let setorFiltro: ImportSectorFilter;
     try {
       groups = validateImportGroups(req.body?.grupos);
+      setorFiltro = validateImportSectorFilter(req.body?.setorFiltro);
+      if (setorFiltro !== 'ALL' && groups.some((group) => group.setor !== setorFiltro)) {
+        throw new Error('Os grupos enviados não correspondem ao setor selecionado para importação.');
+      }
     } catch (validationError) {
       return res.status(400).json({ error: validationError instanceof Error ? validationError.message : 'Dados de importação inválidos.' });
     }
 
     await client.query('BEGIN');
-    const result = await replaceImportedProductionForDate(client, data, groups, Number(req.auth.userId));
+    const result = await replaceImportedProductionForDate(client, data, groups, Number(req.auth.userId), setorFiltro);
     await client.query('COMMIT');
 
     const ids = [...result.usedIds];
@@ -1083,9 +1138,10 @@ app.post('/api/coordenacao/importar-producao', auth, requireCoordenacao, async (
   }
 });
 
-function validateProductionMonthImport(body: any): { mesReferencia: string; dias: Array<{ data: string; grupos: ImportGroup[] }> } {
+function validateProductionMonthImport(body: any): { mesReferencia: string; setorFiltro: ImportSectorFilter; dias: Array<{ data: string; grupos: ImportGroup[] }> } {
   const mesReferencia = String(body?.mesReferencia || '').trim();
   if (!/^\d{4}-\d{2}$/.test(mesReferencia)) throw new Error('Mês de referência inválido.');
+  const setorFiltro = validateImportSectorFilter(body?.setorFiltro);
   const rawDays = Array.isArray(body?.dias) ? body.dias : [];
   if (!rawDays.length) throw new Error('A importação mensal não possui dias válidos para importar.');
 
@@ -1097,10 +1153,14 @@ function validateProductionMonthImport(body: any): { mesReferencia: string; dias
     }
     if (seen.has(data)) throw new Error(`A data ${data} foi enviada mais de uma vez na importação mensal.`);
     seen.add(data);
-    return { data, grupos: validateImportGroups(day?.grupos) };
+    const grupos = validateImportGroups(day?.grupos);
+    if (setorFiltro !== 'ALL' && grupos.some((group) => group.setor !== setorFiltro)) {
+      throw new Error(`A data ${data} contém grupos de outro setor além do setor selecionado.`);
+    }
+    return { data, grupos };
   });
 
-  return { mesReferencia, dias: dias.sort((a, b) => a.data.localeCompare(b.data)) };
+  return { mesReferencia, setorFiltro, dias: dias.sort((a, b) => a.data.localeCompare(b.data)) };
 }
 
 app.post('/api/coordenacao/importar-producao-mes', auth, requireCoordenacao, async (req: any, res) => {
@@ -1119,7 +1179,7 @@ app.post('/api/coordenacao/importar-producao-mes', auth, requireCoordenacao, asy
     let totalQuantidade = 0;
 
     for (const day of payload.dias) {
-      const result = await replaceImportedProductionForDate(client, day.data, day.grupos, Number(req.auth.userId));
+      const result = await replaceImportedProductionForDate(client, day.data, day.grupos, Number(req.auth.userId), payload.setorFiltro);
       result.usedIds.forEach((id) => allUsedIds.add(id));
       totalUnidades += result.totalUnidades;
       totalQuantidade += day.grupos.reduce((sum, group) => sum + group.quantidade, 0);
@@ -1128,12 +1188,21 @@ app.post('/api/coordenacao/importar-producao-mes', auth, requireCoordenacao, asy
     // A opção mensal representa uma fotografia completa do mês. Portanto, qualquer
     // produção importada anteriormente no mesmo mês que não esteja no novo arquivo
     // também é removida, preservando ocorrências manuais vinculadas aos apontamentos.
-    await cleanupUnusedImportedProduction(
-      client,
-      "TO_CHAR(a.data, 'YYYY-MM') = $1",
-      [payload.mesReferencia],
-      allUsedIds,
-    );
+    if (payload.setorFiltro === 'ALL') {
+      await cleanupUnusedImportedProduction(
+        client,
+        "TO_CHAR(a.data, 'YYYY-MM') = $1",
+        [payload.mesReferencia],
+        allUsedIds,
+      );
+    } else {
+      await cleanupUnusedImportedProduction(
+        client,
+        "TO_CHAR(a.data, 'YYYY-MM') = $1 AND a.setor_id = (SELECT id FROM setores WHERE nome = $2 LIMIT 1)",
+        [payload.mesReferencia, payload.setorFiltro],
+        allUsedIds,
+      );
+    }
 
     await client.query('COMMIT');
     const registros = await Promise.all([...allUsedIds].map((id) => loadApontamento(id)));
@@ -1167,10 +1236,11 @@ type ProgramacaoImportGroup = {
   quantidade: number;
 };
 
-function validateProgramacaoImport(body: any): { mesReferencia: string; monthDate: string; grupos: ProgramacaoImportGroup[] } {
+function validateProgramacaoImport(body: any): { mesReferencia: string; monthDate: string; setorFiltro: ImportSectorFilter; grupos: ProgramacaoImportGroup[] } {
   const mesReferencia = String(body?.mesReferencia || '').trim();
   if (!/^\d{4}-\d{2}$/.test(mesReferencia)) throw new Error('Mês de referência inválido.');
   const monthDate = `${mesReferencia}-01`;
+  const setorFiltro = validateImportSectorFilter(body?.setorFiltro);
   const gruposRaw = Array.isArray(body?.grupos) ? body.grupos : [];
   if (!gruposRaw.length) throw new Error('A programação não possui grupos válidos para importar.');
 
@@ -1185,19 +1255,38 @@ function validateProgramacaoImport(body: any): { mesReferencia: string; monthDat
     }
     if (!setor || !linha || !potencia) throw new Error('Setor, linha e potência são obrigatórios na programação consolidada.');
     if (!Number.isInteger(quantidade) || quantidade <= 0) throw new Error('Quantidade inválida na programação consolidada.');
+    if (setorFiltro !== 'ALL' && normalizeProgramacaoImportSector(setor) !== setorFiltro) {
+      throw new Error(`O setor ${setor} não corresponde ao setor selecionado para importação.`);
+    }
     return { dataProgramada, setor, linha, potencia, quantidade };
   });
 
-  return { mesReferencia, monthDate, grupos };
+  return { mesReferencia, monthDate, setorFiltro, grupos };
 }
 
 app.post('/api/coordenacao/importar-programacao', auth, requireCoordenacao, async (req: any, res) => {
   let client: any;
   try {
-    const { mesReferencia, monthDate, grupos } = validateProgramacaoImport(req.body);
+    const { mesReferencia, monthDate, setorFiltro, grupos } = validateProgramacaoImport(req.body);
     client = await pool.connect();
     await client.query('BEGIN');
-    await client.query('DELETE FROM programacao WHERE mes_referencia = $1::date', [monthDate]);
+    if (setorFiltro === 'ALL') {
+      await client.query('DELETE FROM programacao WHERE mes_referencia = $1::date', [monthDate]);
+    } else {
+      const existingSectors = await client.query(
+        'SELECT DISTINCT setor FROM programacao WHERE mes_referencia = $1::date',
+        [monthDate],
+      );
+      const sectorsToReplace = existingSectors.rows
+        .map((row: any) => String(row.setor || ''))
+        .filter((setor: string) => normalizeProgramacaoImportSector(setor) === setorFiltro);
+      if (sectorsToReplace.length) {
+        await client.query(
+          'DELETE FROM programacao WHERE mes_referencia = $1::date AND setor = ANY($2::text[])',
+          [monthDate, sectorsToReplace],
+        );
+      }
+    }
 
     const chunkSize = 400;
     for (let start = 0; start < grupos.length; start += chunkSize) {

@@ -12,7 +12,7 @@ import {
   ShieldCheck,
   TimerReset,
 } from 'lucide-react';
-import { Apontamento, ApontamentoEditPayload, ProductionImportGroup, ProductionImportMonthDay, StatusAprovacao, User } from '../types';
+import { Apontamento, ApontamentoEditPayload, ImportSectorFilter, ProductionImportGroup, ProductionImportMonthDay, StatusAprovacao, User } from '../types';
 import { coordenacaoService } from '../services/coordenacaoService';
 import { formatDateBR, formatPotencia } from '../utils/formatters';
 import { exportApontamentosExcel } from '../utils/exportExcel';
@@ -184,8 +184,8 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
     setToast({ id: Date.now().toString(), type: 'success', message: updated.origemProducao === 'IMPORTADO' ? 'Apontamento atualizado e finalizado. Já está disponível para aprovação.' : 'Apontamento atualizado com sucesso.' });
   };
 
-  const handleImportProduction = async (data: string, groups: ProductionImportGroup[]) => {
-    const result = await coordenacaoService.importProduction({ data, grupos: groups });
+  const handleImportProduction = async (data: string, groups: ProductionImportGroup[], setorFiltro: ImportSectorFilter) => {
+    const result = await coordenacaoService.importProduction({ data, grupos: groups, setorFiltro });
     setDataFilter(data);
     setSetorFilter('ALL');
     setLinhaFilter('ALL');
@@ -198,8 +198,8 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
     });
   };
 
-  const handleImportProductionMonth = async (mesReferencia: string, dias: ProductionImportMonthDay[]) => {
-    const result = await coordenacaoService.importProductionMonth({ mesReferencia, dias });
+  const handleImportProductionMonth = async (mesReferencia: string, dias: ProductionImportMonthDay[], setorFiltro: ImportSectorFilter) => {
+    const result = await coordenacaoService.importProductionMonth({ mesReferencia, dias, setorFiltro });
     const [ano, mes] = result.mesReferencia.split('-');
     setSetorFilter('ALL');
     setLinhaFilter('ALL');
@@ -212,8 +212,8 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
     });
   };
 
-  const handleImportProgramacao = async (mesReferencia: string, grupos: ProgramacaoImportGroup[]) => {
-    const result = await coordenacaoService.importProgramacao({ mesReferencia, grupos });
+  const handleImportProgramacao = async (mesReferencia: string, grupos: ProgramacaoImportGroup[], setorFiltro: ImportSectorFilter) => {
+    const result = await coordenacaoService.importProgramacao({ mesReferencia, grupos, setorFiltro });
     const [ano, mes] = result.mesReferencia.split('-');
     setToast({
       id: Date.now().toString(),

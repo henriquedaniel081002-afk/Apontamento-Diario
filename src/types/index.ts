@@ -22,6 +22,7 @@ export type StatusAprovacao = 'PENDENTE' | 'APROVADO';
 export type OrigemProducao = 'MANUAL' | 'IMPORTADO';
 export type Turno = '1º turno' | '2º turno';
 export type ProductionTurno = '1º' | '2º';
+export type ImportSectorFilter = 'ALL' | Setor;
 
 export interface User {
   id: string;
@@ -150,6 +151,7 @@ export interface ProductionImportGroup {
 export interface ProductionImportRequest {
   data: string;
   grupos: ProductionImportGroup[];
+  setorFiltro?: ImportSectorFilter;
 }
 
 export interface ProductionImportMonthDay {
@@ -160,6 +162,7 @@ export interface ProductionImportMonthDay {
 export interface ProductionImportMonthRequest {
   mesReferencia: string;
   dias: ProductionImportMonthDay[];
+  setorFiltro?: ImportSectorFilter;
 }
 
 export interface ProductionImportResult {
@@ -188,6 +191,7 @@ export interface ProgramacaoImportGroup {
 export interface ProgramacaoImportRequest {
   mesReferencia: string;
   grupos: ProgramacaoImportGroup[];
+  setorFiltro?: ImportSectorFilter;
 }
 
 export interface ProgramacaoImportResult {

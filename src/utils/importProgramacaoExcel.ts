@@ -1,3 +1,4 @@
+import type { Setor } from '../types';
 export interface ProgramacaoImportGroup {
   dataProgramada: string;
   setor: string;
@@ -30,6 +31,32 @@ function normalizeText(value: unknown): string {
     .trim()
     .replace(/\s+/g, ' ')
     .toUpperCase();
+}
+
+export function programacaoImportSector(value: string): Setor | null {
+  const sector = normalizeText(value);
+  const aliases: Record<string, Setor> = {
+    'BOBINA AT': 'BOBINA AT/BT',
+    'BOBINA BT': 'BOBINA AT/BT',
+    'BOBINA AT/BT': 'BOBINA AT/BT',
+    'CORTE DO LASER': 'CORTE LASER',
+    'CORTE LASER': 'CORTE LASER',
+    'CORTE DO NUCLEO': 'CORTE DO NUCLEO',
+    'CORTE NUCLEO': 'CORTE DO NUCLEO',
+    'FERRAGEM': 'FERRAGEM',
+    'FERRAGEM PA': 'FERRAGEM',
+    'FERRAGEM PA / ACESSORIOS': 'FERRAGEM',
+    'FERRAGEM PA/ACESSORIOS': 'FERRAGEM',
+    'ISOLANTE': 'ISOLANTE',
+    'MONTAGEM DO NUCLEO': 'MONTAGEM NUCLEO',
+    'MONTAGEM NUCLEO': 'MONTAGEM NUCLEO',
+    'MONTAGEM FINAL': 'MONTAGEM FINAL',
+    'MPA': 'MPA',
+    'PINTURA': 'PINTURA',
+    'SOLDA': 'SOLDA',
+    'EPOXI': 'EPOXI',
+  };
+  return aliases[sector] || null;
 }
 
 function parseZipEntries(buffer: ArrayBuffer): Map<string, ZipEntry> {

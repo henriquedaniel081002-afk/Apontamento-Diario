@@ -98,6 +98,11 @@ function sectorRule(rawSector: string): SectorRule | null {
   return rules[sector] || null;
 }
 
+export function productionImportSectorForRawGroup(rawSector: string, rawLine: string): Setor | null {
+  if (normalizeText(rawSector) === 'MONTAGEM FINAL' && normalizeText(rawLine) === 'EPO') return 'EPOXI';
+  return sectorRule(rawSector)?.setor || null;
+}
+
 function importKey(group: ProductionImportGroup): string {
   return [group.setor, group.tipoBobina || '', group.linha, Number(group.potencia), group.turno || ''].join('|');
 }

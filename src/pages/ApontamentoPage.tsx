@@ -192,7 +192,7 @@ const ImportedApontamentoPage: React.FC<Props> = ({ user, onNavigateToHistory })
 
 
 export const ApontamentoPage: React.FC<Props> = (props) => {
-  if (props.user.setor === 'PINTURA' || props.user.setor === 'SOLDA') {
+  if (['PINTURA', 'SOLDA', 'MONTAGEM NUCLEO', 'CORTE LASER'].includes(String(props.user.setor || ''))) {
     return <TurnOccurrencePage {...props} />;
   }
   return <ImportedApontamentoPage {...props} />;

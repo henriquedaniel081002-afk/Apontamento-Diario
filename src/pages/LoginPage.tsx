@@ -15,6 +15,12 @@ import logoItam from '../assets/logo-itam.png';
 import { Badge, Button, FieldError, PageContainer, Surface } from '../components/common/ui';
 import { CustomSelect } from '../components/common/CustomSelect';
 
+
+function displaySectorLabel(setor: User['setor']): string {
+  if (setor === 'CORTE LASER') return 'Corte do Laser/Ferragem';
+  return setor || 'Setor não informado';
+}
+
 interface LoginPageProps {
   onLoginSuccess: (user: User) => void;
   authLogin: (
@@ -174,10 +180,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     value: user.id,
                     label: user.perfil === 'COORDENACAO'
                       ? 'COORDENAÇÃO — Acesso global'
-                      : `${user.name} — ${user.setor}`,
+                      : user.setor === 'CORTE LASER' ? 'Corte do Laser/Ferragem' : `${user.name} — ${displaySectorLabel(user.setor)}`,
                     description: user.perfil === 'COORDENACAO'
                       ? 'Visão global e aprovações'
-                      : `${user.setor} · ${user.linhas.length === 1 ? 'Linha' : 'Linhas'} ${user.linhas.join(' / ')}`,
+                      : `${displaySectorLabel(user.setor)} · ${user.linhas.length === 1 ? 'Linha' : 'Linhas'} ${user.linhas.join(' / ')}`,
                   }))}
                 />
 
@@ -186,7 +192,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     <div className="min-w-0">
                       <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Contexto de acesso</p>
                       <p className="mt-1 truncate text-sm font-bold text-slate-200">
-                        {selectedUser.perfil === 'COORDENACAO' ? 'Acesso global' : selectedUser.setor}
+                        {selectedUser.perfil === 'COORDENACAO' ? 'Acesso global' : displaySectorLabel(selectedUser.setor)}
                       </p>
                     </div>
                     {selectedUser.perfil === 'COORDENACAO' ? (

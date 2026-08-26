@@ -103,7 +103,11 @@ function getPageTitle(isCoordination: boolean, activeTab: HeaderTab): string {
 export const Header: React.FC<HeaderProps> = ({ user, activeTab, onTabChange, onLogout }) => {
   const isCoordination = user.perfil === 'COORDENACAO';
   const lineLabel = user.linhas.join(' / ');
-  const contextLabel = isCoordination ? 'Acesso global' : user.setor || 'Setor não informado';
+  const contextLabel = isCoordination
+    ? 'Acesso global'
+    : user.setor === 'CORTE LASER'
+      ? 'Corte do Laser/Ferragem'
+      : user.setor || 'Setor não informado';
   const navigation = navigationByProfile[user.perfil];
 
   return (

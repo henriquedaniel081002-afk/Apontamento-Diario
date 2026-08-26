@@ -54,7 +54,9 @@ function isoDateTime(value: any) {
 
 function displayLoginName(value: any): string {
   const login = String(value || '').trim();
-  return login.toUpperCase() === 'MPA MON/EPO' ? 'MPA MON' : login;
+  if (login.toUpperCase() === 'MPA MON/EPO') return 'MPA MON';
+  if (login.toUpperCase() === 'CORTE LASER') return 'Corte do Laser/Ferragem';
+  return login;
 }
 
 app.get('/api/health', async (_req, res) => {
@@ -153,7 +155,8 @@ const IMPORT_SECTORS = new Set([
   'EPOXI',
 ]);
 const IMPORT_LINES = new Set<ImportLine>(['MON', 'TRI', 'EPO']);
-const DASHBOARD_ONLY_IMPORT_SECTORS = new Set(['CORTE DO NUCLEO', 'FERRAGEM']);
+const IMPORT_FALLBACK_SECTORS = new Set(['CORTE DO NUCLEO', 'FERRAGEM']);
+const DASHBOARD_ONLY_IMPORT_SECTORS = new Set(['CORTE DO NUCLEO']);
 
 type ImportSectorFilter = 'ALL' | string;
 
@@ -242,12 +245,12 @@ async function prepareImportGroups(client: any, groups: ImportGroup[], fallbackU
   const sectorsResult = await client.query('SELECT id, nome FROM setores WHERE nome = ANY($1::text[])', [sectorNames]);
   const sectorMap = new Map<string, number>(sectorsResult.rows.map((row: any) => [String(row.nome), Number(row.id)]));
 
-  // Corte do Núcleo e Ferragem são setores usados somente na consolidação do Dashboard.
-  // Se ainda não existirem em uma base antiga, o próprio fluxo de importação os cadastra
-  // sem criar login/apontador adicional.
+  // Corte do Núcleo e Ferragem podem existir sem usuario_acessos dedicado. Se ainda
+  // não existirem em uma base antiga, o próprio fluxo de importação cadastra o setor.
+  // Ferragem agora é apontada pelo login compartilhado Corte do Laser/Ferragem.
   for (const sector of sectorNames) {
     if (sectorMap.has(sector)) continue;
-    if (!DASHBOARD_ONLY_IMPORT_SECTORS.has(sector)) throw new Error(`Setor ${sector} não encontrado no Neon.`);
+    if (!IMPORT_FALLBACK_SECTORS.has(sector)) throw new Error(`Setor ${sector} não encontrado no Neon.`);
     // Evita reutilizar o mesmo placeholder em contextos SQL diferentes. Em alguns
     // esquemas antigos do Neon, isso faz o PostgreSQL inferir tipos incompatíveis
     // para $1 (ex.: varchar/text) e abortar a importação com HTTP 500.
@@ -327,7 +330,7 @@ async function prepareImportGroups(client: any, groups: ImportGroup[], fallbackU
 
     const selected = candidates[0];
     if (!selected) {
-      if (DASHBOARD_ONLY_IMPORT_SECTORS.has(setor) && fallbackUserId) {
+      if (IMPORT_FALLBACK_SECTORS.has(setor) && fallbackUserId) {
         const setorId = sectorMap.get(setor);
         if (!setorId) throw new Error(`Setor ${setor} não encontrado no Neon.`);
         const lineIds = new Map<string, number>();
@@ -506,7 +509,7 @@ function validateOccurrencePayload(_data: any): string | null {
 }
 
 async function deleteOccurrenceCollections(client: any, apontamentoId: number, data: any, turno?: string | null) {
-  // Substitui apenas coleções explicitamente enviadas. Em Pintura/Solda a exclusão
+  // Substitui apenas coleções explicitamente enviadas. No fluxo por turno a exclusão
   // é limitada ao turno selecionado para nunca apagar o que o outro turno registrou.
   const has = (key: string) => Object.prototype.hasOwnProperty.call(data || {}, key);
   const deleteCollection = async (table: string) => {
@@ -759,6 +762,31 @@ app.get('/api/apontamentos/importados/pendentes', auth, async (req: any, res) =>
 app.get('/api/apontamentos/data/:data', auth, async (req: any, res) => {
   try {
     const setor = String(req.query?.setor || '').trim().toUpperCase();
+
+    // Ferragem compartilha o login operacional de Corte do Laser. O apontamento
+    // continua salvo como FERRAGEM, mas pode ter sido criado primeiro pela importação
+    // (com outro usuario_id). Por isso a busca de Ferragem é por setor + data.
+    if (setor === 'FERRAGEM') {
+      const access = await getUserAccess(req.auth.userId);
+      const hasCorteLaserAccess = access.some((row: any) => String(row.setor || '').trim().toUpperCase() === 'CORTE LASER');
+      if (!hasCorteLaserAccess) {
+        return res.status(403).json({ error: 'O acesso à Ferragem é permitido pelo login Corte do Laser/Ferragem.' });
+      }
+
+      const r = await pool.query(
+        `SELECT a.id
+           FROM apontamentos a
+           JOIN setores s ON s.id = a.setor_id
+          WHERE a.data = $2 AND UPPER(s.nome) = $3
+          ORDER BY CASE WHEN a.usuario_id = $1 THEN 0 ELSE 1 END,
+                   CASE WHEN a.origem_producao = 'IMPORTADO' THEN 0 ELSE 1 END,
+                   a.id DESC
+          LIMIT 1`,
+        [req.auth.userId, req.params.data, setor],
+      );
+      return res.json(r.rows.length ? await loadApontamento(r.rows[0].id) : null);
+    }
+
     const r = setor
       ? await pool.query(
           `SELECT a.id
@@ -781,8 +809,9 @@ app.get('/api/apontamentos/data/:data', auth, async (req: any, res) => {
 });
 
 
-// Solda e Pintura podem registrar ocorrências antes da importação da produção.
-// O registro já nasce como parte do fluxo importado, porém sem linhas de produção.
+// Pintura, Solda, Montagem do Núcleo e Corte do Laser/Ferragem podem registrar
+// ocorrências antes da importação da produção. Corte do Laser e Ferragem usam o
+// mesmo login, porém permanecem como setores distintos no banco e nos relatórios.
 // Quando a Coordenação importar a data, replaceImportedProductionForDate encontra
 // este mesmo apontamento e substitui somente a coleção de produção.
 app.post('/api/apontamentos/ocorrencias', auth, async (req: any, res) => {
@@ -794,11 +823,13 @@ app.post('/api/apontamentos/ocorrencias', auth, async (req: any, res) => {
   const dataApontamento = String(data.data || '').trim();
   const setor = String(data.setor || '').trim().toUpperCase();
   const turno = String(data.turno || '').trim().toLowerCase();
+  const setoresPermitidos = ['PINTURA', 'SOLDA', 'MONTAGEM NUCLEO', 'CORTE LASER', 'FERRAGEM'];
+
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dataApontamento)) {
     return res.status(400).json({ error: 'Informe uma data válida para registrar as ocorrências.' });
   }
-  if (!['PINTURA', 'SOLDA'].includes(setor)) {
-    return res.status(403).json({ error: 'O registro antecipado de ocorrências está disponível somente para Pintura e Solda.' });
+  if (!setoresPermitidos.includes(setor)) {
+    return res.status(403).json({ error: 'Este setor não utiliza o registro antecipado de ocorrências por turno.' });
   }
   if (!['1º turno', '2º turno'].includes(turno)) {
     return res.status(400).json({ error: 'Selecione o 1º ou o 2º turno antes de registrar as ocorrências.' });
@@ -809,12 +840,34 @@ app.post('/api/apontamentos/ocorrencias', auth, async (req: any, res) => {
   const client = await pool.connect();
   try {
     const access = await getUserAccess(req.auth.userId);
-    const sectorAccess = access.filter((row: any) => String(row.setor || '').trim().toUpperCase() === setor);
+    const sharedFerragem = setor === 'FERRAGEM';
+    const accessSector = sharedFerragem ? 'CORTE LASER' : setor;
+    const sectorAccess = access.filter((row: any) => String(row.setor || '').trim().toUpperCase() === accessSector);
     if (!sectorAccess.length) {
-      return res.status(403).json({ error: `O usuário não possui acesso ao setor ${setor}.` });
+      return res.status(403).json({
+        error: sharedFerragem
+          ? 'O acesso à Ferragem é permitido pelo login Corte do Laser/Ferragem.'
+          : `O usuário não possui acesso ao setor ${setor}.`,
+      });
     }
 
-    const setorId = Number(sectorAccess[0].setor_id);
+    let setorId: number;
+    if (sharedFerragem) {
+      let sectorResult = await client.query(
+        `SELECT id FROM setores WHERE UPPER(nome) = 'FERRAGEM' ORDER BY id LIMIT 1`,
+      );
+      // Compatibilidade com bases antigas: não exige SQL manual. Se Ferragem ainda
+      // não existir, o próprio sistema cria apenas o cadastro do setor.
+      if (!sectorResult.rows.length) {
+        sectorResult = await client.query(`INSERT INTO setores(nome) VALUES('FERRAGEM') RETURNING id`);
+      }
+      setorId = Number(sectorResult.rows[0].id);
+    } else {
+      setorId = Number(sectorAccess[0].setor_id);
+    }
+
+    // As linhas MON/TRI/EPO são globais no modelo. Para Ferragem reutilizamos as
+    // linhas permitidas no login de Corte do Laser, sem criar usuario_acessos novo.
     const allowed = new Map(sectorAccess.map((row: any) => [row.linha, row.linha_id]));
     const lineBearingItems = [...occurrenceList(data.faltas), ...occurrenceList(data.observacoes)];
     for (const item of lineBearingItems) {
@@ -834,21 +887,40 @@ app.post('/api/apontamentos/ocorrencias', auth, async (req: any, res) => {
     const turnoDb = turno.toUpperCase();
 
     await client.query('BEGIN');
-    let current = await client.query(
-      `SELECT id
-         FROM apontamentos
-        WHERE usuario_id = $1
-          AND setor_id = $2
-          AND data = $3::date
-        ORDER BY CASE WHEN origem_producao = 'IMPORTADO' THEN 0 ELSE 1 END, id DESC
-        LIMIT 1
-        FOR UPDATE`,
-      [req.auth.userId, setorId, dataApontamento],
-    );
+    const current = sharedFerragem
+      ? await client.query(
+          `SELECT id
+             FROM apontamentos
+            WHERE setor_id = $1
+              AND data = $2::date
+            ORDER BY CASE WHEN usuario_id = $3 THEN 0 ELSE 1 END,
+                     CASE WHEN origem_producao = 'IMPORTADO' THEN 0 ELSE 1 END,
+                     id DESC
+            LIMIT 1
+            FOR UPDATE`,
+          [setorId, dataApontamento, req.auth.userId],
+        )
+      : await client.query(
+          `SELECT id
+             FROM apontamentos
+            WHERE usuario_id = $1
+              AND setor_id = $2
+              AND data = $3::date
+            ORDER BY CASE WHEN origem_producao = 'IMPORTADO' THEN 0 ELSE 1 END, id DESC
+            LIMIT 1
+            FOR UPDATE`,
+          [req.auth.userId, setorId, dataApontamento],
+        );
 
     let apontamentoId: number;
     if (current.rows.length) {
       apontamentoId = Number(current.rows[0].id);
+      if (sharedFerragem) {
+        // Se a produção de Ferragem foi importada antes das ocorrências, ela pode ter
+        // nascido vinculada ao usuário da Coordenação. Ao apontar, passa a pertencer
+        // ao login Corte do Laser/Ferragem e segue o fluxo normal de histórico.
+        await client.query('UPDATE apontamentos SET usuario_id = $2 WHERE id = $1', [apontamentoId, req.auth.userId]);
+      }
     } else {
       const inserted = await client.query(
         `INSERT INTO apontamentos(data, usuario_id, setor_id, tipo_bobina, origem_producao, complementado)
@@ -863,9 +935,9 @@ app.post('/api/apontamentos/ocorrencias', auth, async (req: any, res) => {
     await client.query(
       `UPDATE apontamentos
           SET origem_producao = 'IMPORTADO',
-              turno1_complementado = CASE WHEN $2::boolean THEN TRUE ELSE turno1_complementado END,
-              turno2_complementado = CASE WHEN $2::boolean THEN turno2_complementado ELSE TRUE END,
-              complementado = CASE WHEN $2::boolean THEN turno2_complementado ELSE turno1_complementado END,
+              turno1_complementado = CASE WHEN $2::boolean THEN TRUE ELSE COALESCE(turno1_complementado, FALSE) END,
+              turno2_complementado = CASE WHEN $2::boolean THEN COALESCE(turno2_complementado, FALSE) ELSE TRUE END,
+              complementado = CASE WHEN $2::boolean THEN COALESCE(turno2_complementado, FALSE) ELSE COALESCE(turno1_complementado, FALSE) END,
               atualizado_em = NOW(),
               status_aprovacao = 'PENDENTE',
               aprovado_em = NULL,
@@ -881,7 +953,7 @@ app.post('/api/apontamentos/ocorrencias', auth, async (req: any, res) => {
     await client.query('ROLLBACK').catch(() => undefined);
     console.error(e);
     if (e?.code === '42P01' || e?.code === '42703') {
-      return res.status(500).json({ error: 'A estrutura de turnos do Neon não está atualizada. Execute o SQL de migração de Pintura/Solda.' });
+      return res.status(500).json({ error: 'A estrutura de turnos do Neon não está atualizada. Execute a migração de turnos já utilizada pelo sistema.' });
     }
     if (e?.code === '23505') {
       return res.status(409).json({ error: 'Já existe um apontamento para esta data. Atualize a página e tente novamente.' });
@@ -929,7 +1001,7 @@ app.put('/api/apontamentos/:id/complemento', auth, async (req: any, res) => {
     }
 
     const setor = String(current.rows[0].setor || '').trim().toUpperCase();
-    const usesTurnFlow = setor === 'PINTURA' || setor === 'SOLDA';
+    const usesTurnFlow = ['PINTURA', 'SOLDA', 'MONTAGEM NUCLEO', 'CORTE LASER', 'FERRAGEM'].includes(setor);
     const turno = String(data.turno || '').trim().toLowerCase();
     if (usesTurnFlow && !['1º turno', '2º turno'].includes(turno)) {
       return res.status(400).json({ error: 'Selecione o 1º ou o 2º turno antes de finalizar.' });
@@ -991,7 +1063,7 @@ app.put('/api/apontamentos/:id/complemento', auth, async (req: any, res) => {
     await client.query('ROLLBACK').catch(() => undefined);
     console.error(e);
     if (e?.code === '42P01' || e?.code === '42703') {
-      return res.status(500).json({ error: 'A estrutura de turnos do Neon não está atualizada. Execute o SQL de migração de Pintura/Solda.' });
+      return res.status(500).json({ error: 'A estrutura de turnos do Neon não está atualizada. Execute a migração de turnos já utilizada pelo sistema.' });
     }
     res.status(500).json({ error: 'Falha ao salvar as ocorrências do apontamento.' });
   } finally {
@@ -1154,7 +1226,8 @@ async function replaceImportedProductionForDate(
     const first = unit[0];
     const tipoBobina = first.setor === 'BOBINA AT/BT' ? first.tipoBobina || null : null;
     const dashboardOnly = DASHBOARD_ONLY_IMPORT_SECTORS.has(first.setor);
-    const existing = dashboardOnly
+    const sectorSharedAcrossUsers = dashboardOnly || first.setor === 'FERRAGEM';
+    const existing = sectorSharedAcrossUsers
       ? await client.query(
           `SELECT id, complementado
              FROM apontamentos

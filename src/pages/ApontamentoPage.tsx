@@ -13,6 +13,7 @@ import { ReviewSection } from '../components/apontamento/ReviewSection';
 import { SummaryHeader } from '../components/apontamento/SummaryHeader';
 import { Toast, ToastMessage } from '../components/common/Toast';
 import { Badge, Button, EmptyState, PageContainer, PageHeader, Stepper, Surface } from '../components/common/ui';
+import { TurnOccurrencePage } from './TurnOccurrencePage';
 
 interface Props { user: User; onNavigateToHistory: () => void; }
 type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7;
@@ -30,7 +31,7 @@ function recordLabel(record: Apontamento): string {
 const clone = <T,>(items: T[] | undefined): T[] => (items || []).map((item) => ({ ...item }));
 const sameTurn = (value: string | undefined, turno: Turno) => String(value || '').trim().toLowerCase() === turno.toLowerCase();
 
-export const ApontamentoPage: React.FC<Props> = ({ user, onNavigateToHistory }) => {
+const ImportedApontamentoPage: React.FC<Props> = ({ user, onNavigateToHistory }) => {
   const usesTurnFlow = user.setor === 'PINTURA' || user.setor === 'SOLDA';
   const [pendingImports, setPendingImports] = useState<Apontamento[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -187,4 +188,12 @@ export const ApontamentoPage: React.FC<Props> = ({ user, onNavigateToHistory }) 
     </>}
     <Toast toast={toast} onClose={() => setToast(null)} />
   </PageContainer>;
+};
+
+
+export const ApontamentoPage: React.FC<Props> = (props) => {
+  if (props.user.setor === 'PINTURA' || props.user.setor === 'SOLDA') {
+    return <TurnOccurrencePage {...props} />;
+  }
+  return <ImportedApontamentoPage {...props} />;
 };

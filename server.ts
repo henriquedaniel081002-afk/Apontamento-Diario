@@ -758,14 +758,137 @@ app.get('/api/apontamentos/importados/pendentes', auth, async (req: any, res) =>
 
 app.get('/api/apontamentos/data/:data', auth, async (req: any, res) => {
   try {
-    const r = await pool.query(
-      'SELECT id FROM apontamentos WHERE usuario_id = $1 AND data = $2 LIMIT 1',
-      [req.auth.userId, req.params.data],
-    );
+    const setor = String(req.query?.setor || '').trim().toUpperCase();
+    const r = setor
+      ? await pool.query(
+          `SELECT a.id
+             FROM apontamentos a
+             JOIN setores s ON s.id = a.setor_id
+            WHERE a.usuario_id = $1 AND a.data = $2 AND UPPER(s.nome) = $3
+            ORDER BY a.id DESC
+            LIMIT 1`,
+          [req.auth.userId, req.params.data, setor],
+        )
+      : await pool.query(
+          'SELECT id FROM apontamentos WHERE usuario_id = $1 AND data = $2 ORDER BY id DESC LIMIT 1',
+          [req.auth.userId, req.params.data],
+        );
     res.json(r.rows.length ? await loadApontamento(r.rows[0].id) : null);
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Falha ao carregar apontamento.' });
+  }
+});
+
+
+// Solda e Pintura podem registrar ocorrências antes da importação da produção.
+// O registro já nasce como parte do fluxo importado, porém sem linhas de produção.
+// Quando a Coordenação importar a data, replaceImportedProductionForDate encontra
+// este mesmo apontamento e substitui somente a coleção de produção.
+app.post('/api/apontamentos/ocorrencias', auth, async (req: any, res) => {
+  if (req.auth?.perfil === 'COORDENACAO') {
+    return res.status(403).json({ error: 'A COORDENAÇÃO não utiliza o registro de ocorrências do apontador.' });
+  }
+
+  const data = req.body || {};
+  const dataApontamento = String(data.data || '').trim();
+  const setor = String(data.setor || '').trim().toUpperCase();
+  const turno = String(data.turno || '').trim().toLowerCase();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dataApontamento)) {
+    return res.status(400).json({ error: 'Informe uma data válida para registrar as ocorrências.' });
+  }
+  if (!['PINTURA', 'SOLDA'].includes(setor)) {
+    return res.status(403).json({ error: 'O registro antecipado de ocorrências está disponível somente para Pintura e Solda.' });
+  }
+  if (!['1º turno', '2º turno'].includes(turno)) {
+    return res.status(400).json({ error: 'Selecione o 1º ou o 2º turno antes de registrar as ocorrências.' });
+  }
+  const validation = validateOccurrencePayload(data);
+  if (validation) return res.status(400).json({ error: validation });
+
+  const client = await pool.connect();
+  try {
+    const access = await getUserAccess(req.auth.userId);
+    const sectorAccess = access.filter((row: any) => String(row.setor || '').trim().toUpperCase() === setor);
+    if (!sectorAccess.length) {
+      return res.status(403).json({ error: `O usuário não possui acesso ao setor ${setor}.` });
+    }
+
+    const setorId = Number(sectorAccess[0].setor_id);
+    const allowed = new Map(sectorAccess.map((row: any) => [row.linha, row.linha_id]));
+    const lineBearingItems = [...occurrenceList(data.faltas), ...occurrenceList(data.observacoes)];
+    for (const item of lineBearingItems) {
+      if (item.linha && !allowed.has(item.linha)) {
+        return res.status(403).json({ error: `Linha ${item.linha} não permitida para este usuário/setor.` });
+      }
+    }
+
+    const scopedData = {
+      ...data,
+      paradasFaltaMaterial: occurrenceList(data.paradasFaltaMaterial).map((item) => ({ ...item, turno })),
+      paradasMaquina: occurrenceList(data.paradasMaquina).map((item) => ({ ...item, turno })),
+      naoConformidades: occurrenceList(data.naoConformidades).map((item) => ({ ...item, turno })),
+      faltas: occurrenceList(data.faltas).map((item) => ({ ...item, turno })),
+      observacoes: occurrenceList(data.observacoes).map((item) => ({ ...item, turno })),
+    };
+    const turnoDb = turno.toUpperCase();
+
+    await client.query('BEGIN');
+    let current = await client.query(
+      `SELECT id
+         FROM apontamentos
+        WHERE usuario_id = $1
+          AND setor_id = $2
+          AND data = $3::date
+        ORDER BY CASE WHEN origem_producao = 'IMPORTADO' THEN 0 ELSE 1 END, id DESC
+        LIMIT 1
+        FOR UPDATE`,
+      [req.auth.userId, setorId, dataApontamento],
+    );
+
+    let apontamentoId: number;
+    if (current.rows.length) {
+      apontamentoId = Number(current.rows[0].id);
+    } else {
+      const inserted = await client.query(
+        `INSERT INTO apontamentos(data, usuario_id, setor_id, tipo_bobina, origem_producao, complementado)
+         VALUES($1::date, $2, $3, NULL, 'IMPORTADO', FALSE)
+         RETURNING id`,
+        [dataApontamento, req.auth.userId, setorId],
+      );
+      apontamentoId = Number(inserted.rows[0].id);
+    }
+
+    const firstTurn = turno === '1º turno';
+    await client.query(
+      `UPDATE apontamentos
+          SET origem_producao = 'IMPORTADO',
+              turno1_complementado = CASE WHEN $2::boolean THEN TRUE ELSE turno1_complementado END,
+              turno2_complementado = CASE WHEN $2::boolean THEN turno2_complementado ELSE TRUE END,
+              complementado = CASE WHEN $2::boolean THEN turno2_complementado ELSE turno1_complementado END,
+              atualizado_em = NOW(),
+              status_aprovacao = 'PENDENTE',
+              aprovado_em = NULL,
+              aprovado_por = NULL
+        WHERE id = $1`,
+      [apontamentoId, firstTurn],
+    );
+    await deleteOccurrenceCollections(client, apontamentoId, scopedData, turnoDb);
+    await insertOccurrenceCollections(client, apontamentoId, scopedData, allowed);
+    await client.query('COMMIT');
+    res.json(await loadApontamento(apontamentoId));
+  } catch (e: any) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    console.error(e);
+    if (e?.code === '42P01' || e?.code === '42703') {
+      return res.status(500).json({ error: 'A estrutura de turnos do Neon não está atualizada. Execute o SQL de migração de Pintura/Solda.' });
+    }
+    if (e?.code === '23505') {
+      return res.status(409).json({ error: 'Já existe um apontamento para esta data. Atualize a página e tente novamente.' });
+    }
+    res.status(500).json({ error: 'Falha ao registrar as ocorrências.' });
+  } finally {
+    client.release();
   }
 });
 
@@ -974,6 +1097,8 @@ async function cleanupUnusedImportedProduction(
   const previous = await client.query(
     `SELECT a.id,
             a.complementado,
+            a.turno1_complementado,
+            a.turno2_complementado,
             (
               EXISTS (SELECT 1 FROM paradas_falta_material pfm WHERE pfm.apontamento_id = a.id)
               OR EXISTS (SELECT 1 FROM paradas_maquina pm WHERE pm.apontamento_id = a.id)
@@ -994,7 +1119,8 @@ async function cleanupUnusedImportedProduction(
     // Nunca apaga informações digitadas pelos apontadores. Se o registro não possui
     // complemento manual, pode ser removido por completo; caso contrário, apenas a
     // produção antiga é retirada e as ocorrências permanecem intactas.
-    if (row.complementado === false && row.possui_complementos !== true) {
+    const possuiTurnoRegistrado = row.turno1_complementado === true || row.turno2_complementado === true;
+    if (row.complementado === false && !possuiTurnoRegistrado && row.possui_complementos !== true) {
       await client.query('DELETE FROM apontamentos WHERE id = $1', [id]);
       continue;
     }

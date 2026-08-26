@@ -129,6 +129,12 @@ export interface ApontamentoComplementoPayload {
   observacoes: ObservacaoItem[];
 }
 
+export interface OccurrenceRegistrationPayload extends ApontamentoComplementoPayload {
+  data: string;
+  setor: 'PINTURA' | 'SOLDA';
+  turno: Turno;
+}
+
 export interface ApontamentoEditPayload extends ApontamentoComplementoPayload {
   data: string;
   producoes: ProducaoItem[];

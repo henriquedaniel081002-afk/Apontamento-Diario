@@ -34,12 +34,16 @@ export const authService = {
     if (!selectedUser) return { success: false, error: 'Usuário não encontrado.' };
 
     try {
+      // O nome exibido na interface pode ser diferente do login cadastrado no Neon.
+      // Montagem do Núcleo e Corte do Núcleo compartilham o usuário "Montagem Nucleo".
+      const login = selectedUser.id === 'usr-montagem-nucleo' ? 'Montagem Nucleo' : selectedUser.name;
+
       const response = await apiRequest<LoginResponse>(
         '/api/auth/login',
         {
           method: 'POST',
           body: JSON.stringify({
-            login: selectedUser.name,
+            login,
             password: passwordAttempt,
           }),
         },

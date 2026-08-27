@@ -75,6 +75,15 @@ app.post('/api/auth/login', async (req, res) => {
 
   try {
     let result = await pool.query('SELECT * FROM autenticar_usuario($1, $2)', [login, password]);
+    // Compatibilidade: a interface exibe um nome composto, mas o usuário do Neon continua
+    // cadastrado como "Montagem Nucleo".
+    if (!result.rows.length && String(login).trim().toUpperCase() === 'MONTAGEM DO NÚCLEO/CORTE DO NÚCLEO') {
+      result = await pool.query('SELECT * FROM autenticar_usuario($1, $2)', ['Montagem Nucleo', password]);
+    }
+    // Variante sem acentos para clientes antigos ou integrações externas.
+    if (!result.rows.length && String(login).trim().toUpperCase() === 'MONTAGEM DO NUCLEO/CORTE DO NUCLEO') {
+      result = await pool.query('SELECT * FROM autenticar_usuario($1, $2)', ['Montagem Nucleo', password]);
+    }
     // Compatibilidade com bancos em que o login antigo ainda está salvo como MPA MON/EPO.
     // A interface e a sessão passam a exibir somente MPA MON, sem exigir renomear o usuário no Neon.
     if (!result.rows.length && String(login).trim().toUpperCase() === 'MPA MON') {

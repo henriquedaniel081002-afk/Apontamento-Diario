@@ -1,4 +1,4 @@
-import { Apontamento, ApontamentoComplementoPayload, ApontamentoEditPayload, OccurrenceRegistrationPayload } from '../types';
+import { Apontamento, ApontamentoComplementoPayload, ApontamentoEditPayload, OccurrenceRegistrationPayload, TipoBobina } from '../types';
 import { apiRequest } from './apiClient';
 
 export const apontamentoService = {
@@ -11,8 +11,11 @@ export const apontamentoService = {
   async getByUserSector(_userId: string, _setor: string): Promise<Apontamento[]> {
     return apiRequest<Apontamento[]>('/api/apontamentos');
   },
-  async getByDateAndSector(date: string, setor: string, _userId: string): Promise<Apontamento | null> {
-    const query = setor ? `?setor=${encodeURIComponent(setor)}` : '';
+  async getByDateAndSector(date: string, setor: string, _userId: string, tipoBobina?: TipoBobina): Promise<Apontamento | null> {
+    const params = new URLSearchParams();
+    if (setor) params.set('setor', setor);
+    if (tipoBobina) params.set('tipoBobina', tipoBobina);
+    const query = params.size ? `?${params.toString()}` : '';
     return apiRequest<Apontamento | null>(`/api/apontamentos/data/${encodeURIComponent(date)}${query}`);
   },
   async completeImported(id: string, data: ApontamentoComplementoPayload): Promise<Apontamento> {

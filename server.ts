@@ -56,6 +56,7 @@ function displayLoginName(value: any): string {
   const login = String(value || '').trim();
   if (login.toUpperCase() === 'MPA MON/EPO') return 'MPA MON';
   if (login.toUpperCase() === 'CORTE LASER') return 'Corte do Laser/Ferragem';
+  if (login.toUpperCase() === 'MONTAGEM NUCLEO') return 'Montagem do Núcleo/Corte do Núcleo';
   return login;
 }
 
@@ -156,7 +157,25 @@ const IMPORT_SECTORS = new Set([
 ]);
 const IMPORT_LINES = new Set<ImportLine>(['MON', 'TRI', 'EPO']);
 const IMPORT_FALLBACK_SECTORS = new Set(['CORTE DO NUCLEO', 'FERRAGEM']);
-const DASHBOARD_ONLY_IMPORT_SECTORS = new Set(['CORTE DO NUCLEO']);
+const SHARED_IMPORT_SECTORS = new Set(['CORTE DO NUCLEO', 'FERRAGEM']);
+const TURN_OCCURRENCE_SECTORS = new Set([
+  'PINTURA',
+  'SOLDA',
+  'MONTAGEM NUCLEO',
+  'CORTE DO NUCLEO',
+  'CORTE LASER',
+  'FERRAGEM',
+]);
+
+function occurrenceAccessSector(setor: string): string {
+  if (setor === 'FERRAGEM') return 'CORTE LASER';
+  if (setor === 'CORTE DO NUCLEO') return 'MONTAGEM NUCLEO';
+  return setor;
+}
+
+function isSharedOccurrenceSector(setor: string): boolean {
+  return setor === 'FERRAGEM' || setor === 'CORTE DO NUCLEO';
+}
 
 type ImportSectorFilter = 'ALL' | string;
 
@@ -762,22 +781,39 @@ app.get('/api/apontamentos/importados/pendentes', auth, async (req: any, res) =>
 app.get('/api/apontamentos/data/:data', auth, async (req: any, res) => {
   try {
     const setor = String(req.query?.setor || '').trim().toUpperCase();
+    const rawTipoBobina = String(req.query?.tipoBobina || '').trim().toUpperCase();
+    const tipoBobina = ['AT', 'BT'].includes(rawTipoBobina) ? rawTipoBobina : null;
 
-    // Ferragem compartilha o login operacional de Corte do Laser. O apontamento
-    // continua salvo como FERRAGEM, mas pode ter sido criado primeiro pela importação
-    // (com outro usuario_id). Por isso a busca de Ferragem é por setor + data.
-    if (setor === 'FERRAGEM') {
+    if (setor && !IMPORT_SECTORS.has(setor)) {
+      return res.status(400).json({ error: 'Setor inválido para consulta de ocorrências.' });
+    }
+    if (setor === 'BOBINA AT/BT' && !tipoBobina) {
+      return res.status(400).json({ error: 'Selecione Bobina AT ou Bobina BT.' });
+    }
+
+    // Ferragem compartilha o login de Corte do Laser e Corte do Núcleo compartilha
+    // o login de Montagem do Núcleo. O registro continua salvo no setor real, mas
+    // pode ter sido criado primeiro pela importação com outro usuario_id.
+    if (setor && isSharedOccurrenceSector(setor)) {
+      const accessSector = occurrenceAccessSector(setor);
       const access = await getUserAccess(req.auth.userId);
-      const hasCorteLaserAccess = access.some((row: any) => String(row.setor || '').trim().toUpperCase() === 'CORTE LASER');
-      if (!hasCorteLaserAccess) {
-        return res.status(403).json({ error: 'O acesso à Ferragem é permitido pelo login Corte do Laser/Ferragem.' });
+      const hasLinkedAccess = access.some(
+        (row: any) => String(row.setor || '').trim().toUpperCase() === accessSector,
+      );
+      if (!hasLinkedAccess) {
+        const groupedLogin = setor === 'FERRAGEM'
+          ? 'Corte do Laser/Ferragem'
+          : 'Montagem do Núcleo/Corte do Núcleo';
+        return res.status(403).json({ error: `O acesso a ${setor} é permitido pelo login ${groupedLogin}.` });
       }
 
       const r = await pool.query(
         `SELECT a.id
            FROM apontamentos a
            JOIN setores s ON s.id = a.setor_id
-          WHERE a.data = $2 AND UPPER(s.nome) = $3
+          WHERE a.data = $2
+            AND UPPER(s.nome) = $3
+            AND a.tipo_bobina IS NULL
           ORDER BY CASE WHEN a.usuario_id = $1 THEN 0 ELSE 1 END,
                    CASE WHEN a.origem_producao = 'IMPORTADO' THEN 0 ELSE 1 END,
                    a.id DESC
@@ -792,10 +828,13 @@ app.get('/api/apontamentos/data/:data', auth, async (req: any, res) => {
           `SELECT a.id
              FROM apontamentos a
              JOIN setores s ON s.id = a.setor_id
-            WHERE a.usuario_id = $1 AND a.data = $2 AND UPPER(s.nome) = $3
+            WHERE a.usuario_id = $1
+              AND a.data = $2
+              AND UPPER(s.nome) = $3
+              AND (($4::text IS NULL AND a.tipo_bobina IS NULL) OR a.tipo_bobina::text = $4::text)
             ORDER BY a.id DESC
             LIMIT 1`,
-          [req.auth.userId, req.params.data, setor],
+          [req.auth.userId, req.params.data, setor, tipoBobina],
         )
       : await pool.query(
           'SELECT id FROM apontamentos WHERE usuario_id = $1 AND data = $2 ORDER BY id DESC LIMIT 1',
@@ -808,12 +847,12 @@ app.get('/api/apontamentos/data/:data', auth, async (req: any, res) => {
   }
 });
 
-
-// Pintura, Solda, Montagem do Núcleo e Corte do Laser/Ferragem podem registrar
-// ocorrências antes da importação da produção. Corte do Laser e Ferragem usam o
-// mesmo login, porém permanecem como setores distintos no banco e nos relatórios.
-// Quando a Coordenação importar a data, replaceImportedProductionForDate encontra
-// este mesmo apontamento e substitui somente a coleção de produção.
+// Todos os setores podem registrar ocorrências antes da importação da produção.
+// A seleção de 1º/2º turno continua exclusiva dos setores definidos em
+// TURN_OCCURRENCE_SECTORS. Corte do Laser/Ferragem e Montagem do Núcleo/Corte do
+// Núcleo compartilham login, mas os registros permanecem separados pelo setor real.
+// Quando a Coordenação importar a produção, replaceImportedProductionForDate encontra
+// o mesmo apontamento e substitui somente a coleção de produção.
 app.post('/api/apontamentos/ocorrencias', auth, async (req: any, res) => {
   if (req.auth?.perfil === 'COORDENACAO') {
     return res.status(403).json({ error: 'A COORDENAÇÃO não utiliza o registro de ocorrências do apontador.' });
@@ -823,16 +862,21 @@ app.post('/api/apontamentos/ocorrencias', auth, async (req: any, res) => {
   const dataApontamento = String(data.data || '').trim();
   const setor = String(data.setor || '').trim().toUpperCase();
   const turno = String(data.turno || '').trim().toLowerCase();
-  const setoresPermitidos = ['PINTURA', 'SOLDA', 'MONTAGEM NUCLEO', 'CORTE LASER', 'FERRAGEM'];
+  const rawTipoBobina = String(data.tipoBobina || '').trim().toUpperCase();
+  const tipoBobina = ['AT', 'BT'].includes(rawTipoBobina) ? rawTipoBobina : null;
+  const usesTurnFlow = TURN_OCCURRENCE_SECTORS.has(setor);
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dataApontamento)) {
     return res.status(400).json({ error: 'Informe uma data válida para registrar as ocorrências.' });
   }
-  if (!setoresPermitidos.includes(setor)) {
-    return res.status(403).json({ error: 'Este setor não utiliza o registro antecipado de ocorrências por turno.' });
+  if (!IMPORT_SECTORS.has(setor)) {
+    return res.status(403).json({ error: 'Este setor não está habilitado para registro de ocorrências.' });
   }
-  if (!['1º turno', '2º turno'].includes(turno)) {
+  if (usesTurnFlow && !['1º turno', '2º turno'].includes(turno)) {
     return res.status(400).json({ error: 'Selecione o 1º ou o 2º turno antes de registrar as ocorrências.' });
+  }
+  if (setor === 'BOBINA AT/BT' && !tipoBobina) {
+    return res.status(400).json({ error: 'Selecione Bobina AT ou Bobina BT antes de registrar as ocorrências.' });
   }
   const validation = validateOccurrencePayload(data);
   if (validation) return res.status(400).json({ error: validation });
@@ -840,34 +884,42 @@ app.post('/api/apontamentos/ocorrencias', auth, async (req: any, res) => {
   const client = await pool.connect();
   try {
     const access = await getUserAccess(req.auth.userId);
-    const sharedFerragem = setor === 'FERRAGEM';
-    const accessSector = sharedFerragem ? 'CORTE LASER' : setor;
-    const sectorAccess = access.filter((row: any) => String(row.setor || '').trim().toUpperCase() === accessSector);
+    const sharedSector = isSharedOccurrenceSector(setor);
+    const accessSector = occurrenceAccessSector(setor);
+    const sectorAccess = access.filter(
+      (row: any) => String(row.setor || '').trim().toUpperCase() === accessSector,
+    );
     if (!sectorAccess.length) {
+      const groupedLogin = setor === 'FERRAGEM'
+        ? 'Corte do Laser/Ferragem'
+        : setor === 'CORTE DO NUCLEO'
+          ? 'Montagem do Núcleo/Corte do Núcleo'
+          : null;
       return res.status(403).json({
-        error: sharedFerragem
-          ? 'O acesso à Ferragem é permitido pelo login Corte do Laser/Ferragem.'
+        error: groupedLogin
+          ? `O acesso a ${setor} é permitido pelo login ${groupedLogin}.`
           : `O usuário não possui acesso ao setor ${setor}.`,
       });
     }
 
     let setorId: number;
-    if (sharedFerragem) {
+    if (sharedSector) {
       let sectorResult = await client.query(
-        `SELECT id FROM setores WHERE UPPER(nome) = 'FERRAGEM' ORDER BY id LIMIT 1`,
+        'SELECT id FROM setores WHERE UPPER(nome) = $1 ORDER BY id LIMIT 1',
+        [setor],
       );
-      // Compatibilidade com bases antigas: não exige SQL manual. Se Ferragem ainda
-      // não existir, o próprio sistema cria apenas o cadastro do setor.
+      // Compatibilidade com bases antigas: não exige SQL manual para cadastrar o
+      // setor vinculado caso ele ainda não exista na tabela de setores.
       if (!sectorResult.rows.length) {
-        sectorResult = await client.query(`INSERT INTO setores(nome) VALUES('FERRAGEM') RETURNING id`);
+        sectorResult = await client.query('INSERT INTO setores(nome) VALUES($1) RETURNING id', [setor]);
       }
       setorId = Number(sectorResult.rows[0].id);
     } else {
       setorId = Number(sectorAccess[0].setor_id);
     }
 
-    // As linhas MON/TRI/EPO são globais no modelo. Para Ferragem reutilizamos as
-    // linhas permitidas no login de Corte do Laser, sem criar usuario_acessos novo.
+    // As linhas MON/TRI/EPO são globais no modelo. Nos setores agrupados reutilizamos
+    // as linhas permitidas pelo login principal, sem criar novos usuario_acessos.
     const allowed = new Map(sectorAccess.map((row: any) => [row.linha, row.linha_id]));
     const lineBearingItems = [...occurrenceList(data.faltas), ...occurrenceList(data.observacoes)];
     for (const item of lineBearingItems) {
@@ -876,23 +928,25 @@ app.post('/api/apontamentos/ocorrencias', auth, async (req: any, res) => {
       }
     }
 
-    const scopedData = {
+    const scopedData = usesTurnFlow ? {
       ...data,
       paradasFaltaMaterial: occurrenceList(data.paradasFaltaMaterial).map((item) => ({ ...item, turno })),
       paradasMaquina: occurrenceList(data.paradasMaquina).map((item) => ({ ...item, turno })),
       naoConformidades: occurrenceList(data.naoConformidades).map((item) => ({ ...item, turno })),
       faltas: occurrenceList(data.faltas).map((item) => ({ ...item, turno })),
       observacoes: occurrenceList(data.observacoes).map((item) => ({ ...item, turno })),
-    };
-    const turnoDb = turno.toUpperCase();
+    } : data;
+    const turnoDb = usesTurnFlow ? turno.toUpperCase() : null;
+    const dbTipoBobina = setor === 'BOBINA AT/BT' ? tipoBobina : null;
 
     await client.query('BEGIN');
-    const current = sharedFerragem
+    const current = sharedSector
       ? await client.query(
           `SELECT id
              FROM apontamentos
             WHERE setor_id = $1
               AND data = $2::date
+              AND tipo_bobina IS NULL
             ORDER BY CASE WHEN usuario_id = $3 THEN 0 ELSE 1 END,
                      CASE WHEN origem_producao = 'IMPORTADO' THEN 0 ELSE 1 END,
                      id DESC
@@ -906,45 +960,61 @@ app.post('/api/apontamentos/ocorrencias', auth, async (req: any, res) => {
             WHERE usuario_id = $1
               AND setor_id = $2
               AND data = $3::date
+              AND (($4::text IS NULL AND tipo_bobina IS NULL) OR tipo_bobina::text = $4::text)
             ORDER BY CASE WHEN origem_producao = 'IMPORTADO' THEN 0 ELSE 1 END, id DESC
             LIMIT 1
             FOR UPDATE`,
-          [req.auth.userId, setorId, dataApontamento],
+          [req.auth.userId, setorId, dataApontamento, dbTipoBobina],
         );
 
     let apontamentoId: number;
     if (current.rows.length) {
       apontamentoId = Number(current.rows[0].id);
-      if (sharedFerragem) {
-        // Se a produção de Ferragem foi importada antes das ocorrências, ela pode ter
-        // nascido vinculada ao usuário da Coordenação. Ao apontar, passa a pertencer
-        // ao login Corte do Laser/Ferragem e segue o fluxo normal de histórico.
+      if (sharedSector) {
+        // Se a produção foi importada antes das ocorrências, o registro pode ter
+        // nascido vinculado à Coordenação. Ao apontar, preservamos como responsável
+        // o usuário que efetivamente registrou as ocorrências.
         await client.query('UPDATE apontamentos SET usuario_id = $2 WHERE id = $1', [apontamentoId, req.auth.userId]);
       }
     } else {
       const inserted = await client.query(
         `INSERT INTO apontamentos(data, usuario_id, setor_id, tipo_bobina, origem_producao, complementado)
-         VALUES($1::date, $2, $3, NULL, 'IMPORTADO', FALSE)
+         VALUES($1::date, $2, $3, $4, 'IMPORTADO', FALSE)
          RETURNING id`,
-        [dataApontamento, req.auth.userId, setorId],
+        [dataApontamento, req.auth.userId, setorId, dbTipoBobina],
       );
       apontamentoId = Number(inserted.rows[0].id);
     }
 
-    const firstTurn = turno === '1º turno';
-    await client.query(
-      `UPDATE apontamentos
-          SET origem_producao = 'IMPORTADO',
-              turno1_complementado = CASE WHEN $2::boolean THEN TRUE ELSE COALESCE(turno1_complementado, FALSE) END,
-              turno2_complementado = CASE WHEN $2::boolean THEN COALESCE(turno2_complementado, FALSE) ELSE TRUE END,
-              complementado = CASE WHEN $2::boolean THEN COALESCE(turno2_complementado, FALSE) ELSE COALESCE(turno1_complementado, FALSE) END,
-              atualizado_em = NOW(),
-              status_aprovacao = 'PENDENTE',
-              aprovado_em = NULL,
-              aprovado_por = NULL
-        WHERE id = $1`,
-      [apontamentoId, firstTurn],
-    );
+    if (usesTurnFlow) {
+      const firstTurn = turno === '1º turno';
+      await client.query(
+        `UPDATE apontamentos
+            SET origem_producao = 'IMPORTADO',
+                turno1_complementado = CASE WHEN $2::boolean THEN TRUE ELSE COALESCE(turno1_complementado, FALSE) END,
+                turno2_complementado = CASE WHEN $2::boolean THEN COALESCE(turno2_complementado, FALSE) ELSE TRUE END,
+                complementado = CASE WHEN $2::boolean THEN COALESCE(turno2_complementado, FALSE) ELSE COALESCE(turno1_complementado, FALSE) END,
+                atualizado_em = NOW(),
+                status_aprovacao = 'PENDENTE',
+                aprovado_em = NULL,
+                aprovado_por = NULL
+          WHERE id = $1`,
+        [apontamentoId, firstTurn],
+      );
+    } else {
+      await client.query(
+        `UPDATE apontamentos
+            SET origem_producao = 'IMPORTADO',
+                complementado = TRUE,
+                atualizado_em = NOW(),
+                status_aprovacao = 'PENDENTE',
+                aprovado_em = NULL,
+                aprovado_por = NULL
+          WHERE id = $1`,
+        [apontamentoId],
+      );
+    }
+
     await deleteOccurrenceCollections(client, apontamentoId, scopedData, turnoDb);
     await insertOccurrenceCollections(client, apontamentoId, scopedData, allowed);
     await client.query('COMMIT');
@@ -1001,7 +1071,7 @@ app.put('/api/apontamentos/:id/complemento', auth, async (req: any, res) => {
     }
 
     const setor = String(current.rows[0].setor || '').trim().toUpperCase();
-    const usesTurnFlow = ['PINTURA', 'SOLDA', 'MONTAGEM NUCLEO', 'CORTE LASER', 'FERRAGEM'].includes(setor);
+    const usesTurnFlow = TURN_OCCURRENCE_SECTORS.has(setor);
     const turno = String(data.turno || '').trim().toLowerCase();
     if (usesTurnFlow && !['1º turno', '2º turno'].includes(turno)) {
       return res.status(400).json({ error: 'Selecione o 1º ou o 2º turno antes de finalizar.' });
@@ -1225,8 +1295,7 @@ async function replaceImportedProductionForDate(
   for (const unit of unitGroups.values()) {
     const first = unit[0];
     const tipoBobina = first.setor === 'BOBINA AT/BT' ? first.tipoBobina || null : null;
-    const dashboardOnly = DASHBOARD_ONLY_IMPORT_SECTORS.has(first.setor);
-    const sectorSharedAcrossUsers = dashboardOnly || first.setor === 'FERRAGEM';
+    const sectorSharedAcrossUsers = SHARED_IMPORT_SECTORS.has(first.setor);
     const existing = sectorSharedAcrossUsers
       ? await client.query(
           `SELECT id, complementado
@@ -1255,19 +1324,18 @@ async function replaceImportedProductionForDate(
     let apontamentoId: number;
     if (existing.rows.length) {
       apontamentoId = Number(existing.rows[0].id);
+      // Preserva o estado de complemento existente. Isso é essencial quando as
+      // ocorrências/turnos foram registrados antes da produção ser importada.
       await client.query(
-        `UPDATE apontamentos
-            SET atualizado_em = NOW(),
-                complementado = CASE WHEN $2::boolean THEN TRUE ELSE complementado END
-          WHERE id = $1`,
-        [apontamentoId, dashboardOnly],
+        'UPDATE apontamentos SET atualizado_em = NOW() WHERE id = $1',
+        [apontamentoId],
       );
     } else {
       const inserted = await client.query(
         `INSERT INTO apontamentos(data, usuario_id, setor_id, tipo_bobina, origem_producao, complementado)
-         VALUES($1, $2, $3, $4, 'IMPORTADO', $5)
+         VALUES($1, $2, $3, $4, 'IMPORTADO', FALSE)
          RETURNING id`,
-        [data, first.usuarioId, first.setorId, tipoBobina, dashboardOnly],
+        [data, first.usuarioId, first.setorId, tipoBobina],
       );
       apontamentoId = Number(inserted.rows[0].id);
     }
@@ -1811,12 +1879,16 @@ app.put('/api/coordenacao/apontamentos/:id', auth, requireCoordenacao, async (re
     if (validation) return res.status(400).json({ error: validation });
 
     const current = await client.query(
-      'SELECT id, usuario_id, setor_id, data, origem_producao FROM apontamentos WHERE id = $1',
+      `SELECT a.id, a.usuario_id, a.setor_id, a.data, a.origem_producao,
+              EXISTS(SELECT 1 FROM producao p WHERE p.apontamento_id = a.id) AS possui_producao
+         FROM apontamentos a
+        WHERE a.id = $1`,
       [id],
     );
     if (!current.rows.length) return res.status(404).json({ error: 'Registro não encontrado.' });
 
     const isImported = String(current.rows[0].origem_producao || '').toUpperCase() === 'IMPORTADO';
+    const hasProduction = current.rows[0].possui_producao === true;
     const lineBearingItems = [
       ...(isImported ? [] : occurrenceList(data.producoes)),
       ...occurrenceList(data.faltas),
@@ -1832,17 +1904,21 @@ app.put('/api/coordenacao/apontamentos/:id', auth, requireCoordenacao, async (re
     }
 
     await client.query('BEGIN');
-    const nextDate = isImported ? dateOnly(current.rows[0].data) : data.data;
+    // A data fica bloqueada somente depois que existe produção importada. Enquanto o
+    // registro contém apenas ocorrências antecipadas, a Coordenação pode corrigir a
+    // data caso o apontador tenha lançado no dia errado.
+    const lockImportedDate = isImported && hasProduction;
+    const nextDate = lockImportedDate ? dateOnly(current.rows[0].data) : data.data;
     await client.query(
       `UPDATE apontamentos
           SET data = $1,
-              complementado = CASE WHEN origem_producao = 'IMPORTADO' THEN TRUE ELSE complementado END,
+              complementado = CASE WHEN $3::boolean THEN TRUE ELSE complementado END,
               atualizado_em = NOW(),
               status_aprovacao = 'PENDENTE',
               aprovado_em = NULL,
               aprovado_por = NULL
         WHERE id = $2`,
-      [nextDate, id],
+      [nextDate, id, lockImportedDate],
     );
 
     if (!isImported) {
@@ -1880,10 +1956,16 @@ app.patch('/api/coordenacao/apontamentos/:id/aprovacao', auth, requireCoordenaca
   try {
     if (status === 'APROVADO') {
       const readiness = await pool.query(
-        'SELECT origem_producao, complementado FROM apontamentos WHERE id = $1',
+        `SELECT a.origem_producao, a.complementado,
+                EXISTS(SELECT 1 FROM producao p WHERE p.apontamento_id = a.id) AS possui_producao
+           FROM apontamentos a
+          WHERE a.id = $1`,
         [id],
       );
       if (!readiness.rows.length) return res.status(404).json({ error: 'Registro não encontrado.' });
+      if (readiness.rows[0].possui_producao !== true) {
+        return res.status(409).json({ error: 'A produção ainda não foi importada para este apontamento.' });
+      }
       if (String(readiness.rows[0].origem_producao || '').toUpperCase() === 'IMPORTADO' && readiness.rows[0].complementado === false) {
         return res.status(409).json({ error: 'Este registro ainda aguarda o apontador finalizar o complemento das ocorrências.' });
       }

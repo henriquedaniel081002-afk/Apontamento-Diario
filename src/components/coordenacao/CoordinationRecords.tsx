@@ -51,6 +51,7 @@ function RecordActions({
   const isApproved = record.statusAprovacao === 'APROVADO';
   const isApprovalBusy = approvalBusyId === record.id;
   const isAnyApprovalBusy = Boolean(approvalBusyId);
+  const awaitingProduction = record.producoes.length === 0;
   const awaitingComplement = record.origemProducao === 'IMPORTADO' && record.complementado === false;
   const columnsClass = showApprovalActions ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-1 min-[420px]:grid-cols-3';
 
@@ -78,12 +79,12 @@ function RecordActions({
         <button
           type="button"
           onClick={() => onApprovalChange?.(record, isApproved ? 'PENDENTE' : 'APROVADO')}
-          disabled={isAnyApprovalBusy || !onApprovalChange || (!isApproved && awaitingComplement)}
+          disabled={isAnyApprovalBusy || !onApprovalChange || (!isApproved && (awaitingProduction || awaitingComplement))}
           className={`inline-flex min-h-11 items-center justify-center gap-2 px-2 text-xs font-black transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset ${isApproved
             ? 'text-amber-300 hover:bg-amber-400/[0.08] focus-visible:ring-amber-400'
             : 'text-emerald-300 hover:bg-emerald-400/[0.08] focus-visible:ring-emerald-400'}`}
-          aria-label={awaitingComplement && !isApproved ? `${accessibleRecordName} ainda aguarda complemento` : isApproved ? `Desfazer aprovação de ${accessibleRecordName}` : `Aprovar ${accessibleRecordName}`}
-          title={awaitingComplement && !isApproved ? 'Aguarde o apontador finalizar o complemento das ocorrências antes de aprovar.' : undefined}
+          aria-label={awaitingProduction && !isApproved ? `${accessibleRecordName} ainda aguarda importação da produção` : awaitingComplement && !isApproved ? `${accessibleRecordName} ainda aguarda complemento` : isApproved ? `Desfazer aprovação de ${accessibleRecordName}` : `Aprovar ${accessibleRecordName}`}
+          title={awaitingProduction && !isApproved ? 'A produção ainda não foi importada para este apontamento.' : awaitingComplement && !isApproved ? 'Aguarde o apontador finalizar o complemento das ocorrências antes de aprovar.' : undefined}
         >
           {isApprovalBusy ? (
             <Loader2 className="size-4 animate-spin" aria-hidden="true" />
@@ -92,7 +93,7 @@ function RecordActions({
           ) : (
             <BadgeCheck className="size-4" aria-hidden="true" />
           )}
-          <span>{isApprovalBusy ? 'Salvando…' : isApproved ? 'Desfazer' : awaitingComplement ? 'Aguardando' : 'Aprovar'}</span>
+          <span>{isApprovalBusy ? 'Salvando…' : isApproved ? 'Desfazer' : awaitingProduction || awaitingComplement ? 'Aguardando' : 'Aprovar'}</span>
         </button>
       )}
       <button
@@ -114,6 +115,8 @@ function getSectorSubtitle(record: Apontamento): string {
     'BOBINA AT': 'BOBINAGEM',
     'BOBINA BT': 'BOBINAGEM',
     'CORTE LASER': 'CORTE DO LASER',
+    'CORTE DO NUCLEO': 'CORTE DO NÚCLEO',
+    FERRAGEM: 'FERRAGEM',
     ISOLANTE: 'ISOLANTE',
     'MONTAGEM NUCLEO': 'MONTAGEM DO NÚCLEO',
     'MONTAGEM FINAL': 'MONTAGEM FINAL',
@@ -141,7 +144,7 @@ function getWeekday(dateString: string): string {
 interface MetricProps {
   icon: ReactNode;
   label: string;
-  value: number;
+  value: ReactNode;
   valueClassName: string;
   iconClassName: string;
   helper: string;
@@ -164,7 +167,17 @@ function Metric({ icon, label, value, valueClassName, iconClassName, helper }: M
 
 function ApprovalBadge({ record }: { record: Apontamento }) {
   const isApproved = record.statusAprovacao === 'APROVADO';
+  const awaitingProduction = record.producoes.length === 0;
   const awaitingComplement = record.origemProducao === 'IMPORTADO' && record.complementado === false;
+
+  if (awaitingProduction && !isApproved) {
+    return (
+      <span className="inline-flex min-h-7 items-center gap-1.5 rounded-lg border border-cyan-400/25 bg-cyan-400/10 px-2 py-1 text-xs font-black uppercase tracking-wide text-cyan-300">
+        <CircleDashed className="size-3.5" aria-hidden="true" />
+        Aguardando produção
+      </span>
+    );
+  }
 
   if (awaitingComplement && !isApproved) {
     return (
@@ -196,6 +209,7 @@ function CoordinationRecordCard(props: CoordinationRecordsProps & { record: Apon
   const totals = getApontamentoTotals(record);
   const lines = getApontamentoLines(record);
   const unitLabel = getOperationalUnitLabel(record);
+  const awaitingProduction = record.producoes.length === 0;
 
   return (
     <article className="record-industrial group overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-base)] shadow-[var(--shadow-surface)] transition-colors">
@@ -256,10 +270,10 @@ function CoordinationRecordCard(props: CoordinationRecordsProps & { record: Apon
           <Metric
             icon={<Zap className="size-4" />}
             label="Produção"
-            value={totals.producao}
-            valueClassName="text-emerald-300"
-            iconClassName="text-emerald-400"
-            helper="unidades"
+            value={awaitingProduction ? '—' : totals.producao}
+            valueClassName={awaitingProduction ? 'text-cyan-300' : 'text-emerald-300'}
+            iconClassName={awaitingProduction ? 'text-cyan-400' : 'text-emerald-400'}
+            helper={awaitingProduction ? 'aguardando importação' : 'unidades'}
           />
           <Metric
             icon={<UserX className="size-4" />}

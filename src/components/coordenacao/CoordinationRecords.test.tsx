@@ -62,6 +62,39 @@ describe('CoordinationRecords — aprovação', () => {
     expect(onApprovalChange).not.toHaveBeenCalled();
   });
 
+
+  it('exibe ocorrências antecipadas no card e bloqueia aprovação até a produção ser importada', async () => {
+    const user = userEvent.setup();
+    const onApprovalChange = vi.fn();
+    const record = makeRecord({
+      setor: 'CORTE DO NUCLEO',
+      userName: 'Montagem do Núcleo/Corte do Núcleo',
+      producoes: [],
+      origemProducao: 'IMPORTADO',
+      complementado: true,
+      observacoes: [{ id: 'obs-1', observacao: 'Ocorrência registrada antes da produção.' }],
+    });
+
+    render(
+      <CoordinationRecords
+        {...passiveActions}
+        records={[record]}
+        showApprovalActions
+        onApprovalChange={onApprovalChange}
+      />,
+    );
+
+    expect(screen.getByText('Aguardando produção')).toBeInTheDocument();
+    expect(screen.getByText('aguardando importação')).toBeInTheDocument();
+    expect(screen.getByText('Montagem do Núcleo/Corte do Núcleo')).toBeInTheDocument();
+    const approval = screen.getByRole('button', { name: /aguarda importação da produção/i });
+    expect(approval).toBeDisabled();
+    expect(approval).toHaveAttribute('title', 'A produção ainda não foi importada para este apontamento.');
+
+    await user.click(approval);
+    expect(onApprovalChange).not.toHaveBeenCalled();
+  });
+
   it('permite desfazer um registro aprovado e solicita o status PENDENTE', async () => {
     const user = userEvent.setup();
     const onApprovalChange = vi.fn();

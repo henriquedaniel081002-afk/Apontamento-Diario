@@ -18,6 +18,7 @@ import { CustomSelect } from '../components/common/CustomSelect';
 
 function displaySectorLabel(setor: User['setor']): string {
   if (setor === 'CORTE LASER') return 'Corte do Laser/Ferragem';
+  if (setor === 'MONTAGEM NUCLEO') return 'Montagem do Núcleo/Corte do Núcleo';
   return setor || 'Setor não informado';
 }
 
@@ -180,7 +181,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     value: user.id,
                     label: user.perfil === 'COORDENACAO'
                       ? 'COORDENAÇÃO — Acesso global'
-                      : user.setor === 'CORTE LASER' ? 'Corte do Laser/Ferragem' : `${user.name} — ${displaySectorLabel(user.setor)}`,
+                      : ['CORTE LASER', 'MONTAGEM NUCLEO'].includes(String(user.setor)) ? displaySectorLabel(user.setor) : `${user.name} — ${displaySectorLabel(user.setor)}`,
                     description: user.perfil === 'COORDENACAO'
                       ? 'Visão global e aprovações'
                       : `${displaySectorLabel(user.setor)} · ${user.linhas.length === 1 ? 'Linha' : 'Linhas'} ${user.linhas.join(' / ')}`,

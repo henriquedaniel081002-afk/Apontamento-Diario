@@ -73,6 +73,20 @@ describe('unidades operacionais', () => {
     expect(status.pendingUnits.map((unit) => unit.id)).toContain('MONTAGEM FINAL TRI');
   });
 
+  it('não considera ocorrência antecipada como produção reportada antes da importação', () => {
+    const status = getOperationalStatus([
+      makeApontamento({
+        setor: 'PINTURA',
+        origemProducao: 'IMPORTADO',
+        complementado: true,
+        producoes: [],
+        observacoes: [{ id: 'obs-pre', observacao: 'Registro antecipado' }],
+      }),
+    ], '2026-08-13');
+
+    expect(status.pendingUnits.map((unit) => unit.id)).toContain('PINTURA');
+  });
+
   it('não considera produção importada como apontada antes do complemento', () => {
     const status = getOperationalStatus([
       makeApontamento({

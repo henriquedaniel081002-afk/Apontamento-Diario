@@ -181,7 +181,7 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
       .sort((a, b) => b.data.localeCompare(a.data) || Number(b.id) - Number(a.id)));
     if (detailItem?.id === updated.id) setDetailItem(updated);
     setEditItem(null);
-    setToast({ id: Date.now().toString(), type: 'success', message: updated.origemProducao === 'IMPORTADO' ? 'Apontamento atualizado e finalizado. Já está disponível para aprovação.' : 'Apontamento atualizado com sucesso.' });
+    setToast({ id: Date.now().toString(), type: 'success', message: updated.origemProducao === 'IMPORTADO' && updated.producoes.length > 0 ? 'Apontamento atualizado e finalizado. Já está disponível para aprovação.' : 'Apontamento atualizado com sucesso.' });
   };
 
   const handleImportProduction = async (data: string, groups: ProductionImportGroup[], setorFiltro: ImportSectorFilter) => {

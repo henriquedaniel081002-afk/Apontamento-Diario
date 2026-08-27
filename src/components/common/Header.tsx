@@ -107,7 +107,9 @@ export const Header: React.FC<HeaderProps> = ({ user, activeTab, onTabChange, on
     ? 'Acesso global'
     : user.setor === 'CORTE LASER'
       ? 'Corte do Laser/Ferragem'
-      : user.setor || 'Setor não informado';
+      : user.setor === 'MONTAGEM NUCLEO'
+        ? 'Montagem do Núcleo/Corte do Núcleo'
+        : user.setor || 'Setor não informado';
   const navigation = navigationByProfile[user.perfil];
 
   return (

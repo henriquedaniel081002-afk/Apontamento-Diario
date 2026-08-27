@@ -73,7 +73,8 @@ const isolante: User = {
   linhas: ['MON', 'TRI'],
 };
 
-it('mantém o fluxo baseado em produção importada para os demais setores', async () => {
+it('mantém a produção importada e também libera registro antecipado nos demais setores', async () => {
+  const user = userEvent.setup();
   vi.mocked(apontamentoService.getPendingImported).mockResolvedValue([
     {
       id: 'importado-isolante-1',
@@ -98,10 +99,23 @@ it('mantém o fluxo baseado em produção importada para os demais setores', asy
   render(<ApontamentoPage user={isolante} onNavigateToHistory={vi.fn()} />);
 
   expect(await screen.findByText('Selecione o dia para completar')).toBeVisible();
-  expect(screen.queryByRole('button', { name: 'Registrar ocorrências' })).not.toBeInTheDocument();
+  const registerButton = screen.getByRole('button', { name: 'Registrar ocorrências' });
+  expect(registerButton).toBeEnabled();
+  await user.click(registerButton);
+
+  expect(screen.queryByRole('heading', { name: 'Qual turno você está apontando?' })).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Registrar ocorrências' }));
+  expect(await screen.findByLabelText('Data')).toBeVisible();
+  expect(apontamentoService.getByDateAndSector).toHaveBeenCalledWith(
+    expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+    'ISOLANTE',
+    isolante.id,
+    undefined,
+  );
 });
 
-it('libera o registro por turno sem produção para Montagem do Núcleo', async () => {
+it('agrupa Montagem do Núcleo/Corte do Núcleo e mantém controle de turno nos dois', async () => {
+  const user = userEvent.setup();
   const montagemNucleo: User = {
     id: 'usr-montagem-nucleo',
     name: 'Montagem Nucleo',
@@ -113,7 +127,21 @@ it('libera o registro por turno sem produção para Montagem do Núcleo', async 
   render(<ApontamentoPage user={montagemNucleo} onNavigateToHistory={vi.fn()} />);
 
   expect(screen.getByRole('heading', { name: 'Qual turno você está apontando?' })).toBeVisible();
-  expect(screen.getByRole('button', { name: 'Registrar ocorrências' })).toBeDisabled();
+  const registerButton = screen.getByRole('button', { name: 'Registrar ocorrências' });
+  expect(registerButton).toBeDisabled();
+
+  await user.click(screen.getByRole('button', { name: /2º turno/i }));
+  await user.click(screen.getByRole('button', { name: /Corte do Núcleo/i }));
+  expect(registerButton).toBeEnabled();
+  await user.click(registerButton);
+
+  expect(await screen.findByRole('heading', { name: /Corte do Núcleo · 2º turno/i })).toBeVisible();
+  expect(apontamentoService.getByDateAndSector).toHaveBeenCalledWith(
+    expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+    'CORTE DO NUCLEO',
+    montagemNucleo.id,
+    undefined,
+  );
 });
 
 it('no login Corte do Laser/Ferragem exige escolher o setor e mantém Ferragem separado', async () => {
@@ -141,5 +169,6 @@ it('no login Corte do Laser/Ferragem exige escolher o setor e mantém Ferragem s
     expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
     'FERRAGEM',
     corteLaser.id,
+    undefined,
   );
 });

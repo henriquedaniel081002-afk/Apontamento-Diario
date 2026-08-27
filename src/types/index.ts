@@ -131,8 +131,9 @@ export interface ApontamentoComplementoPayload {
 
 export interface OccurrenceRegistrationPayload extends ApontamentoComplementoPayload {
   data: string;
-  setor: 'PINTURA' | 'SOLDA' | 'MONTAGEM NUCLEO' | 'CORTE LASER' | 'FERRAGEM';
-  turno: Turno;
+  setor: Setor;
+  tipoBobina?: TipoBobina;
+  turno?: Turno;
 }
 
 export interface ApontamentoEditPayload extends ApontamentoComplementoPayload {

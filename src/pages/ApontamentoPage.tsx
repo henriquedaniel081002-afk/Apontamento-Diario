@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ArrowRight, CalendarDays, CheckCircle2, ClipboardCheck, Clock3, Inbox, Loader2, RefreshCw, Save, Sparkles } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CalendarDays, CheckCircle2, ClipboardCheck, ClipboardPlus, Clock3, Inbox, Loader2, RefreshCw, Save, Sparkles } from 'lucide-react';
 import { Apontamento, FaltaItem, NaoConformidadeItem, ObservacaoItem, ParadaFaltaMaterialItem, ParadaMaquinaItem, Turno, User } from '../types';
 import { apontamentoService } from '../services/apontamentoService';
 import { formatDateBR } from '../utils/formatters';
@@ -16,6 +16,7 @@ import { Badge, Button, EmptyState, PageContainer, PageHeader, Stepper, Surface 
 import { TurnOccurrencePage } from './TurnOccurrencePage';
 
 interface Props { user: User; onNavigateToHistory: () => void; }
+interface ImportedProps extends Props { onRegisterEarly: () => void; }
 type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 const stepLabels = ['Produção importada', 'Falta de material', 'Máquina quebrada', 'Não conformidade', 'Faltas', 'Observações', 'Revisão e envio'] as const;
 const TURNOS: Turno[] = ['1º turno', '2º turno'];
@@ -24,14 +25,14 @@ function recordLabel(record: Apontamento): string {
   if (record.setor === 'BOBINA AT' || record.setor === 'BOBINA BT') return record.setor.replace('BOBINA', 'Bobina');
   if (record.setor === 'MONTAGEM FINAL') { const line = record.producoes[0]?.linha || record.linhasPermitidas?.[0]; return `Montagem Final${line ? ` ${line}` : ''}`; }
   if (record.setor === 'MPA') { const line = record.producoes[0]?.linha || record.linhasPermitidas?.[0]; return `MPA${line ? ` ${line}` : ''}`; }
-  const labels: Record<string, string> = { 'CORTE LASER': 'Corte do Laser', ISOLANTE: 'Isolante', 'MONTAGEM NUCLEO': 'Montagem do Núcleo', PINTURA: 'Pintura', SOLDA: 'Solda', EPOXI: 'Epóxi' };
+  const labels: Record<string, string> = { 'CORTE LASER': 'Corte do Laser', 'CORTE DO NUCLEO': 'Corte do Núcleo', FERRAGEM: 'Ferragem', ISOLANTE: 'Isolante', 'MONTAGEM NUCLEO': 'Montagem do Núcleo', PINTURA: 'Pintura', SOLDA: 'Solda', EPOXI: 'Epóxi' };
   return labels[record.setor] || String(record.setor);
 }
 
 const clone = <T,>(items: T[] | undefined): T[] => (items || []).map((item) => ({ ...item }));
 const sameTurn = (value: string | undefined, turno: Turno) => String(value || '').trim().toLowerCase() === turno.toLowerCase();
 
-const ImportedApontamentoPage: React.FC<Props> = ({ user, onNavigateToHistory }) => {
+const ImportedApontamentoPage: React.FC<ImportedProps> = ({ user, onNavigateToHistory, onRegisterEarly }) => {
   const usesTurnFlow = user.setor === 'PINTURA' || user.setor === 'SOLDA';
   const [pendingImports, setPendingImports] = useState<Apontamento[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -154,12 +155,12 @@ const ImportedApontamentoPage: React.FC<Props> = ({ user, onNavigateToHistory })
       title="Ocorrências do apontamento"
       description="Confira a produção importada e registre somente as ocorrências que realmente aconteceram. Nenhuma categoria é obrigatória."
       metadata={<Badge variant="neutral">{user.setor || 'Setor não definido'}</Badge>}
-      actions={<Surface tone="muted" padding="sm" className="w-full min-w-[min(100%,18rem)] sm:w-auto"><div className="flex items-center justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-wider text-[var(--text-tertiary)]">Aguardando complemento</p><p className="mt-1 text-2xl font-black text-[var(--text-primary)]">{pendingImports.length}</p></div><Button size="sm" variant="secondary" disabled={loading || isSaving} leftIcon={<RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />} onClick={() => void loadPending(true)}>Atualizar</Button></div></Surface>}
+      actions={<div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-stretch"><Button variant="secondary" disabled={isSaving} leftIcon={<ClipboardPlus className="h-4 w-4" />} onClick={onRegisterEarly}>Registrar ocorrências</Button><Surface tone="muted" padding="sm" className="w-full min-w-[min(100%,18rem)] sm:w-auto"><div className="flex items-center justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-wider text-[var(--text-tertiary)]">Aguardando complemento</p><p className="mt-1 text-2xl font-black text-[var(--text-primary)]">{pendingImports.length}</p></div><Button size="sm" variant="secondary" disabled={loading || isSaving} leftIcon={<RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />} onClick={() => void loadPending(true)}>Atualizar</Button></div></Surface></div>}
     />
 
     {loading ? <Surface tone="base" padding="lg" className="flex min-h-56 items-center justify-center"><div role="status" className="flex items-center gap-3 text-sm font-bold text-[var(--text-secondary)]"><Loader2 className="h-5 w-5 animate-spin text-[var(--accent)]" />Carregando produção importada…</div></Surface>
     : loadError ? <Surface tone="base" padding="lg"><EmptyState icon={<Inbox className="h-6 w-6" />} title="Não foi possível carregar os apontamentos" description={loadError} action={<Button onClick={() => void loadPending(true)}>Tentar novamente</Button>} /></Surface>
-    : pendingImports.length === 0 ? <Surface tone="base" padding="lg"><EmptyState icon={<ClipboardCheck className="h-6 w-6" />} title="Nenhum apontamento aguardando complemento" description="Quando a Coordenação importar uma produção para sua unidade, o registro aparecerá aqui para você complementar as ocorrências do dia." action={<Button variant="secondary" leftIcon={<RefreshCw className="h-4 w-4" />} onClick={() => void loadPending(true)}>Verificar novamente</Button>} /></Surface>
+    : pendingImports.length === 0 ? <Surface tone="base" padding="lg"><EmptyState icon={<ClipboardCheck className="h-6 w-6" />} title="Nenhum apontamento aguardando complemento" description="Você pode registrar as ocorrências agora, mesmo antes da importação da produção. Quando a produção chegar, ela será vinculada ao mesmo apontamento." action={<div className="flex flex-wrap justify-center gap-2"><Button leftIcon={<ClipboardPlus className="h-4 w-4" />} onClick={onRegisterEarly}>Registrar ocorrências</Button><Button variant="secondary" leftIcon={<RefreshCw className="h-4 w-4" />} onClick={() => void loadPending(true)}>Verificar produção</Button></div>} /></Surface>
     : selected && <>
       <Surface tone="base" padding="md"><div className="mb-3"><h2 className="text-sm font-bold text-[var(--text-primary)]">Selecione o dia para completar</h2><p className="mt-1 text-xs text-[var(--text-tertiary)]">A produção permanece bloqueada para edição.</p></div><div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">{pendingImports.map((record) => { const active = record.id === selected.id; const total = record.producoes.reduce((sum, item) => sum + Number(item.quantidade || 0), 0); return <button key={record.id} type="button" onClick={() => !isSaving && setSelectedId(record.id)} aria-pressed={active} className={`rounded-xl border p-3 text-left transition-colors ${active ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : 'border-[var(--border-subtle)] bg-[var(--surface-muted)] hover:border-[var(--accent-border)]'}`}><div className="flex items-center justify-between gap-2"><span className={`text-sm font-black ${active ? 'text-[var(--accent)]' : 'text-[var(--text-primary)]'}`}>{formatDateBR(record.data)}</span>{active && <Badge variant="success">Selecionado</Badge>}</div><p className="mt-1 text-xs font-semibold text-[var(--text-secondary)]">{recordLabel(record)}</p><p className="mt-2 text-xs text-[var(--text-tertiary)]">{total} unidades · {record.producoes.length} combinação(ões)</p></button>; })}</div></Surface>
       <Surface tone="raised" padding="md" className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--accent-soft)] text-[var(--accent)]"><CalendarDays className="h-5 w-5" /></span><div><p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-tertiary)]">Complete o apontamento de</p><h2 className="mt-1 text-lg font-black text-[var(--text-primary)]">{formatDateBR(selected.data)} · {recordLabel(selected)}</h2></div></div><Badge variant="warning">Aguardando complemento</Badge></Surface>
@@ -192,8 +193,12 @@ const ImportedApontamentoPage: React.FC<Props> = ({ user, onNavigateToHistory })
 
 
 export const ApontamentoPage: React.FC<Props> = (props) => {
+  const [earlyRegistration, setEarlyRegistration] = useState(false);
   if (['PINTURA', 'SOLDA', 'MONTAGEM NUCLEO', 'CORTE LASER'].includes(String(props.user.setor || ''))) {
     return <TurnOccurrencePage {...props} />;
   }
-  return <ImportedApontamentoPage {...props} />;
+  if (earlyRegistration) {
+    return <TurnOccurrencePage {...props} onBackToImported={() => setEarlyRegistration(false)} />;
+  }
+  return <ImportedApontamentoPage {...props} onRegisterEarly={() => setEarlyRegistration(true)} />;
 };

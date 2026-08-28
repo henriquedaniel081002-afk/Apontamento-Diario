@@ -605,6 +605,74 @@ async function insertOccurrenceCollections(client: any, apontamentoId: number, d
 
 }
 
+async function mergeApontamentoIntoCanonical(
+  client: any,
+  canonicalId: number,
+  duplicateId: number,
+): Promise<number> {
+  if (canonicalId === duplicateId) return canonicalId;
+
+  const meta = await client.query(
+    `SELECT id, complementado, turno1_complementado, turno2_complementado
+       FROM apontamentos
+      WHERE id = ANY($1::bigint[])
+      FOR UPDATE`,
+    [[canonicalId, duplicateId]],
+  );
+  const canonical = meta.rows.find((row: any) => Number(row.id) === canonicalId);
+  const duplicate = meta.rows.find((row: any) => Number(row.id) === duplicateId);
+  if (!canonical) return duplicate ? duplicateId : canonicalId;
+  if (!duplicate) return canonicalId;
+
+  // Ocorrências pertencem ao cartão operacional (data + setor), não ao cartão
+  // físico que existia antes da consolidação. Ao corrigir uma data, todo o
+  // conteúdo digitado no dia incorreto é incorporado ao cartão correto.
+  for (const table of ['paradas_falta_material', 'paradas_maquina', 'nao_conformidades', 'faltas', 'observacoes']) {
+    await client.query(`UPDATE ${table} SET apontamento_id = $1 WHERE apontamento_id = $2`, [canonicalId, duplicateId]);
+  }
+
+  // Preserva produção que exista somente no cartão movido, mas nunca duplica o
+  // mesmo grupo linha + potência + turno já presente no cartão de destino.
+  await client.query(
+    `INSERT INTO producao(apontamento_id, linha_id, potencia, quantidade, turno)
+     SELECT $1, p.linha_id, p.potencia, p.quantidade, p.turno
+       FROM producao p
+      WHERE p.apontamento_id = $2
+        AND NOT EXISTS (
+          SELECT 1
+            FROM producao atual
+           WHERE atual.apontamento_id = $1
+             AND atual.linha_id = p.linha_id
+             AND atual.potencia = p.potencia
+             AND COALESCE(atual.turno::text, '') = COALESCE(p.turno::text, '')
+        )`,
+    [canonicalId, duplicateId],
+  );
+  await client.query('DELETE FROM producao WHERE apontamento_id = $1', [duplicateId]);
+  await client.query('DELETE FROM apontamentos WHERE id = $1', [duplicateId]);
+
+  const turno1 = canonical.turno1_complementado === true || duplicate.turno1_complementado === true;
+  const turno2 = canonical.turno2_complementado === true || duplicate.turno2_complementado === true;
+  const hasTurnFlags = turno1 || turno2;
+  const legacyComplemented = canonical.complementado === true || duplicate.complementado === true;
+  const complementado = hasTurnFlags ? (turno1 && turno2) : legacyComplemented;
+
+  await client.query(
+    `UPDATE apontamentos
+        SET turno1_complementado = $2,
+            turno2_complementado = $3,
+            complementado = $4,
+            status_aprovacao = 'PENDENTE',
+            aprovado_em = NULL,
+            aprovado_por = NULL,
+            atualizado_em = NOW()
+      WHERE id = $1`,
+    [canonicalId, turno1, turno2, complementado],
+  );
+
+  return canonicalId;
+}
+
 async function mergeTurnSectorDuplicateGroup(
   client: any,
   data: string,
@@ -637,58 +705,9 @@ async function mergeTurnSectorDuplicateGroup(
 
   if (!records.rows.length) return null;
   const canonicalId = Number(records.rows[0].id);
-  if (records.rows.length === 1) return canonicalId;
-
-  const turno1 = records.rows.some((row: any) => row.turno1_complementado === true);
-  const turno2 = records.rows.some((row: any) => row.turno2_complementado === true);
-  const hasTurnFlags = turno1 || turno2;
-  const legacyComplemented = records.rows.some((row: any) => row.complementado === true);
-
   for (const row of records.rows.slice(1)) {
-    const duplicateId = Number(row.id);
-
-    // Ocorrências dos dois turnos precisam coexistir no mesmo cartão.
-    for (const table of ['paradas_falta_material', 'paradas_maquina', 'nao_conformidades', 'faltas', 'observacoes']) {
-      await client.query(`UPDATE ${table} SET apontamento_id = $1 WHERE apontamento_id = $2`, [canonicalId, duplicateId]);
-    }
-
-    // Une a produção sem somar duas vezes o mesmo grupo. Se versões antigas
-    // espalharam 1º e 2º turno em cartões diferentes, grupos distintos são
-    // preservados; para a mesma linha/potência/turno prevalece o cartão canônico.
-    await client.query(
-      `INSERT INTO producao(apontamento_id, linha_id, potencia, quantidade, turno)
-       SELECT $1, p.linha_id, p.potencia, p.quantidade, p.turno
-         FROM producao p
-        WHERE p.apontamento_id = $2
-          AND NOT EXISTS (
-            SELECT 1
-              FROM producao atual
-             WHERE atual.apontamento_id = $1
-               AND atual.linha_id = p.linha_id
-               AND atual.potencia = p.potencia
-               AND COALESCE(atual.turno::text, '') = COALESCE(p.turno::text, '')
-          )`,
-      [canonicalId, duplicateId],
-    );
-    await client.query('DELETE FROM producao WHERE apontamento_id = $1', [duplicateId]);
-
-    await client.query('DELETE FROM apontamentos WHERE id = $1', [duplicateId]);
+    await mergeApontamentoIntoCanonical(client, canonicalId, Number(row.id));
   }
-
-  const complementado = hasTurnFlags ? (turno1 && turno2) : legacyComplemented;
-  await client.query(
-    `UPDATE apontamentos
-        SET turno1_complementado = $2,
-            turno2_complementado = $3,
-            complementado = $4,
-            status_aprovacao = 'PENDENTE',
-            aprovado_em = NULL,
-            aprovado_por = NULL,
-            atualizado_em = NOW()
-      WHERE id = $1`,
-    [canonicalId, turno1, turno2, complementado],
-  );
-
   return canonicalId;
 }
 
@@ -1316,7 +1335,10 @@ app.put('/api/apontamentos/:id', auth, async (req: any, res) => {
     if (validation) return res.status(400).json({ error: validation });
 
     const current = await client.query(
-      'SELECT id, usuario_id, setor_id, data, origem_producao FROM apontamentos WHERE id = $1 AND usuario_id = $2',
+      `SELECT a.id, a.usuario_id, a.setor_id, a.data, a.origem_producao, a.tipo_bobina, s.nome setor
+         FROM apontamentos a
+         JOIN setores s ON s.id = a.setor_id
+        WHERE a.id = $1 AND a.usuario_id = $2`,
       [id, req.auth.userId],
     );
     if (!current.rows.length) return res.status(404).json({ error: 'Registro não encontrado ou sem permissão para edição.' });
@@ -1338,17 +1360,23 @@ app.put('/api/apontamentos/:id', auth, async (req: any, res) => {
     }
 
     await client.query('BEGIN');
-    const nextDate = isImported ? dateOnly(current.rows[0].data) : data.data;
+    const originalDate = dateOnly(current.rows[0].data);
+    const nextDate = isImported ? originalDate : dateOnly(data.data);
+    const setorNome = String(current.rows[0].setor || '').trim().toUpperCase();
+    const tipoBobina = current.rows[0].tipo_bobina ? String(current.rows[0].tipo_bobina) : null;
+
+    // Salva primeiro o conteúdo editado no cartão de origem. A mudança de data é
+    // resolvida depois, permitindo incorporar o cartão diretamente ao destino sem
+    // criar temporariamente dois cartões iguais no Neon.
     await client.query(
       `UPDATE apontamentos
-          SET data = $1,
-              complementado = CASE WHEN origem_producao = 'IMPORTADO' THEN TRUE ELSE complementado END,
+          SET complementado = CASE WHEN origem_producao = 'IMPORTADO' THEN TRUE ELSE complementado END,
               atualizado_em = NOW(),
               status_aprovacao = 'PENDENTE',
               aprovado_em = NULL,
               aprovado_por = NULL
-        WHERE id = $2 AND usuario_id = $3`,
-      [nextDate, id, req.auth.userId],
+        WHERE id = $1 AND usuario_id = $2`,
+      [id, req.auth.userId],
     );
 
     if (!isImported) {
@@ -1362,8 +1390,37 @@ app.put('/api/apontamentos/:id', auth, async (req: any, res) => {
     }
     await deleteOccurrenceCollections(client, id, data);
     await insertOccurrenceCollections(client, id, data, allowed);
+
+    let finalId = id;
+    if (nextDate !== originalDate && TURN_OCCURRENCE_SECTORS.has(setorNome)) {
+      // Se já existe cartão no dia correto, incorpora o cartão movido diretamente
+      // nele. Produção e ocorrências dos dois turnos são preservadas.
+      const targetId = await mergeTurnSectorDuplicateGroup(
+        client,
+        nextDate,
+        Number(current.rows[0].setor_id),
+        tipoBobina,
+        Number(req.auth.userId),
+      );
+      if (targetId && targetId !== id) {
+        finalId = await mergeApontamentoIntoCanonical(client, targetId, id);
+      } else {
+        await client.query('UPDATE apontamentos SET data = $1, atualizado_em = NOW() WHERE id = $2', [nextDate, id]);
+        finalId = (await mergeTurnSectorDuplicateGroup(
+          client, nextDate, Number(current.rows[0].setor_id), tipoBobina, Number(req.auth.userId),
+        )) || id;
+      }
+    } else {
+      await client.query('UPDATE apontamentos SET data = $1, atualizado_em = NOW() WHERE id = $2', [nextDate, id]);
+      if (TURN_OCCURRENCE_SECTORS.has(setorNome)) {
+        finalId = (await mergeTurnSectorDuplicateGroup(
+          client, nextDate, Number(current.rows[0].setor_id), tipoBobina, Number(req.auth.userId),
+        )) || id;
+      }
+    }
+
     await client.query('COMMIT');
-    res.json(await loadApontamento(id));
+    res.json(await loadApontamento(finalId));
   } catch (e: any) {
     await client.query('ROLLBACK').catch(() => undefined);
     console.error(e);
@@ -2046,9 +2103,10 @@ app.put('/api/coordenacao/apontamentos/:id', auth, requireCoordenacao, async (re
     if (validation) return res.status(400).json({ error: validation });
 
     const current = await client.query(
-      `SELECT a.id, a.usuario_id, a.setor_id, a.data, a.origem_producao,
+      `SELECT a.id, a.usuario_id, a.setor_id, a.data, a.origem_producao, a.tipo_bobina, s.nome setor,
               EXISTS(SELECT 1 FROM producao p WHERE p.apontamento_id = a.id) AS possui_producao
          FROM apontamentos a
+         JOIN setores s ON s.id = a.setor_id
         WHERE a.id = $1`,
       [id],
     );
@@ -2075,17 +2133,23 @@ app.put('/api/coordenacao/apontamentos/:id', auth, requireCoordenacao, async (re
     // registro contém apenas ocorrências antecipadas, a Coordenação pode corrigir a
     // data caso o apontador tenha lançado no dia errado.
     const lockImportedDate = isImported && hasProduction;
-    const nextDate = lockImportedDate ? dateOnly(current.rows[0].data) : data.data;
+    const originalDate = dateOnly(current.rows[0].data);
+    const nextDate = lockImportedDate ? originalDate : dateOnly(data.data);
+    const setorNome = String(current.rows[0].setor || '').trim().toUpperCase();
+    const tipoBobina = current.rows[0].tipo_bobina ? String(current.rows[0].tipo_bobina) : null;
+
+    // Primeiro atualiza o conteúdo do cartão que está sendo editado, sem trocar a
+    // data. Se o dia de destino já possuir um cartão da mesma unidade operacional,
+    // o conteúdo será incorporado diretamente a ele, sem deixar dois cartões.
     await client.query(
       `UPDATE apontamentos
-          SET data = $1,
-              complementado = CASE WHEN $3::boolean THEN TRUE ELSE complementado END,
+          SET complementado = CASE WHEN $2::boolean THEN TRUE ELSE complementado END,
               atualizado_em = NOW(),
               status_aprovacao = 'PENDENTE',
               aprovado_em = NULL,
               aprovado_por = NULL
-        WHERE id = $2`,
-      [nextDate, id, lockImportedDate],
+        WHERE id = $1`,
+      [id, lockImportedDate],
     );
 
     if (!isImported) {
@@ -2099,8 +2163,37 @@ app.put('/api/coordenacao/apontamentos/:id', auth, requireCoordenacao, async (re
     }
     await deleteOccurrenceCollections(client, id, data);
     await insertOccurrenceCollections(client, id, data, lineMap);
+
+    let finalId = id;
+    if (nextDate !== originalDate && TURN_OCCURRENCE_SECTORS.has(setorNome)) {
+      // Consolida primeiro qualquer duplicidade já existente no dia correto. Depois,
+      // incorpora o cartão cuja data está sendo corrigida ao cartão canônico.
+      const targetId = await mergeTurnSectorDuplicateGroup(
+        client,
+        nextDate,
+        Number(current.rows[0].setor_id),
+        tipoBobina,
+        Number(current.rows[0].usuario_id),
+      );
+      if (targetId && targetId !== id) {
+        finalId = await mergeApontamentoIntoCanonical(client, targetId, id);
+      } else {
+        await client.query('UPDATE apontamentos SET data = $1, atualizado_em = NOW() WHERE id = $2', [nextDate, id]);
+        finalId = (await mergeTurnSectorDuplicateGroup(
+          client, nextDate, Number(current.rows[0].setor_id), tipoBobina, Number(current.rows[0].usuario_id),
+        )) || id;
+      }
+    } else {
+      await client.query('UPDATE apontamentos SET data = $1, atualizado_em = NOW() WHERE id = $2', [nextDate, id]);
+      if (TURN_OCCURRENCE_SECTORS.has(setorNome)) {
+        finalId = (await mergeTurnSectorDuplicateGroup(
+          client, nextDate, Number(current.rows[0].setor_id), tipoBobina, Number(current.rows[0].usuario_id),
+        )) || id;
+      }
+    }
+
     await client.query('COMMIT');
-    res.json(await loadApontamento(id));
+    res.json(await loadApontamento(finalId));
   } catch (e: any) {
     await client.query('ROLLBACK').catch(() => undefined);
     console.error(e);

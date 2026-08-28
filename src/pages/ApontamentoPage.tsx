@@ -33,7 +33,7 @@ const clone = <T,>(items: T[] | undefined): T[] => (items || []).map((item) => (
 const sameTurn = (value: string | undefined, turno: Turno) => String(value || '').trim().toLowerCase() === turno.toLowerCase();
 
 const ImportedApontamentoPage: React.FC<ImportedProps> = ({ user, onNavigateToHistory, onRegisterEarly }) => {
-  const usesTurnFlow = user.setor === 'PINTURA' || user.setor === 'SOLDA';
+  const usesTurnFlow = ['PINTURA', 'SOLDA', 'BOBINA AT/BT'].includes(String(user.setor || ''));
   const [pendingImports, setPendingImports] = useState<Apontamento[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedTurn, setSelectedTurn] = useState<Turno | null>(null);

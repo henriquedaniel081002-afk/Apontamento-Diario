@@ -56,6 +56,7 @@ const TURNOS: Turno[] = ['1º turno', '2º turno'];
 const CORTE_AREAS: OccurrenceSector[] = ['CORTE LASER', 'FERRAGEM'];
 const NUCLEO_AREAS: OccurrenceSector[] = ['MONTAGEM NUCLEO', 'CORTE DO NUCLEO'];
 const TURN_SECTORS = new Set<OccurrenceSector>([
+  'BOBINA AT/BT',
   'PINTURA',
   'SOLDA',
   'MONTAGEM NUCLEO',
@@ -381,9 +382,9 @@ export const TurnOccurrencePage: React.FC<Props> = ({ user, onNavigateToHistory,
           )}
 
           {isBobinagemLogin && (
-            <div className="space-y-3">
+            <div className={`space-y-3 ${usesTurnFlow ? 'border-t border-[var(--border-subtle)] pt-5' : ''}`}>
               <div>
-                <p className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--accent)]">1. Selecione a unidade</p>
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--accent)]">{usesTurnFlow ? '2' : '1'}. Selecione a unidade</p>
                 <h2 className="mt-1 text-lg font-black text-[var(--text-primary)]">Bobina AT ou Bobina BT?</h2>
                 <p className="mt-1 text-sm text-[var(--text-secondary)]">A unidade é necessária para que a produção importada depois seja vinculada ao mesmo apontamento.</p>
               </div>

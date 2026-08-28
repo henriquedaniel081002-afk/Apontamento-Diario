@@ -172,3 +172,39 @@ it('no login Corte do Laser/Ferragem exige escolher o setor e mantém Ferragem s
     undefined,
   );
 });
+
+it('em Bobinagem exige turno e unidade AT/BT antes do registro antecipado', async () => {
+  const user = userEvent.setup();
+  const bobinagem: User = {
+    id: 'usr-bobinagem',
+    name: 'Bobinagem',
+    perfil: 'APONTADOR',
+    setor: 'BOBINA AT/BT',
+    linhas: ['MON', 'TRI'],
+  };
+
+  vi.mocked(apontamentoService.getPendingImported).mockResolvedValue([]);
+  render(<ApontamentoPage user={bobinagem} onNavigateToHistory={vi.fn()} />);
+
+  const firstRegisterButton = await screen.findByRole('button', { name: 'Registrar ocorrências' });
+  await user.click(firstRegisterButton);
+
+  expect(screen.getByRole('heading', { name: 'Qual turno você está apontando?' })).toBeVisible();
+  const registerButton = screen.getByRole('button', { name: 'Registrar ocorrências' });
+  expect(registerButton).toBeDisabled();
+
+  await user.click(screen.getByRole('button', { name: /1º turno/i }));
+  expect(registerButton).toBeDisabled();
+
+  await user.click(screen.getByRole('button', { name: /Bobina AT/i }));
+  expect(registerButton).toBeEnabled();
+  await user.click(registerButton);
+
+  expect(await screen.findByRole('heading', { name: /Bobinagem AT · 1º turno/i })).toBeVisible();
+  expect(apontamentoService.getByDateAndSector).toHaveBeenCalledWith(
+    expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+    'BOBINA AT/BT',
+    bobinagem.id,
+    'AT',
+  );
+});

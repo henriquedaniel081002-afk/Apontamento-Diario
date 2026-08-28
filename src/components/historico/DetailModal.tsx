@@ -28,6 +28,7 @@ function Block({ title, icon, count, children }: { title: string; icon: React.Re
 }
 
 const Empty = ({ text }: { text: string }) => <p className="text-sm text-slate-500">{text}</p>;
+const TurnBadge = ({ turno }: { turno?: string }) => turno ? <Badge variant="info">{turno}</Badge> : null;
 const textWrapClass = 'break-words [overflow-wrap:anywhere]';
 
 export const DetailModal: React.FC<Props> = ({ apontamento, isOpen, onClose }) => {
@@ -118,7 +119,7 @@ export const DetailModal: React.FC<Props> = ({ apontamento, isOpen, onClose }) =
             <div className="space-y-2">
               {material.map((item) => (
                 <div key={item.id} className="min-w-0 rounded-xl bg-white/[0.035] p-3">
-                  <strong className={`text-sm text-slate-100 ${textWrapClass}`}>{item.material || 'Material não informado'}</strong>
+                  <div className="flex flex-wrap items-center justify-between gap-2"><strong className={`text-sm text-slate-100 ${textWrapClass}`}>{item.material || 'Material não informado'}</strong><TurnBadge turno={item.turno} /></div>
                   <p className={`mt-1 text-sm text-slate-300 ${textWrapClass}`}>{item.causaMotivo || 'Motivo não informado'}</p>
                   <p className={`mt-1 text-xs text-slate-500 ${textWrapClass}`}>{item.horaInicio || 'Início não informado'} → {item.horaFim || 'Em andamento'}</p>
                 </div>
@@ -132,7 +133,7 @@ export const DetailModal: React.FC<Props> = ({ apontamento, isOpen, onClose }) =
             <div className="space-y-2">
               {maquina.map((item) => (
                 <div key={item.id} className="min-w-0 rounded-xl bg-white/[0.035] p-3">
-                  <strong className={`text-sm text-slate-100 ${textWrapClass}`}>{item.maquinaEquipamento || 'Máquina não informada'}</strong>
+                  <div className="flex flex-wrap items-center justify-between gap-2"><strong className={`text-sm text-slate-100 ${textWrapClass}`}>{item.maquinaEquipamento || 'Máquina não informada'}</strong><TurnBadge turno={item.turno} /></div>
                   <p className={`mt-1 text-sm text-slate-300 ${textWrapClass}`}>{item.observacao || 'Observação não informada'}</p>
                   <p className={`mt-1 text-xs text-slate-500 ${textWrapClass}`}>{item.horaInicio || 'Início não informado'} → {item.horaFim || 'Em andamento'}</p>
                 </div>
@@ -146,7 +147,7 @@ export const DetailModal: React.FC<Props> = ({ apontamento, isOpen, onClose }) =
             <div className="space-y-2">
               {nc.map((item) => (
                 <div key={item.id} className="min-w-0 rounded-xl bg-white/[0.035] p-3">
-                  <strong className={`text-sm text-slate-100 ${textWrapClass}`}>OP {item.op || 'não informada'} · Série {item.numeroSerie || 'não informada'}</strong>
+                  <div className="flex flex-wrap items-center justify-between gap-2"><strong className={`text-sm text-slate-100 ${textWrapClass}`}>OP {item.op || 'não informada'} · Série {item.numeroSerie || 'não informada'}</strong><TurnBadge turno={item.turno} /></div>
                   <p className={`mt-1 text-sm text-slate-300 ${textWrapClass}`}>{item.causaNaoConformidade || 'Causa não informada'}</p>
                 </div>
               ))}
@@ -166,7 +167,7 @@ export const DetailModal: React.FC<Props> = ({ apontamento, isOpen, onClose }) =
                     </>
                   ) : (
                     <>
-                      <strong className={`text-sm text-slate-100 ${textWrapClass}`}>{item.nome || 'Nome não informado'}</strong>
+                      <div className="flex flex-wrap items-center justify-between gap-2"><strong className={`text-sm text-slate-100 ${textWrapClass}`}>{item.nome || 'Nome não informado'}</strong><TurnBadge turno={item.turno} /></div>
                       <p className={`mt-1 text-sm text-slate-300 ${textWrapClass}`}>{item.motivoJustificativa || 'Motivo não informado'}</p>
                       <p className="mt-1 text-xs text-slate-500">Atestado: {typeof item.atestado === 'boolean' ? (item.atestado ? 'Sim' : 'Não') : 'Não informado'}</p>
                     </>
@@ -182,7 +183,7 @@ export const DetailModal: React.FC<Props> = ({ apontamento, isOpen, onClose }) =
             <div className="space-y-2">
               {apontamento.observacoes.map((item) => (
                 <div key={item.id} className="min-w-0 rounded-xl bg-white/[0.035] p-3">
-                  {(item.linha || item.turno) && <p className={`text-xs font-bold text-slate-500 ${textWrapClass}`}>{item.linha || 'Linha não informada'} · {item.turno || 'Turno não informado'}</p>}
+                  {(item.linha || item.turno) && <div className="flex flex-wrap items-center gap-2">{item.linha && <span className={`text-xs font-bold text-slate-500 ${textWrapClass}`}>{item.linha}</span>}<TurnBadge turno={item.turno} /></div>}
                   <p className={`mt-1 whitespace-pre-wrap text-sm text-slate-200 ${textWrapClass}`}>{item.observacao || 'Observação não informada'}</p>
                   {item.justificativaMeta && <p className={`mt-2 text-sm text-slate-400 ${textWrapClass}`}><strong className="text-slate-200">Justificativa da meta:</strong> {item.justificativaMeta}</p>}
                 </div>

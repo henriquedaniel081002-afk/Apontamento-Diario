@@ -3,6 +3,7 @@ import {
   BadgeCheck,
   CalendarDays,
   CircleDashed,
+  Clock3,
   Eye,
   Factory,
   GitBranch,
@@ -210,6 +211,17 @@ function CoordinationRecordCard(props: CoordinationRecordsProps & { record: Apon
   const lines = getApontamentoLines(record);
   const unitLabel = getOperationalUnitLabel(record);
   const awaitingProduction = record.producoes.length === 0;
+  const occurrenceTurns = new Set([
+    ...(record.paradasFaltaMaterial || []),
+    ...(record.paradasMaquina || []),
+    ...(record.naoConformidades || []),
+    ...record.faltas,
+    ...record.observacoes,
+  ].map((item) => item.turno).filter(Boolean));
+  const registeredTurns = [
+    record.turno1Complementado || occurrenceTurns.has('1º turno') ? '1º turno' : null,
+    record.turno2Complementado || occurrenceTurns.has('2º turno') ? '2º turno' : null,
+  ].filter((value): value is string => Boolean(value));
 
   return (
     <article className="record-industrial group overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-base)] shadow-[var(--shadow-surface)] transition-colors">
@@ -263,6 +275,21 @@ function CoordinationRecordCard(props: CoordinationRecordsProps & { record: Apon
                 <span className="text-xs font-semibold text-slate-600">—</span>
               )}
             </div>
+            {registeredTurns.length > 0 && (
+              <div className="mt-3">
+                <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.08em] text-[var(--text-tertiary)]">
+                  <Clock3 className="size-3.5" aria-hidden="true" />
+                  Ocorrências por turno
+                </p>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {registeredTurns.map((turn) => (
+                    <span key={turn} className="rounded-lg border border-sky-400/20 bg-sky-400/10 px-2 py-1 text-xs font-black text-sky-300">
+                      {turn} registrado
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </section>
 

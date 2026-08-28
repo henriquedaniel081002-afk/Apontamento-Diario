@@ -602,8 +602,127 @@ async function insertOccurrenceCollections(client: any, apontamentoId: number, d
       ],
     );
   }
+
 }
 
+async function mergeTurnSectorDuplicateGroup(
+  client: any,
+  data: string,
+  setorId: number,
+  tipoBobina: string | null = null,
+  preferredUserId?: number,
+): Promise<number | null> {
+  const records = await client.query(
+    `SELECT a.id,
+            a.usuario_id,
+            a.origem_producao,
+            a.complementado,
+            a.turno1_complementado,
+            a.turno2_complementado,
+            a.atualizado_em,
+            (SELECT COUNT(*)::int FROM producao p WHERE p.apontamento_id = a.id) AS producao_count
+       FROM apontamentos a
+      WHERE a.data = $1::date
+        AND a.setor_id = $2
+        AND (($3::text IS NULL AND a.tipo_bobina IS NULL) OR a.tipo_bobina::text = $3::text)
+      ORDER BY
+        CASE WHEN (SELECT COUNT(*) FROM producao p WHERE p.apontamento_id = a.id) > 0 THEN 0 ELSE 1 END,
+        CASE WHEN a.origem_producao = 'IMPORTADO' THEN 0 ELSE 1 END,
+        CASE WHEN $4::bigint IS NOT NULL AND a.usuario_id = $4::bigint THEN 0 ELSE 1 END,
+        a.atualizado_em DESC,
+        a.id DESC
+      FOR UPDATE`,
+    [data, setorId, tipoBobina, preferredUserId || null],
+  );
+
+  if (!records.rows.length) return null;
+  const canonicalId = Number(records.rows[0].id);
+  if (records.rows.length === 1) return canonicalId;
+
+  const turno1 = records.rows.some((row: any) => row.turno1_complementado === true);
+  const turno2 = records.rows.some((row: any) => row.turno2_complementado === true);
+  const hasTurnFlags = turno1 || turno2;
+  const legacyComplemented = records.rows.some((row: any) => row.complementado === true);
+
+  for (const row of records.rows.slice(1)) {
+    const duplicateId = Number(row.id);
+
+    // Ocorrências dos dois turnos precisam coexistir no mesmo cartão.
+    for (const table of ['paradas_falta_material', 'paradas_maquina', 'nao_conformidades', 'faltas', 'observacoes']) {
+      await client.query(`UPDATE ${table} SET apontamento_id = $1 WHERE apontamento_id = $2`, [canonicalId, duplicateId]);
+    }
+
+    // Une a produção sem somar duas vezes o mesmo grupo. Se versões antigas
+    // espalharam 1º e 2º turno em cartões diferentes, grupos distintos são
+    // preservados; para a mesma linha/potência/turno prevalece o cartão canônico.
+    await client.query(
+      `INSERT INTO producao(apontamento_id, linha_id, potencia, quantidade, turno)
+       SELECT $1, p.linha_id, p.potencia, p.quantidade, p.turno
+         FROM producao p
+        WHERE p.apontamento_id = $2
+          AND NOT EXISTS (
+            SELECT 1
+              FROM producao atual
+             WHERE atual.apontamento_id = $1
+               AND atual.linha_id = p.linha_id
+               AND atual.potencia = p.potencia
+               AND COALESCE(atual.turno::text, '') = COALESCE(p.turno::text, '')
+          )`,
+      [canonicalId, duplicateId],
+    );
+    await client.query('DELETE FROM producao WHERE apontamento_id = $1', [duplicateId]);
+
+    await client.query('DELETE FROM apontamentos WHERE id = $1', [duplicateId]);
+  }
+
+  const complementado = hasTurnFlags ? (turno1 && turno2) : legacyComplemented;
+  await client.query(
+    `UPDATE apontamentos
+        SET turno1_complementado = $2,
+            turno2_complementado = $3,
+            complementado = $4,
+            status_aprovacao = 'PENDENTE',
+            aprovado_em = NULL,
+            aprovado_por = NULL,
+            atualizado_em = NOW()
+      WHERE id = $1`,
+    [canonicalId, turno1, turno2, complementado],
+  );
+
+  return canonicalId;
+}
+
+async function repairAllTurnSectorDuplicates() {
+  const client = await pool.connect();
+  try {
+    const groups = await client.query(
+      `SELECT a.data, a.setor_id, a.tipo_bobina
+         FROM apontamentos a
+         JOIN setores s ON s.id = a.setor_id
+        WHERE UPPER(s.nome) = ANY($1::text[])
+        GROUP BY a.data, a.setor_id, a.tipo_bobina
+       HAVING COUNT(*) > 1`,
+      [[...TURN_OCCURRENCE_SECTORS]],
+    );
+    if (!groups.rows.length) return;
+
+    await client.query('BEGIN');
+    for (const group of groups.rows) {
+      await mergeTurnSectorDuplicateGroup(
+        client,
+        dateOnly(group.data),
+        Number(group.setor_id),
+        group.tipo_bobina ? String(group.tipo_bobina) : null,
+      );
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    console.error('Falha ao consolidar cartões duplicados por turno:', error);
+  } finally {
+    client.release();
+  }
+}
 
 async function loadApontamentosBatch(): Promise<any[]> {
   const headers = await pool.query(
@@ -800,10 +919,10 @@ app.get('/api/apontamentos/data/:data', auth, async (req: any, res) => {
       return res.status(400).json({ error: 'Selecione Bobina AT ou Bobina BT.' });
     }
 
-    // Ferragem compartilha o login de Corte do Laser e Corte do Núcleo compartilha
-    // o login de Montagem do Núcleo. O registro continua salvo no setor real, mas
-    // pode ter sido criado primeiro pela importação com outro usuario_id.
-    if (setor && isSharedOccurrenceSector(setor)) {
+    // Nos setores com controle de turno o cartão pertence à unidade operacional
+    // (data + setor), não ao usuário que registrou primeiro. Assim 1º e 2º turno
+    // sempre enxergam e complementam o mesmo apontamento.
+    if (setor && TURN_OCCURRENCE_SECTORS.has(setor)) {
       const accessSector = occurrenceAccessSector(setor);
       const access = await getUserAccess(req.auth.userId);
       const hasLinkedAccess = access.some(
@@ -812,24 +931,40 @@ app.get('/api/apontamentos/data/:data', auth, async (req: any, res) => {
       if (!hasLinkedAccess) {
         const groupedLogin = setor === 'FERRAGEM'
           ? 'Corte do Laser/Ferragem'
-          : 'Montagem do Núcleo/Corte do Núcleo';
-        return res.status(403).json({ error: `O acesso a ${setor} é permitido pelo login ${groupedLogin}.` });
+          : setor === 'CORTE DO NUCLEO'
+            ? 'Montagem do Núcleo/Corte do Núcleo'
+            : null;
+        return res.status(403).json({
+          error: groupedLogin
+            ? `O acesso a ${setor} é permitido pelo login ${groupedLogin}.`
+            : `O usuário não possui acesso ao setor ${setor}.`,
+        });
       }
 
-      const r = await pool.query(
-        `SELECT a.id
-           FROM apontamentos a
-           JOIN setores s ON s.id = a.setor_id
-          WHERE a.data = $2
-            AND UPPER(s.nome) = $3
-            AND a.tipo_bobina IS NULL
-          ORDER BY CASE WHEN a.usuario_id = $1 THEN 0 ELSE 1 END,
-                   CASE WHEN a.origem_producao = 'IMPORTADO' THEN 0 ELSE 1 END,
-                   a.id DESC
-          LIMIT 1`,
-        [req.auth.userId, req.params.data, setor],
+      const sectorResult = await pool.query(
+        'SELECT id FROM setores WHERE UPPER(nome) = $1 ORDER BY id LIMIT 1',
+        [setor],
       );
-      return res.json(r.rows.length ? await loadApontamento(r.rows[0].id) : null);
+      if (!sectorResult.rows.length) return res.json(null);
+      const setorId = Number(sectorResult.rows[0].id);
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const canonicalId = await mergeTurnSectorDuplicateGroup(
+          client,
+          req.params.data,
+          setorId,
+          null,
+          Number(req.auth.userId),
+        );
+        await client.query('COMMIT');
+        return res.json(canonicalId ? await loadApontamento(canonicalId) : null);
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
+      }
     }
 
     const r = setor
@@ -949,36 +1084,51 @@ app.post('/api/apontamentos/ocorrencias', auth, async (req: any, res) => {
     const dbTipoBobina = setor === 'BOBINA AT/BT' ? tipoBobina : null;
 
     await client.query('BEGIN');
-    const current = sharedSector
-      ? await client.query(
-          `SELECT id
-             FROM apontamentos
-            WHERE setor_id = $1
-              AND data = $2::date
-              AND tipo_bobina IS NULL
-            ORDER BY CASE WHEN usuario_id = $3 THEN 0 ELSE 1 END,
-                     CASE WHEN origem_producao = 'IMPORTADO' THEN 0 ELSE 1 END,
-                     id DESC
-            LIMIT 1
-            FOR UPDATE`,
-          [setorId, dataApontamento, req.auth.userId],
-        )
-      : await client.query(
-          `SELECT id
-             FROM apontamentos
-            WHERE usuario_id = $1
-              AND setor_id = $2
-              AND data = $3::date
-              AND (($4::text IS NULL AND tipo_bobina IS NULL) OR tipo_bobina::text = $4::text)
-            ORDER BY CASE WHEN origem_producao = 'IMPORTADO' THEN 0 ELSE 1 END, id DESC
-            LIMIT 1
-            FOR UPDATE`,
-          [req.auth.userId, setorId, dataApontamento, dbTipoBobina],
-        );
+    let currentId: number | null = null;
+    if (usesTurnFlow) {
+      // A chave operacional dos setores com turno é data + setor. Se versões
+      // anteriores criaram um cartão para cada turno/usuário, consolida tudo antes
+      // de salvar para que as ocorrências coexistam no mesmo registro.
+      currentId = await mergeTurnSectorDuplicateGroup(
+        client,
+        dataApontamento,
+        setorId,
+        dbTipoBobina,
+        Number(req.auth.userId),
+      );
+    } else {
+      const current = sharedSector
+        ? await client.query(
+            `SELECT id
+               FROM apontamentos
+              WHERE setor_id = $1
+                AND data = $2::date
+                AND tipo_bobina IS NULL
+              ORDER BY CASE WHEN usuario_id = $3 THEN 0 ELSE 1 END,
+                       CASE WHEN origem_producao = 'IMPORTADO' THEN 0 ELSE 1 END,
+                       id DESC
+              LIMIT 1
+              FOR UPDATE`,
+            [setorId, dataApontamento, req.auth.userId],
+          )
+        : await client.query(
+            `SELECT id
+               FROM apontamentos
+              WHERE usuario_id = $1
+                AND setor_id = $2
+                AND data = $3::date
+                AND (($4::text IS NULL AND tipo_bobina IS NULL) OR tipo_bobina::text = $4::text)
+              ORDER BY CASE WHEN origem_producao = 'IMPORTADO' THEN 0 ELSE 1 END, id DESC
+              LIMIT 1
+              FOR UPDATE`,
+            [req.auth.userId, setorId, dataApontamento, dbTipoBobina],
+          );
+      currentId = current.rows.length ? Number(current.rows[0].id) : null;
+    }
 
     let apontamentoId: number;
-    if (current.rows.length) {
-      apontamentoId = Number(current.rows[0].id);
+    if (currentId) {
+      apontamentoId = currentId;
       if (sharedSector) {
         // Se a produção foi importada antes das ocorrências, o registro pode ter
         // nascido vinculado à Coordenação. Ao apontar, preservamos como responsável
@@ -1305,30 +1455,36 @@ async function replaceImportedProductionForDate(
     const first = unit[0];
     const tipoBobina = first.setor === 'BOBINA AT/BT' ? first.tipoBobina || null : null;
     const sectorSharedAcrossUsers = SHARED_IMPORT_SECTORS.has(first.setor);
-    const existing = sectorSharedAcrossUsers
-      ? await client.query(
-          `SELECT id, complementado
-             FROM apontamentos
-            WHERE data = $1
-              AND setor_id = $2
-              AND origem_producao = 'IMPORTADO'
-              AND tipo_bobina IS NULL
-            ORDER BY id DESC
-            LIMIT 1`,
-          [data, first.setorId],
-        )
-      : await client.query(
-          `SELECT id, complementado
-             FROM apontamentos
-            WHERE data = $1
-              AND usuario_id = $2
-              AND setor_id = $3
-              AND origem_producao = 'IMPORTADO'
-              AND (($4::text IS NULL AND tipo_bobina IS NULL) OR tipo_bobina::text = $4::text)
-            ORDER BY id DESC
-            LIMIT 1`,
-          [data, first.usuarioId, first.setorId, tipoBobina],
-        );
+    const turnSector = TURN_OCCURRENCE_SECTORS.has(first.setor);
+    const turnSectorExistingId = turnSector
+      ? await mergeTurnSectorDuplicateGroup(client, data, first.setorId, tipoBobina, first.usuarioId)
+      : null;
+    const existing = turnSectorExistingId
+      ? { rows: [{ id: turnSectorExistingId }] }
+      : sectorSharedAcrossUsers
+        ? await client.query(
+            `SELECT id, complementado
+               FROM apontamentos
+              WHERE data = $1
+                AND setor_id = $2
+                AND origem_producao = 'IMPORTADO'
+                AND tipo_bobina IS NULL
+              ORDER BY id DESC
+              LIMIT 1`,
+            [data, first.setorId],
+          )
+        : await client.query(
+            `SELECT id, complementado
+               FROM apontamentos
+              WHERE data = $1
+                AND usuario_id = $2
+                AND setor_id = $3
+                AND origem_producao = 'IMPORTADO'
+                AND (($4::text IS NULL AND tipo_bobina IS NULL) OR tipo_bobina::text = $4::text)
+              ORDER BY id DESC
+              LIMIT 1`,
+            [data, first.usuarioId, first.setorId, tipoBobina],
+          );
 
     let apontamentoId: number;
     if (existing.rows.length) {
@@ -1646,6 +1802,7 @@ function dashboardAccessSectorNames(setor: string): string[] {
 
 app.get('/api/coordenacao/dashboard', auth, async (req: any, res) => {
   try {
+    await repairAllTurnSectorDuplicates();
     const isCoordination = req.auth?.perfil === 'COORDENACAO';
     const accessRows = isCoordination ? [] : await getUserAccess(req.auth.userId);
     const allowedDashboardSectors = new Set<string>(
@@ -1867,6 +2024,7 @@ app.get('/api/coordenacao/dashboard', auth, async (req: any, res) => {
 
 app.get('/api/coordenacao/apontamentos', auth, requireCoordenacao, async (_req: any, res) => {
   try {
+    await repairAllTurnSectorDuplicates();
     const registros = await loadApontamentosBatch();
     res.json(registros);
   } catch (e) {

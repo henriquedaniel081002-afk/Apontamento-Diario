@@ -1609,7 +1609,11 @@ app.post('/api/coordenacao/importar-producao', auth, requireCoordenacao, async (
     await client.query('COMMIT');
 
     const ids = [...result.usedIds];
-    const registros = await Promise.all(ids.map((id) => loadApontamento(id)));
+    // Na importação mensal fracionada, o frontend não precisa receber todos os
+    // apontamentos completos a cada dia. Evitar essas leituras reduz centenas de
+    // consultas e mantém cada requisição curta em ambientes serverless.
+    const compacto = req.body?.compacto === true;
+    const registros = compacto ? [] : await Promise.all(ids.map((id) => loadApontamento(id)));
     res.json({
       data,
       registros: registros.filter(Boolean),
@@ -1653,6 +1657,62 @@ function validateProductionMonthImport(body: any): { mesReferencia: string; seto
   return { mesReferencia, setorFiltro, dias: dias.sort((a, b) => a.data.localeCompare(b.data)) };
 }
 
+function validateProductionMonthFinalize(body: any): { mesReferencia: string; setorFiltro: ImportSectorFilter; datasImportadas: string[] } {
+  const mesReferencia = String(body?.mesReferencia || '').trim();
+  if (!/^\d{4}-\d{2}$/.test(mesReferencia)) throw new Error('Mês de referência inválido.');
+  const setorFiltro = validateImportSectorFilter(body?.setorFiltro);
+  const rawDates = Array.isArray(body?.datasImportadas) ? body.datasImportadas : [];
+  if (!rawDates.length) throw new Error('Nenhuma data importada foi informada para finalizar o mês.');
+  const datasImportadas = [...new Set(rawDates.map((value: any) => String(value || '').trim()))];
+  for (const data of datasImportadas) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(data) || !data.startsWith(`${mesReferencia}-`)) {
+      throw new Error(`Data fora do mês selecionado: ${data || 'não informada'}.`);
+    }
+  }
+  return { mesReferencia, setorFiltro, datasImportadas: datasImportadas.sort() };
+}
+
+// Etapa final da importação mensal fracionada. Os dias presentes no arquivo já
+// foram substituídos individualmente; aqui são removidas apenas produções antigas
+// de dias do mês que deixaram de existir no novo arquivo. Ocorrências digitadas
+// pelos apontadores continuam preservadas pela mesma regra de cleanup existente.
+app.post('/api/coordenacao/importar-producao-mes-finalizar', auth, requireCoordenacao, async (req: any, res) => {
+  const client = await pool.connect();
+  try {
+    let payload: ReturnType<typeof validateProductionMonthFinalize>;
+    try {
+      payload = validateProductionMonthFinalize(req.body);
+    } catch (validationError) {
+      return res.status(400).json({ error: validationError instanceof Error ? validationError.message : 'Dados de finalização mensal inválidos.' });
+    }
+
+    await client.query('BEGIN');
+    if (payload.setorFiltro === 'ALL') {
+      await cleanupUnusedImportedProduction(
+        client,
+        "TO_CHAR(a.data, 'YYYY-MM') = $1 AND NOT (a.data = ANY($2::date[]))",
+        [payload.mesReferencia, payload.datasImportadas],
+        new Set<number>(),
+      );
+    } else {
+      await cleanupUnusedImportedProduction(
+        client,
+        "TO_CHAR(a.data, 'YYYY-MM') = $1 AND NOT (a.data = ANY($2::date[])) AND a.setor_id = (SELECT id FROM setores WHERE nome = $3 LIMIT 1)",
+        [payload.mesReferencia, payload.datasImportadas, payload.setorFiltro],
+        new Set<number>(),
+      );
+    }
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    console.error(e);
+    res.status(500).json({ error: e instanceof Error ? e.message : 'Falha ao finalizar a importação mensal.' });
+  } finally {
+    client.release();
+  }
+});
+
 app.post('/api/coordenacao/importar-producao-mes', auth, requireCoordenacao, async (req: any, res) => {
   const client = await pool.connect();
   try {
@@ -1695,11 +1755,13 @@ app.post('/api/coordenacao/importar-producao-mes', auth, requireCoordenacao, asy
     }
 
     await client.query('COMMIT');
-    const registros = await Promise.all([...allUsedIds].map((id) => loadApontamento(id)));
+    // Compatibilidade com clientes antigos: mantém o endpoint mensal, mas evita
+    // recarregar cada apontamento completo após a gravação. O frontend atual usa
+    // a estratégia fracionada, mais resistente a timeout.
     res.json({
       mesReferencia: payload.mesReferencia,
       datasImportadas: payload.dias.length,
-      registros: registros.filter(Boolean),
+      registros: [],
       totalQuantidade,
       totalUnidades,
     });
@@ -2259,6 +2321,74 @@ app.patch('/api/coordenacao/apontamentos/:id/aprovacao', auth, requireCoordenaca
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Falha ao atualizar a aprovação do apontamento.' });
+  }
+});
+
+app.post('/api/coordenacao/excluir-apontamentos', auth, requireCoordenacao, async (req: any, res) => {
+  const data = String(req.body?.data || '').trim();
+  const mesReferencia = String(req.body?.mesReferencia || '').trim();
+  const setorRaw = String(req.body?.setor || '').trim();
+  const setor = setorRaw && setorRaw.toUpperCase() !== 'ALL' ? setorRaw.toUpperCase() : '';
+
+  if (data && !/^\d{4}-\d{2}-\d{2}$/.test(data)) {
+    return res.status(400).json({ error: 'Informe uma data válida para a exclusão.' });
+  }
+  if (mesReferencia && !/^\d{4}-\d{2}$/.test(mesReferencia)) {
+    return res.status(400).json({ error: 'Informe um mês válido para a exclusão.' });
+  }
+  if (data && mesReferencia) {
+    return res.status(400).json({ error: 'Escolha exclusão por dia ou por mês, não os dois ao mesmo tempo.' });
+  }
+  if (!data && !mesReferencia && !setor) {
+    return res.status(400).json({ error: 'Informe pelo menos um filtro: dia, mês ou setor.' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const params: any[] = [];
+    const where: string[] = [];
+    if (data) {
+      params.push(data);
+      where.push(`a.data = $${params.length}::date`);
+    }
+    if (mesReferencia) {
+      params.push(mesReferencia);
+      where.push(`TO_CHAR(a.data, 'YYYY-MM') = $${params.length}`);
+    }
+    if (setor) {
+      params.push(setor);
+      where.push(`UPPER(s.nome) = $${params.length}`);
+    }
+
+    const targets = await client.query(
+      `SELECT a.id
+         FROM apontamentos a
+         JOIN setores s ON s.id = a.setor_id
+        WHERE ${where.join(' AND ')}
+        FOR UPDATE OF a`,
+      params,
+    );
+    const ids = targets.rows.map((row: any) => Number(row.id)).filter(Number.isFinite);
+    if (!ids.length) {
+      await client.query('COMMIT');
+      return res.json({ ok: true, totalExcluidos: 0 });
+    }
+
+    // Remove explicitamente as coleções dependentes para funcionar tanto em bancos
+    // com ON DELETE CASCADE quanto em instalações antigas sem essa restrição.
+    for (const table of ['producao', 'paradas_falta_material', 'paradas_maquina', 'nao_conformidades', 'faltas', 'observacoes']) {
+      await client.query(`DELETE FROM ${table} WHERE apontamento_id = ANY($1::bigint[])`, [ids]);
+    }
+    const deleted = await client.query('DELETE FROM apontamentos WHERE id = ANY($1::bigint[]) RETURNING id', [ids]);
+    await client.query('COMMIT');
+    res.json({ ok: true, totalExcluidos: deleted.rowCount || 0 });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    console.error(e);
+    res.status(500).json({ error: 'Falha ao excluir os apontamentos selecionados.' });
+  } finally {
+    client.release();
   }
 });
 

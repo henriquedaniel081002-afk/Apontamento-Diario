@@ -45,9 +45,46 @@ export const coordenacaoService = {
   },
 
   async importProductionMonth(payload: ProductionImportMonthRequest): Promise<ProductionImportMonthResult> {
-    const result = await apiRequest<ProductionImportMonthResult>('/api/coordenacao/importar-producao-mes', {
-      method: 'POST', body: JSON.stringify(payload),
+    // Evita uma única requisição longa para o mês inteiro. Em ambientes serverless
+    // (como Vercel), processar todos os dias dentro da mesma Function pode exceder
+    // o tempo máximo e resultar em "Falha ao conectar com servidor".
+    // Cada dia é substituído de forma idempotente e, ao final, o servidor remove
+    // produções antigas de dias que não aparecem no novo arquivo.
+    let totalQuantidade = 0;
+    let totalUnidades = 0;
+    const datasImportadas: string[] = [];
+
+    for (const day of payload.dias) {
+      const result = await apiRequest<ProductionImportResult>('/api/coordenacao/importar-producao', {
+        method: 'POST',
+        body: JSON.stringify({
+          data: day.data,
+          grupos: day.grupos,
+          setorFiltro: payload.setorFiltro,
+          compacto: true,
+        }),
+      });
+      datasImportadas.push(day.data);
+      totalQuantidade += result.totalQuantidade;
+      totalUnidades += result.totalUnidades;
+    }
+
+    await apiRequest<{ ok: boolean }>('/api/coordenacao/importar-producao-mes-finalizar', {
+      method: 'POST',
+      body: JSON.stringify({
+        mesReferencia: payload.mesReferencia,
+        datasImportadas,
+        setorFiltro: payload.setorFiltro,
+      }),
     });
+
+    const result: ProductionImportMonthResult = {
+      mesReferencia: payload.mesReferencia,
+      datasImportadas: datasImportadas.length,
+      registros: [],
+      totalQuantidade,
+      totalUnidades,
+    };
     invalidateAfterMutation();
     return result;
   },
@@ -80,5 +117,14 @@ export const coordenacaoService = {
     await apiRequest<unknown>(`/api/coordenacao/apontamentos/${encodeURIComponent(id)}`, { method: 'DELETE' });
     invalidateAfterMutation();
     return true;
+  },
+
+  async deleteBulk(payload: { data?: string; mesReferencia?: string; setor?: string }): Promise<{ totalExcluidos: number }> {
+    const result = await apiRequest<{ ok: boolean; totalExcluidos: number }>('/api/coordenacao/excluir-apontamentos', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    invalidateAfterMutation();
+    return { totalExcluidos: result.totalExcluidos };
   },
 };

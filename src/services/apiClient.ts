@@ -46,6 +46,9 @@ function loadingCopy(path: string, method = 'GET'): { label: string; description
   if (path.includes('/importar-programacao')) {
     return { label: 'Importando programação', description: 'Substituindo a programação do mês com segurança.' };
   }
+  if (path.includes('/excluir-apontamentos')) {
+    return { label: 'Excluindo apontamentos', description: 'Removendo somente os registros que correspondem ao recorte selecionado.' };
+  }
   if (path.includes('/dashboard')) {
     return { label: 'Carregando dashboard', description: 'Buscando programação, produção e ocorrências para montar os indicadores.' };
   }

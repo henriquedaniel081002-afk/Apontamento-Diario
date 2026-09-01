@@ -1,4 +1,4 @@
-import { Download, FileSpreadsheet, FileUp, Settings2 } from 'lucide-react';
+import { Download, FileSpreadsheet, FileUp, Settings2, Trash2 } from 'lucide-react';
 import { ModalShell } from '../common/ModalShell';
 import { Button } from '../common/ui';
 
@@ -8,6 +8,7 @@ interface CoordinationSettingsModalProps {
   onImportProduction: () => void;
   onImportProgramacao: () => void;
   onExport: () => void;
+  onDeleteApontamentos: () => void;
   exporting?: boolean;
   disabled?: boolean;
 }
@@ -18,6 +19,7 @@ export function CoordinationSettingsModal({
   onImportProduction,
   onImportProgramacao,
   onExport,
+  onDeleteApontamentos,
   exporting = false,
   disabled = false,
 }: CoordinationSettingsModalProps) {
@@ -65,6 +67,16 @@ export function CoordinationSettingsModal({
         >
           <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-sky-400/10 text-sky-300"><FileSpreadsheet className="size-5" aria-hidden="true" /></span>
           <span><strong className="block text-sm text-slate-100">Importar programação</strong><small className="mt-1 block text-xs text-slate-500">Substitui a programação anterior do mês</small></span>
+        </button>
+
+        <button
+          type="button"
+          disabled={disabled || exporting}
+          onClick={() => choose(onDeleteApontamentos)}
+          className="flex min-h-16 w-full items-center gap-3 rounded-xl border border-red-400/15 bg-red-400/[0.035] p-3 text-left transition-colors hover:border-red-400/30 hover:bg-red-400/[0.07] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-red-400/10 text-red-300"><Trash2 className="size-5" aria-hidden="true" /></span>
+          <span><strong className="block text-sm text-slate-100">Excluir apontamentos</strong><small className="mt-1 block text-xs text-slate-500">Por dia, mês ou setor</small></span>
         </button>
 
         <button

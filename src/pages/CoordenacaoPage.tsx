@@ -26,6 +26,7 @@ import { EditApontamentoModal } from '../components/coordenacao/EditApontamentoM
 import { ImportProductionModal } from '../components/coordenacao/ImportProductionModal';
 import { ImportProgramacaoModal } from '../components/coordenacao/ImportProgramacaoModal';
 import { CoordinationSettingsModal } from '../components/coordenacao/CoordinationSettingsModal';
+import { BulkDeletePayload, DeleteApontamentosModal } from '../components/coordenacao/DeleteApontamentosModal';
 import type { ProgramacaoImportGroup } from '../utils/importProgramacaoExcel';
 import { CoordinationRecords } from '../components/coordenacao/CoordinationRecords';
 import { ConfirmModal } from '../components/common/ConfirmModal';
@@ -78,6 +79,7 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [programacaoImportOpen, setProgramacaoImportOpen] = useState(false);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [approvalBusyId, setApprovalBusyId] = useState<string | null>(null);
   const [dataFilter, setDataFilter] = useState(() => getPreviousWorkingDayYmd());
@@ -220,6 +222,19 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
       type: 'success',
       message: `Programação de ${mes}/${ano} substituída com sucesso: ${result.totalQuantidade.toLocaleString('pt-BR')} unidades em ${result.grupos.toLocaleString('pt-BR')} combinações consolidadas.`,
     });
+  };
+
+  const handleBulkDelete = async (payload: BulkDeletePayload): Promise<number> => {
+    const result = await coordenacaoService.deleteBulk(payload);
+    await loadData(false);
+    setToast({
+      id: Date.now().toString(),
+      type: result.totalExcluidos > 0 ? 'success' : 'warning',
+      message: result.totalExcluidos > 0
+        ? `${result.totalExcluidos} apontamento(s) excluído(s) com sucesso.`
+        : 'Nenhum apontamento corresponde aos filtros selecionados.',
+    });
+    return result.totalExcluidos;
   };
 
   const handleExport = async () => {
@@ -485,6 +500,7 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
         onImportProduction={() => setImportOpen(true)}
         onImportProgramacao={() => setProgramacaoImportOpen(true)}
         onExport={() => void handleExport()}
+        onDeleteApontamentos={() => setBulkDeleteOpen(true)}
         exporting={exporting}
         disabled={loading || !!loadError}
       />
@@ -499,6 +515,13 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
         isOpen={programacaoImportOpen}
         onClose={() => setProgramacaoImportOpen(false)}
         onImport={handleImportProgramacao}
+      />
+
+      <DeleteApontamentosModal
+        isOpen={bulkDeleteOpen}
+        onClose={() => setBulkDeleteOpen(false)}
+        setores={setores}
+        onDelete={handleBulkDelete}
       />
 
       <DetailModal apontamento={detailItem} isOpen={!!detailItem} onClose={() => setDetailItem(null)} />

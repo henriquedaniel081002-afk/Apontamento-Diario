@@ -1663,7 +1663,9 @@ function validateProductionMonthFinalize(body: any): { mesReferencia: string; se
   const setorFiltro = validateImportSectorFilter(body?.setorFiltro);
   const rawDates = Array.isArray(body?.datasImportadas) ? body.datasImportadas : [];
   if (!rawDates.length) throw new Error('Nenhuma data importada foi informada para finalizar o mês.');
-  const datasImportadas = [...new Set(rawDates.map((value: any) => String(value || '').trim()))];
+  const datasImportadas: string[] = Array.from(
+    new Set<string>(rawDates.map((value: any) => String(value || '').trim()))
+  );
   for (const data of datasImportadas) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(data) || !data.startsWith(`${mesReferencia}-`)) {
       throw new Error(`Data fora do mês selecionado: ${data || 'não informada'}.`);
@@ -1931,7 +1933,9 @@ app.get('/api/coordenacao/dashboard', auth, async (req: any, res) => {
     const allowedLines = new Set<string>(
       accessRows.map((row: any) => String(row.linha || '').trim().toUpperCase()).filter(Boolean),
     );
-    const accessSectorNames = [...new Set(accessRows.map((row: any) => String(row.setor || '').trim().toUpperCase()))];
+    const accessSectorNames: string[] = Array.from(
+      new Set<string>(accessRows.map((row: any) => String(row.setor || '').trim().toUpperCase())),
+    );
     const restrictLine = !isCoordination
       && accessSectorNames.length > 0
       && accessSectorNames.every((setor) => ['MONTAGEM FINAL', 'MPA', 'EPOXI'].includes(setor))
@@ -2357,8 +2361,16 @@ app.post('/api/coordenacao/excluir-apontamentos', auth, requireCoordenacao, asyn
       where.push(`TO_CHAR(a.data, 'YYYY-MM') = $${params.length}`);
     }
     if (setor) {
-      params.push(setor);
-      where.push(`UPPER(s.nome) = $${params.length}`);
+      if (setor === 'BOBINA AT' || setor === 'BOBINA BT') {
+        const tipoBobina = setor.endsWith('AT') ? 'AT' : 'BT';
+        params.push('BOBINA AT/BT');
+        where.push(`UPPER(s.nome) = $${params.length}`);
+        params.push(tipoBobina);
+        where.push(`UPPER(COALESCE(a.tipo_bobina::text, '')) = $${params.length}`);
+      } else {
+        params.push(setor);
+        where.push(`UPPER(s.nome) = $${params.length}`);
+      }
     }
 
     const targets = await client.query(

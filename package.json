@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "engines": {
-    "node": "^20.19.0 || >=22.12.0"
+    "node": "22.x"
   },
   "scripts": {
     "dev": "concurrently -k \"vite --port=3000 --host=0.0.0.0\" \"tsx watch server.ts\"",
@@ -19,7 +19,8 @@
     "test:watch": "vitest",
     "check": "npm run typecheck && npm run test && vite build",
     "server": "tsx server.ts",
-    "start": "NODE_ENV=production tsx server.ts"
+    "start": "NODE_ENV=production tsx server.ts",
+    "vercel-build": "npm run build"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.14",
@@ -50,5 +51,9 @@
     "concurrently": "^9.1.2",
     "jsdom": "^26.0.0",
     "vitest": "^3.2.4"
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.2": true
   }
 }

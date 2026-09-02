@@ -1,6 +1,7 @@
 import { Apontamento, ApontamentoEditPayload, ProductionImportMonthRequest, ProductionImportMonthResult, ProductionImportRequest, ProductionImportResult, ProgramacaoImportRequest, ProgramacaoImportResult, StatusAprovacao } from '../types';
 import { apiRequest } from './apiClient';
 import { invalidateDashboardCache } from './dashboardService';
+import { controleFaltasService } from './controleFaltasService';
 
 const CACHE_TTL_MS = 20_000;
 let cachedRecords: Apontamento[] | null = null;
@@ -16,6 +17,7 @@ function invalidateRecordsCache() {
 function invalidateAfterMutation() {
   invalidateRecordsCache();
   invalidateDashboardCache();
+  controleFaltasService.invalidate();
 }
 
 export const coordenacaoService = {

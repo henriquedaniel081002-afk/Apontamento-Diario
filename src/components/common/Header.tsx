@@ -4,6 +4,7 @@ import {
   ClipboardList,
   History,
   LogOut,
+  UserRoundX,
   ShieldCheck,
   type LucideIcon,
 } from 'lucide-react';
@@ -11,7 +12,7 @@ import { User } from '../../types';
 import logoItam from '../../assets/logo-itam.png';
 import { cx } from './ui';
 
-export type HeaderTab = 'apontamento' | 'historico' | 'dashboard';
+export type HeaderTab = 'apontamento' | 'historico' | 'dashboard' | 'controle-faltas';
 
 export interface HeaderProps {
   user: User;
@@ -51,6 +52,7 @@ const navigationByProfile: Record<User['perfil'], NavigationConfig> = {
     items: [
       { id: 'apontamento', label: 'Registros', icon: ShieldCheck },
       { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
+      { id: 'controle-faltas', label: 'Controle Faltas', icon: UserRoundX },
     ],
   },
 };
@@ -95,7 +97,11 @@ function Navigation({
 }
 
 function getPageTitle(isCoordination: boolean, activeTab: HeaderTab): string {
-  if (isCoordination) return activeTab === 'dashboard' ? 'Dashboard de Aderência' : 'Coordenação';
+  if (isCoordination) {
+    if (activeTab === 'dashboard') return 'Dashboard de Aderência';
+    if (activeTab === 'controle-faltas') return 'Controle de Faltas';
+    return 'Coordenação';
+  }
   if (activeTab === 'dashboard') return 'Dashboard de Aderência';
   return activeTab === 'apontamento' ? 'Apontamento diário' : 'Histórico';
 }

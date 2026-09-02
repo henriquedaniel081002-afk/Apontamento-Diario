@@ -1,0 +1,19 @@
+.absence-dashboard{min-width:0}
+.absence-kpi-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1rem;min-width:0}
+.absence-chart-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(20rem,.85fr);gap:1rem;min-width:0}
+.absence-line-chart{width:100%;min-width:0;overflow-x:auto;padding:.25rem 0 .1rem}
+.absence-line-chart svg{display:block;width:100%;min-width:40rem;height:17rem;overflow:visible}
+.absence-chart-gridline{stroke:rgba(196,255,222,.09);stroke-width:1}
+.absence-chart-axis-label{fill:var(--text-tertiary);font-size:11px;font-weight:700}
+.absence-chart-line{fill:none;stroke:var(--accent);stroke-width:3;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 5px 12px rgba(0,199,111,.16))}
+.absence-chart-point{fill:var(--surface-raised);stroke:var(--accent);stroke-width:3}
+.absence-chart-value{fill:var(--text-secondary);font-size:11px;font-weight:800}
+.absence-sector-bars{display:grid;gap:.9rem;min-width:0;padding:.35rem 0}
+.absence-sector-row{display:grid;grid-template-columns:minmax(7rem,10rem) minmax(8rem,1fr) 2.2rem;align-items:center;gap:.7rem;min-width:0}
+.absence-sector-label{overflow:hidden;color:var(--text-secondary);font-size:.78rem;font-weight:750;text-overflow:ellipsis;white-space:nowrap}
+.absence-sector-track{height:.62rem;overflow:hidden;border-radius:999px;background:rgba(255,255,255,.055);box-shadow:inset 0 0 0 1px rgba(255,255,255,.025)}
+.absence-sector-track span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--accent-strong),var(--accent));box-shadow:0 0 18px rgba(0,199,111,.16)}
+.absence-sector-row strong{color:var(--text-primary);font-size:.78rem;text-align:right}
+.absence-rank-number{display:grid;width:1.75rem;aspect-ratio:1;place-items:center;border:1px solid var(--accent-border);border-radius:.55rem;background:var(--accent-soft);color:var(--accent);font-size:.72rem;font-weight:900}
+@media(max-width:1100px){.absence-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.absence-chart-grid{grid-template-columns:1fr}}
+@media(max-width:620px){.absence-kpi-grid{grid-template-columns:1fr}.absence-sector-row{grid-template-columns:minmax(6.5rem,8rem) minmax(6rem,1fr) 2rem}.absence-line-chart svg{min-width:34rem}}

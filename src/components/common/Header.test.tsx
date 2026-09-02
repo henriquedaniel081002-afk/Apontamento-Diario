@@ -38,7 +38,7 @@ describe('Header compartilhado', () => {
     expect(onTabChange).toHaveBeenCalledWith('historico');
   });
 
-  it('preserva Registros e Dashboard para a coordenação', async () => {
+  it('preserva Registros, Dashboard e Controle Faltas para a coordenação', async () => {
     const onTabChange = vi.fn();
     const onLogout = vi.fn();
     const user = userEvent.setup();
@@ -49,6 +49,8 @@ describe('Header compartilhado', () => {
     expect(screen.getAllByRole('button', { name: 'Dashboard' })[0]).toHaveAttribute('aria-current', 'page');
     await user.click(screen.getAllByRole('button', { name: 'Registros' })[0]);
     expect(onTabChange).toHaveBeenCalledWith('apontamento');
+    await user.click(screen.getAllByRole('button', { name: 'Controle Faltas' })[0]);
+    expect(onTabChange).toHaveBeenCalledWith('controle-faltas');
     await user.click(screen.getByRole('button', { name: 'Sair do sistema' }));
     expect(onLogout).toHaveBeenCalledTimes(1);
   });

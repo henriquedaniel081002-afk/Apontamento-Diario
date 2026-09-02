@@ -13,12 +13,14 @@ import { ApontamentoPage } from './pages/ApontamentoPage';
 import { HistoricoPage } from './pages/HistoricoPage';
 import { CoordenacaoPage } from './pages/CoordenacaoPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { ControleFaltasPage } from './pages/ControleFaltasPage';
 import { invalidateDashboardCache } from './services/dashboardService';
+import { controleFaltasService } from './services/controleFaltasService';
 import { Header } from './components/common/Header';
 import { GlobalLoadingOverlay } from './components/common/GlobalLoadingOverlay';
 import { AppShell, LoadingState } from './components/common/ui';
 
-type AppTab = 'apontamento' | 'historico' | 'dashboard';
+type AppTab = 'apontamento' | 'historico' | 'dashboard' | 'controle-faltas';
 
 const INACTIVITY_MESSAGE = 'Sessão encerrada após 1 hora sem atividade. Entre novamente.';
 
@@ -31,6 +33,7 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = authService.onSessionExpired(({ message }) => {
       invalidateDashboardCache();
+      controleFaltasService.invalidate();
       setCurrentUser(null);
       setActiveTab('apontamento');
       setLoginMessage(message);
@@ -135,6 +138,7 @@ export default function App() {
 
   const handleLoginSuccess = (user: User) => {
     invalidateDashboardCache();
+    controleFaltasService.invalidate();
     setCurrentUser(user);
     setActiveTab('apontamento');
     setLoginMessage(null);
@@ -142,6 +146,7 @@ export default function App() {
 
   const handleLogout = () => {
     invalidateDashboardCache();
+    controleFaltasService.invalidate();
     authService.logout();
     setCurrentUser(null);
     setActiveTab('apontamento');
@@ -192,6 +197,8 @@ export default function App() {
       <main id="conteudo-principal" className="flex-1 pb-12">
         {activeTab === 'dashboard' ? (
           <DashboardPage user={currentUser} />
+        ) : activeTab === 'controle-faltas' && isCoordenacao ? (
+          <ControleFaltasPage />
         ) : isCoordenacao ? (
           <CoordenacaoPage user={currentUser} />
         ) : activeTab === 'apontamento' ? (

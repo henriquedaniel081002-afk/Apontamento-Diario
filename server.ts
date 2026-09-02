@@ -1934,6 +1934,69 @@ function dashboardAccessSectorNames(setor: string): string[] {
   return [dashboardSectorName(value)];
 }
 
+function absenceSectorName(setor: string): string | null {
+  const value = normalizeDashboardSector(setor);
+  if (['BOBINA AT/BT', 'BOBINA AT', 'BOBINA BT'].includes(value)) return 'BOBINAGEM';
+  if (value === 'CORTE LASER') return 'CORTE DO LASER';
+  if (value === 'MONTAGEM NUCLEO') return 'MONTAGEM DO NUCLEO';
+  if (value === 'CORTE DO NUCLEO' || value === 'CORTE NUCLEO') return 'CORTE DO NUCLEO';
+  if (value === 'FERRAGEM PA' || value === 'FERRAGEM PA / ACESSORIOS' || value === 'FERRAGEM PA/ACESSORIOS') return 'FERRAGEM';
+  return value === 'ESTAMPARIA' ? null : value;
+}
+
+app.get('/api/coordenacao/controle-faltas', auth, requireCoordenacao, async (req: any, res) => {
+  try {
+    const dataInicio = String(req.query.dataInicio || '').trim();
+    const dataFim = String(req.query.dataFim || '').trim();
+    const ymdPattern = /^\d{4}-\d{2}-\d{2}$/;
+
+    if (!ymdPattern.test(dataInicio) || !ymdPattern.test(dataFim) || dataInicio > dataFim) {
+      res.status(400).json({ error: 'Informe um período válido para consultar o Controle de Faltas.' });
+      return;
+    }
+
+    const result = await pool.query(`
+      SELECT f.id, f.apontamento_id, a.data, s.nome setor, l.nome linha,
+             f.turno, f.quantidade, f.nome, f.motivo_justificativa, f.atestado
+        FROM faltas f
+        JOIN apontamentos a ON a.id = f.apontamento_id
+        JOIN setores s ON s.id = a.setor_id
+        LEFT JOIN linhas l ON l.id = f.linha_id
+       WHERE a.status_aprovacao = 'APROVADO'
+         AND a.data BETWEEN $1::date AND $2::date
+       ORDER BY a.data, s.nome, f.id
+    `, [dataInicio, dataFim]);
+
+    const registros = result.rows.flatMap((row: any) => {
+      const nome = String(row.nome || '').trim();
+      const setor = absenceSectorName(String(row.setor || ''));
+      const quantidade = row.quantidade == null ? (nome ? 1 : 0) : Math.max(0, Number(row.quantidade) || 0);
+      if (!setor || quantidade <= 0) return [];
+
+      return [{
+        id: String(row.id),
+        apontamentoId: String(row.apontamento_id),
+        data: dateOnly(row.data),
+        setor,
+        linha: row.linha ? String(row.linha).trim() : undefined,
+        turno: dashboardTurno(row.turno) || undefined,
+        quantidade,
+        nome,
+        motivoJustificativa: String(row.motivo_justificativa || '').trim(),
+        atestado: row.atestado === true,
+      }];
+    });
+
+    res.json({
+      geradoEm: new Date().toISOString(),
+      registros,
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Falha ao carregar os dados do Controle de Faltas.' });
+  }
+});
+
 app.get('/api/coordenacao/dashboard', auth, async (req: any, res) => {
   try {
     await repairAllTurnSectorDuplicates();

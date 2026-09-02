@@ -38,7 +38,7 @@ export const coordenacaoService = {
 
   async importProduction(payload: ProductionImportRequest): Promise<ProductionImportResult> {
     const result = await apiRequest<ProductionImportResult>('/api/coordenacao/importar-producao', {
-      method: 'POST', body: JSON.stringify(payload),
+      method: 'POST', body: JSON.stringify({ ...payload, compacto: true }),
     });
     invalidateAfterMutation();
     return result;

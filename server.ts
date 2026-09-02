@@ -689,13 +689,13 @@ async function mergeTurnSectorDuplicateGroup(
             a.turno1_complementado,
             a.turno2_complementado,
             a.atualizado_em,
-            (SELECT COUNT(*)::int FROM producao p WHERE p.apontamento_id = a.id) AS producao_count
+            EXISTS(SELECT 1 FROM producao p WHERE p.apontamento_id = a.id) AS possui_producao
        FROM apontamentos a
       WHERE a.data = $1::date
         AND a.setor_id = $2
         AND (($3::text IS NULL AND a.tipo_bobina IS NULL) OR a.tipo_bobina::text = $3::text)
       ORDER BY
-        CASE WHEN (SELECT COUNT(*) FROM producao p WHERE p.apontamento_id = a.id) > 0 THEN 0 ELSE 1 END,
+        possui_producao DESC,
         CASE WHEN a.origem_producao = 'IMPORTADO' THEN 0 ELSE 1 END,
         CASE WHEN $4::bigint IS NOT NULL AND a.usuario_id = $4::bigint THEN 0 ELSE 1 END,
         a.atualizado_em DESC,
@@ -744,7 +744,28 @@ async function repairAllTurnSectorDuplicates() {
   }
 }
 
-async function loadApontamentosBatch(): Promise<any[]> {
+type LoadApontamentosBatchOptions = {
+  userId?: number;
+  pendingImportedOnly?: boolean;
+  excludePendingImported?: boolean;
+};
+
+async function loadApontamentosBatch(options: LoadApontamentosBatchOptions = {}): Promise<any[]> {
+  const conditions: string[] = [];
+  const params: any[] = [];
+
+  if (Number.isFinite(options.userId)) {
+    params.push(Number(options.userId));
+    conditions.push(`a.usuario_id = $${params.length}`);
+  }
+  if (options.pendingImportedOnly) {
+    conditions.push(`a.origem_producao = 'IMPORTADO' AND a.complementado = FALSE`);
+  }
+  if (options.excludePendingImported) {
+    conditions.push(`NOT (a.origem_producao = 'IMPORTADO' AND a.complementado = FALSE)`);
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const headers = await pool.query(
     `SELECT a.id, a.data, a.usuario_id, a.setor_id, a.tipo_bobina, u.login usuario, s.nome setor,
             a.criado_em, a.atualizado_em, a.status_aprovacao, a.aprovado_em, a.aprovado_por,
@@ -753,7 +774,9 @@ async function loadApontamentosBatch(): Promise<any[]> {
        JOIN usuarios u ON u.id = a.usuario_id
        JOIN setores s ON s.id = a.setor_id
        LEFT JOIN usuarios aprovador ON aprovador.id = a.aprovado_por
+       ${where}
       ORDER BY a.data DESC, a.id DESC`,
+    params,
   );
 
   if (!headers.rows.length) return [];
@@ -887,16 +910,11 @@ async function loadApontamentosBatch(): Promise<any[]> {
 
 app.get('/api/apontamentos', auth, async (req: any, res) => {
   try {
-    const ids = await pool.query(
-      `SELECT id
-         FROM apontamentos
-        WHERE usuario_id = $1
-          AND NOT (origem_producao = 'IMPORTADO' AND complementado = FALSE)
-        ORDER BY data DESC, id DESC`,
-      [req.auth.userId],
-    );
-    const registros = await Promise.all(ids.rows.map((r: any) => loadApontamento(r.id)));
-    res.json(registros.filter(Boolean));
+    const registros = await loadApontamentosBatch({
+      userId: Number(req.auth.userId),
+      excludePendingImported: true,
+    });
+    res.json(registros);
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Falha ao carregar histórico.' });
@@ -906,17 +924,11 @@ app.get('/api/apontamentos', auth, async (req: any, res) => {
 app.get('/api/apontamentos/importados/pendentes', auth, async (req: any, res) => {
   if (req.auth?.perfil === 'COORDENACAO') return res.json([]);
   try {
-    const ids = await pool.query(
-      `SELECT id
-         FROM apontamentos
-        WHERE usuario_id = $1
-          AND origem_producao = 'IMPORTADO'
-          AND complementado = FALSE
-        ORDER BY data DESC, id DESC`,
-      [req.auth.userId],
-    );
-    const registros = await Promise.all(ids.rows.map((row: any) => loadApontamento(row.id)));
-    res.json(registros.filter(Boolean));
+    const registros = await loadApontamentosBatch({
+      userId: Number(req.auth.userId),
+      pendingImportedOnly: true,
+    });
+    res.json(registros);
   } catch (e: any) {
     console.error(e);
     if (e?.code === '42703') {

@@ -87,6 +87,7 @@ function recordQuantity(record: ControleFaltasRegistro): number {
 }
 
 function EvolutionChart({ records, dataInicio, dataFim }: { records: ControleFaltasRegistro[]; dataInicio: string; dataFim: string }) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const data = useMemo(() => {
     const byDate = new Map<string, number>();
     for (const record of records) {
@@ -121,10 +122,28 @@ function EvolutionChart({ records, dataInicio, dataFim }: { records: ControleFal
   const points = data.map((item, index) => `${x(index)},${y(item.value)}`).join(' ');
   const gridValues = [...new Set([0, 0.25, 0.5, 0.75, 1].map((ratio) => Math.round(maxValue * ratio)))].sort((a, b) => a - b);
   const labelStep = Math.max(1, Math.ceil(data.length / 7));
+  const hitWidth = data.length > 1 ? chartWidth / (data.length - 1) : chartWidth;
+  const hovered = hoveredIndex === null ? null : data[hoveredIndex];
+  const tooltipWidth = 142;
+  const tooltipHeight = 56;
+  const tooltipX = hoveredIndex === null
+    ? 0
+    : Math.min(width - padding.right - tooltipWidth, Math.max(padding.left, x(hoveredIndex) - tooltipWidth / 2));
+  const tooltipY = hoveredIndex === null || !hovered
+    ? 0
+    : (() => {
+        const preferredAbove = y(hovered.value) - tooltipHeight - 15;
+        if (preferredAbove >= 7) return preferredAbove;
+        return Math.min(height - padding.bottom - tooltipHeight, y(hovered.value) + 15);
+      })();
 
   return (
     <div className="absence-line-chart" role="img" aria-label="Evolução das faltas ao longo do período selecionado">
-      <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="none"
+        onMouseLeave={() => setHoveredIndex(null)}
+      >
         {gridValues.map((value) => (
           <g key={value}>
             <line
@@ -155,8 +174,47 @@ function EvolutionChart({ records, dataInicio, dataFim }: { records: ControleFal
                 {item.date.slice(8, 10)}/{item.date.slice(5, 7)}
               </text>
             )}
+            <rect
+              x={index === 0 ? padding.left : x(index) - hitWidth / 2}
+              y={padding.top}
+              width={data.length === 1
+                ? chartWidth
+                : index === 0 || index === data.length - 1
+                  ? hitWidth / 2
+                  : hitWidth}
+              height={chartHeight}
+              className="absence-chart-hit-area"
+              onMouseEnter={() => setHoveredIndex(index)}
+              onMouseMove={() => setHoveredIndex(index)}
+            />
           </g>
         ))}
+        {hovered && hoveredIndex !== null && (
+          <g className="absence-chart-tooltip" pointerEvents="none">
+            <line
+              x1={x(hoveredIndex)}
+              x2={x(hoveredIndex)}
+              y1={padding.top}
+              y2={padding.top + chartHeight}
+              className="absence-chart-hover-line"
+            />
+            <circle cx={x(hoveredIndex)} cy={y(hovered.value)} r="6" className="absence-chart-point absence-chart-point-active" />
+            <rect
+              x={tooltipX}
+              y={tooltipY}
+              width={tooltipWidth}
+              height={tooltipHeight}
+              rx="8"
+              className="absence-chart-tooltip-box"
+            />
+            <text x={tooltipX + 12} y={tooltipY + 21} className="absence-chart-tooltip-date">
+              {formatDateBR(hovered.date)}
+            </text>
+            <text x={tooltipX + 12} y={tooltipY + 42} className="absence-chart-tooltip-value">
+              Faltas: {hovered.value.toLocaleString('pt-BR')}
+            </text>
+          </g>
+        )}
       </svg>
     </div>
   );

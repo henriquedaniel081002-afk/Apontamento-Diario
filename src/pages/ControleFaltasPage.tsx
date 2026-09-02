@@ -99,7 +99,15 @@ function EvolutionChart({ records, dataInicio, dataFim }: { records: ControleFal
     const end = new Date(`${dataFim}T00:00:00Z`);
     while (cursor <= end) {
       const date = cursor.toISOString().slice(0, 10);
-      items.push({ date, value: byDate.get(date) || 0 });
+      const value = byDate.get(date) || 0;
+      const dayOfWeek = cursor.getUTCDay();
+      const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
+
+      // O gráfico mostra os dias úteis normalmente. Sábado e domingo
+      // só entram na linha do tempo quando houver falta registrada.
+      if (isWeekday || value > 0) {
+        items.push({ date, value });
+      }
       cursor.setUTCDate(cursor.getUTCDate() + 1);
     }
     return items;

@@ -38,7 +38,7 @@ describe('Header compartilhado', () => {
     expect(onTabChange).toHaveBeenCalledWith('historico');
   });
 
-  it('preserva as abas existentes e adiciona Produtividade para a coordenação', async () => {
+  it('preserva as abas existentes e adiciona os dashboards da coordenação', async () => {
     const onTabChange = vi.fn();
     const onLogout = vi.fn();
     const user = userEvent.setup();
@@ -53,6 +53,8 @@ describe('Header compartilhado', () => {
     expect(onTabChange).toHaveBeenCalledWith('controle-faltas');
     await user.click(screen.getAllByRole('button', { name: 'Produtividade' })[0]);
     expect(onTabChange).toHaveBeenCalledWith('produtividade-individual');
+    await user.click(screen.getAllByRole('button', { name: 'Atraso' })[0]);
+    expect(onTabChange).toHaveBeenCalledWith('atraso');
     await user.click(screen.getByRole('button', { name: 'Sair do sistema' }));
     expect(onLogout).toHaveBeenCalledTimes(1);
   });

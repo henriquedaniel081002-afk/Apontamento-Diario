@@ -7,13 +7,14 @@ import {
   Gauge,
   UserRoundX,
   ShieldCheck,
+  AlertTriangle,
   type LucideIcon,
 } from 'lucide-react';
 import { User } from '../../types';
 import logoItam from '../../assets/logo-itam.png';
 import { cx } from './ui';
 
-export type HeaderTab = 'apontamento' | 'historico' | 'dashboard' | 'controle-faltas' | 'produtividade-individual';
+export type HeaderTab = 'apontamento' | 'historico' | 'dashboard' | 'controle-faltas' | 'produtividade-individual' | 'atraso';
 
 export interface HeaderProps {
   user: User;
@@ -55,6 +56,7 @@ const navigationByProfile: Record<User['perfil'], NavigationConfig> = {
       { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
       { id: 'controle-faltas', label: 'Controle Faltas', icon: UserRoundX },
       { id: 'produtividade-individual', label: 'Produtividade', icon: Gauge },
+      { id: 'atraso', label: 'Atraso', icon: AlertTriangle },
     ],
   },
 };
@@ -103,6 +105,7 @@ function getPageTitle(isCoordination: boolean, activeTab: HeaderTab): string {
     if (activeTab === 'dashboard') return 'Dashboard de Aderência';
     if (activeTab === 'controle-faltas') return 'Controle de Faltas';
     if (activeTab === 'produtividade-individual') return 'Produtividade Individual';
+    if (activeTab === 'atraso') return 'Controle de Atrasos';
     return 'Coordenação';
   }
   if (activeTab === 'dashboard') return 'Dashboard de Aderência';

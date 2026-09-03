@@ -24,7 +24,12 @@ function getValue(map: Map<string, unknown>, aliases: string[]) {
 function toInteger(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
   if (typeof value === 'number') return Number.isFinite(value) ? Math.trunc(value) : null;
-  const normalized = String(value).trim().replace(/\s+/g, '').replace(/\./g, '').replace(',', '.');
+  const text = String(value).trim().replace(/\s+/g, '');
+  const normalized = text.includes(',')
+    ? text.replace(/\./g, '').replace(',', '.')
+    : /^[+-]?\d{1,3}(?:\.\d{3})+$/.test(text)
+      ? text.replace(/\./g, '')
+      : text;
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
 }

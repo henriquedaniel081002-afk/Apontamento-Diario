@@ -70,11 +70,7 @@ export function AtrasoImportModal({ isOpen, onClose, onImported }: Props) {
       onClose();
     } catch (e: any) {
       const message = e?.message || 'Falha ao importar a base de atrasos.';
-      if (/row-level security|permission denied|not authorized|401|403/i.test(message)) {
-        setError('O Supabase bloqueou a gravação na tabela controle_atrasos. Verifique as permissões/RLS da tabela para a conexão já usada pelo sistema.');
-      } else {
-        setError(message);
-      }
+      setError(message);
     } finally {
       setImporting(false);
     }

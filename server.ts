@@ -12,6 +12,17 @@ const SESSION_SECRET = process.env.SESSION_SECRET || 'change-this-secret-in-prod
 if (!DATABASE_URL) throw new Error('DATABASE_URL não configurada.');
 
 const pool = new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false } });
+
+// O dashboard de Atrasos pode usar o mesmo PostgreSQL do sistema ou um Supabase
+// separado. Se ATRASO_DATABASE_URL/SUPABASE_DATABASE_URL não estiver configurada,
+// ele reutiliza DATABASE_URL e não altera a conexão dos módulos existentes.
+const ATRASO_DATABASE_URL = String(
+  process.env.ATRASO_DATABASE_URL || process.env.SUPABASE_DATABASE_URL || DATABASE_URL || '',
+).trim();
+const atrasoPool = ATRASO_DATABASE_URL === String(DATABASE_URL).trim()
+  ? pool
+  : new Pool({ connectionString: ATRASO_DATABASE_URL, ssl: { rejectUnauthorized: false } });
+
 app.use(express.json({ limit: '5mb' }));
 app.use('/api', (_req, res, next) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -2476,6 +2487,150 @@ app.post('/api/coordenacao/excluir-apontamentos', auth, requireCoordenacao, asyn
     res.status(500).json({ error: 'Falha ao excluir os apontamentos selecionados.' });
   } finally {
     client.release();
+  }
+});
+
+
+type ControleAtrasoStatus = 'ATRASO' | 'ADIANTAMENTO';
+type ControleAtrasoRow = {
+  serie: number;
+  potencia: number | null;
+  linha: string;
+  op: number | null;
+  cliente: string;
+  data_programada: string;
+  setor: string;
+  status: ControleAtrasoStatus;
+};
+
+function validateControleAtrasoRows(value: unknown): ControleAtrasoRow[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error('A importação não possui registros de ATRASO ou ADIANTAMENTO.');
+  }
+  if (value.length > 100000) {
+    throw new Error('A importação excede o limite de 100.000 registros.');
+  }
+
+  return value.map((item: any, index: number) => {
+    const serie = Number(item?.serie);
+    const potenciaRaw = item?.potencia;
+    const potencia = potenciaRaw === null || potenciaRaw === undefined || potenciaRaw === '' ? null : Number(potenciaRaw);
+    const opRaw = item?.op;
+    const op = opRaw === null || opRaw === undefined || opRaw === '' ? null : Number(opRaw);
+    const linha = String(item?.linha || '').trim();
+    const cliente = String(item?.cliente || '').trim();
+    const dataProgramada = String(item?.data_programada || '').trim().slice(0, 10);
+    const setor = String(item?.setor || '').trim();
+    const status = String(item?.status || '').trim().toUpperCase() as ControleAtrasoStatus;
+
+    if (!Number.isFinite(serie) || serie <= 0) throw new Error(`Série inválida na linha ${index + 1}.`);
+    if (potencia !== null && !Number.isFinite(potencia)) throw new Error(`Potência inválida na linha ${index + 1}.`);
+    if (op !== null && !Number.isFinite(op)) throw new Error(`OP inválida na linha ${index + 1}.`);
+    if (!linha) throw new Error(`Linha não informada na linha ${index + 1}.`);
+    if (!setor) throw new Error(`Setor não informado na linha ${index + 1}.`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dataProgramada)) throw new Error(`Data programada inválida na linha ${index + 1}.`);
+    if (status !== 'ATRASO' && status !== 'ADIANTAMENTO') {
+      throw new Error(`Status inválido na linha ${index + 1}. Somente ATRASO e ADIANTAMENTO são permitidos.`);
+    }
+
+    return {
+      serie: Math.trunc(serie),
+      potencia,
+      linha,
+      op: op === null ? null : Math.trunc(op),
+      cliente,
+      data_programada: dataProgramada,
+      setor,
+      status,
+    };
+  });
+}
+
+app.get('/api/coordenacao/controle-atrasos', auth, requireCoordenacao, async (_req: any, res) => {
+  try {
+    const result = await atrasoPool.query(
+      `SELECT serie, potencia, linha, op, cliente, data_programada, setor, status
+         FROM public.controle_atrasos
+        WHERE status IN ('ATRASO', 'ADIANTAMENTO')
+        ORDER BY data_programada ASC, serie ASC`,
+    );
+    res.json({ rows: result.rows });
+  } catch (e: any) {
+    console.error(e);
+    if (e?.code === '42P01') {
+      return res.status(500).json({ error: 'A tabela controle_atrasos não foi encontrada no banco usado pelo dashboard Atraso. Se ela estiver em um Supabase separado, configure ATRASO_DATABASE_URL no Vercel com a URL PostgreSQL desse projeto.' });
+    }
+    res.status(500).json({ error: 'Falha ao carregar o Controle de Atrasos.' });
+  }
+});
+
+app.post('/api/coordenacao/controle-atrasos/importar', auth, requireCoordenacao, async (req: any, res) => {
+  let rows: ControleAtrasoRow[];
+  try {
+    rows = validateControleAtrasoRows(req.body?.rows);
+  } catch (e: any) {
+    return res.status(400).json({ error: e?.message || 'Base de atrasos inválida.' });
+  }
+
+  let client: any;
+  try {
+    client = await atrasoPool.connect();
+    await client.query('BEGIN');
+
+    // Evita duas importações concorrentes substituírem a base ao mesmo tempo.
+    await client.query("SELECT pg_advisory_xact_lock(hashtext('itam_controle_atrasos_import'))");
+
+    // Esta tabela pertence somente ao módulo Atraso. A transação garante que,
+    // se qualquer INSERT/validação falhar, o DELETE também será desfeito.
+    await client.query('DELETE FROM public.controle_atrasos');
+
+    const batchSize = 500;
+    for (let start = 0; start < rows.length; start += batchSize) {
+      const batch = rows.slice(start, start + batchSize);
+      const params: any[] = [];
+      const values = batch.map((row, rowIndex) => {
+        const base = rowIndex * 8;
+        params.push(
+          row.serie,
+          row.potencia,
+          row.linha,
+          row.op,
+          row.cliente,
+          row.data_programada,
+          row.setor,
+          row.status,
+        );
+        return `($${base + 1}::bigint,$${base + 2}::numeric,$${base + 3}::text,$${base + 4}::bigint,$${base + 5}::text,$${base + 6}::date,$${base + 7}::text,$${base + 8}::text)`;
+      });
+
+      await client.query(
+        `INSERT INTO public.controle_atrasos
+          (serie, potencia, linha, op, cliente, data_programada, setor, status)
+         VALUES ${values.join(',')}`,
+        params,
+      );
+    }
+
+    const countResult = await client.query('SELECT COUNT(*)::int AS total FROM public.controle_atrasos');
+    const totalAfterImport = Number(countResult.rows[0]?.total || 0);
+    if (totalAfterImport !== rows.length) {
+      throw new Error(`Validação pós-importação falhou: esperado ${rows.length}, encontrado ${totalAfterImport}.`);
+    }
+
+    await client.query('COMMIT');
+    res.json({ imported: rows.length, total: totalAfterImport });
+  } catch (e: any) {
+    if (client) await client.query('ROLLBACK').catch(() => undefined);
+    console.error(e);
+    if (e?.code === '42P01') {
+      return res.status(500).json({ error: 'A tabela controle_atrasos não foi encontrada no banco usado pelo dashboard Atraso. Se ela estiver em um Supabase separado, configure ATRASO_DATABASE_URL no Vercel com a URL PostgreSQL desse projeto.' });
+    }
+    if (e?.code === '42501') {
+      return res.status(500).json({ error: 'A conexão do servidor não possui permissão para gravar em controle_atrasos.' });
+    }
+    res.status(500).json({ error: 'Falha ao substituir a base de atrasos. A base anterior foi preservada.' });
+  } finally {
+    client?.release();
   }
 });
 

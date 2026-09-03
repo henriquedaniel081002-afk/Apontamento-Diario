@@ -36,7 +36,6 @@ import { AtrasoImportModal } from '../atraso/components/AtrasoImportModal';
 import { AtrasoPrintModal } from '../atraso/components/AtrasoPrintModal';
 import { atrasoService } from '../atraso/services/atrasoService';
 import type { AtrasoRecord, AtrasoStatus } from '../atraso/types';
-import { isSupabaseConfigured } from '../productivity/lib/supabase';
 import '../atraso/atraso.css';
 
 function formatDateBR(value: string): string {
@@ -80,18 +79,13 @@ export function AtrasoPage() {
   const [status, setStatus] = useState<AtrasoStatus>('ATRASO');
   const [linha, setLinha] = useState('ALL');
   const [selectedSector, setSelectedSector] = useState<string | null>(null);
-  const [loading, setLoading] = useState(isSupabaseConfigured);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [importOpen, setImportOpen] = useState(false);
   const [printOpen, setPrintOpen] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
 
   const load = useCallback(async () => {
-    if (!isSupabaseConfigured) {
-      setLoading(false);
-      setError('Supabase não configurado. Verifique as variáveis VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY já utilizadas pelo sistema.');
-      return;
-    }
     setLoading(true);
     setError('');
     try {
@@ -102,8 +96,6 @@ export function AtrasoPage() {
       const message = e?.message || 'Não foi possível carregar a tabela controle_atrasos.';
       if (/relation .*controle_atrasos.* does not exist|Could not find the table/i.test(message)) {
         setError('A tabela controle_atrasos não foi encontrada no Supabase. Execute o script SQL combinado antes de usar esta aba.');
-      } else if (/row-level security|permission denied|not authorized|401|403/i.test(message)) {
-        setError('O Supabase bloqueou a leitura de controle_atrasos. Verifique as permissões/RLS da tabela para a conexão já usada pelo sistema.');
       } else {
         setError(message);
       }
@@ -279,7 +271,7 @@ export function AtrasoPage() {
       </FilterPanel>
 
       {loading ? (
-        <LoadingState label="Carregando Controle de Atrasos..." description="Consultando a tabela controle_atrasos no Supabase." />
+        <LoadingState label="Carregando Controle de Atrasos..." description="Consultando a tabela controle_atrasos pela conexão segura do sistema." />
       ) : error ? (
         <ErrorState
           title="Não foi possível carregar a aba Atraso"

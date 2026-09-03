@@ -49,6 +49,12 @@ function loadingCopy(path: string, method = 'GET'): { label: string; description
   if (path.includes('/excluir-apontamentos')) {
     return { label: 'Excluindo apontamentos', description: 'Removendo somente os registros que correspondem ao recorte selecionado.' };
   }
+  if (path.includes('/controle-atrasos/importar')) {
+    return { label: 'Importando base de atrasos', description: 'Validando e substituindo a base de ATRASO e ADIANTAMENTO com segurança.' };
+  }
+  if (path.includes('/controle-atrasos')) {
+    return { label: 'Carregando Controle de Atrasos', description: 'Buscando os registros mais recentes do dashboard Atraso.' };
+  }
   if (path.includes('/dashboard')) {
     return { label: 'Carregando dashboard', description: 'Buscando programação, produção e ocorrências para montar os indicadores.' };
   }

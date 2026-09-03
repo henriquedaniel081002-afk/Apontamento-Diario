@@ -4,6 +4,7 @@ import {
   ClipboardList,
   History,
   LogOut,
+  Gauge,
   UserRoundX,
   ShieldCheck,
   type LucideIcon,
@@ -12,7 +13,7 @@ import { User } from '../../types';
 import logoItam from '../../assets/logo-itam.png';
 import { cx } from './ui';
 
-export type HeaderTab = 'apontamento' | 'historico' | 'dashboard' | 'controle-faltas';
+export type HeaderTab = 'apontamento' | 'historico' | 'dashboard' | 'controle-faltas' | 'produtividade-individual';
 
 export interface HeaderProps {
   user: User;
@@ -53,6 +54,7 @@ const navigationByProfile: Record<User['perfil'], NavigationConfig> = {
       { id: 'apontamento', label: 'Registros', icon: ShieldCheck },
       { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
       { id: 'controle-faltas', label: 'Controle Faltas', icon: UserRoundX },
+      { id: 'produtividade-individual', label: 'Produtividade', icon: Gauge },
     ],
   },
 };
@@ -100,6 +102,7 @@ function getPageTitle(isCoordination: boolean, activeTab: HeaderTab): string {
   if (isCoordination) {
     if (activeTab === 'dashboard') return 'Dashboard de Aderência';
     if (activeTab === 'controle-faltas') return 'Controle de Faltas';
+    if (activeTab === 'produtividade-individual') return 'Produtividade Individual';
     return 'Coordenação';
   }
   if (activeTab === 'dashboard') return 'Dashboard de Aderência';

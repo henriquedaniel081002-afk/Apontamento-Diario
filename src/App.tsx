@@ -20,7 +20,11 @@ import { Header } from './components/common/Header';
 import { GlobalLoadingOverlay } from './components/common/GlobalLoadingOverlay';
 import { AppShell, LoadingState } from './components/common/ui';
 
-type AppTab = 'apontamento' | 'historico' | 'dashboard' | 'controle-faltas';
+type AppTab = 'apontamento' | 'historico' | 'dashboard' | 'controle-faltas' | 'produtividade-individual';
+
+const ProdutividadeIndividualPage = React.lazy(() =>
+  import('./pages/ProdutividadeIndividualPage').then((module) => ({ default: module.ProdutividadeIndividualPage })),
+);
 
 const INACTIVITY_MESSAGE = 'Sessão encerrada após 1 hora sem atividade. Entre novamente.';
 
@@ -199,6 +203,19 @@ export default function App() {
           <DashboardPage user={currentUser} />
         ) : activeTab === 'controle-faltas' && isCoordenacao ? (
           <ControleFaltasPage />
+        ) : activeTab === 'produtividade-individual' && isCoordenacao ? (
+          <React.Suspense
+            fallback={(
+              <div className="app-container app-container--wide py-6 sm:py-8">
+                <LoadingState
+                  label="Carregando Produtividade Individual..."
+                  description="Preparando o módulo conectado ao Supabase."
+                />
+              </div>
+            )}
+          >
+            <ProdutividadeIndividualPage />
+          </React.Suspense>
         ) : isCoordenacao ? (
           <CoordenacaoPage user={currentUser} />
         ) : activeTab === 'apontamento' ? (

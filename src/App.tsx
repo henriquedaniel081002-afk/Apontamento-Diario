@@ -20,7 +20,7 @@ import { Header } from './components/common/Header';
 import { GlobalLoadingOverlay } from './components/common/GlobalLoadingOverlay';
 import { AppShell, LoadingState } from './components/common/ui';
 
-type AppTab = 'apontamento' | 'historico' | 'dashboard' | 'controle-faltas' | 'produtividade-individual' | 'atraso';
+type AppTab = 'apontamento' | 'historico' | 'dashboard' | 'aderencia-anual' | 'controle-faltas' | 'produtividade-individual' | 'atraso';
 
 const ProdutividadeIndividualPage = React.lazy(() =>
   import('./pages/ProdutividadeIndividualPage').then((module) => ({ default: module.ProdutividadeIndividualPage })),
@@ -28,6 +28,10 @@ const ProdutividadeIndividualPage = React.lazy(() =>
 
 const AtrasoPage = React.lazy(() =>
   import('./pages/AtrasoPage').then((module) => ({ default: module.AtrasoPage })),
+);
+
+const AderenciaAnualPage = React.lazy(() =>
+  import('./aderencia-anual/AderenciaAnualPage').then((module) => ({ default: module.AderenciaAnualPage })),
 );
 
 const INACTIVITY_MESSAGE = 'Sessão encerrada após 1 hora sem atividade. Entre novamente.';
@@ -206,6 +210,19 @@ export default function App() {
       <main id="conteudo-principal" className="min-w-0 flex-1 pb-12">
         {activeTab === 'dashboard' ? (
           <DashboardPage user={currentUser} />
+        ) : activeTab === 'aderencia-anual' && isCoordenacao ? (
+          <React.Suspense
+            fallback={(
+              <div className="app-container app-container--wide py-6 sm:py-8">
+                <LoadingState
+                  label="Carregando Aderência Anual..."
+                  description="Preparando o módulo conectado ao Supabase."
+                />
+              </div>
+            )}
+          >
+            <AderenciaAnualPage />
+          </React.Suspense>
         ) : activeTab === 'controle-faltas' && isCoordenacao ? (
           <ControleFaltasPage />
         ) : activeTab === 'produtividade-individual' && isCoordenacao ? (

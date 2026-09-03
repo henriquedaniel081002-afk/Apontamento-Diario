@@ -10,6 +10,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   ShieldCheck,
+  TrendingUp,
   UserRoundX,
   X,
   type LucideIcon,
@@ -18,7 +19,7 @@ import { User } from '../../types';
 import logoItam from '../../assets/logo-itam.png';
 import { cx } from './ui';
 
-export type HeaderTab = 'apontamento' | 'historico' | 'dashboard' | 'controle-faltas' | 'produtividade-individual' | 'atraso';
+export type HeaderTab = 'apontamento' | 'historico' | 'dashboard' | 'aderencia-anual' | 'controle-faltas' | 'produtividade-individual' | 'atraso';
 
 export interface HeaderProps {
   user: User;
@@ -58,6 +59,7 @@ const navigationByProfile: Record<User['perfil'], NavigationConfig> = {
     items: [
       { id: 'apontamento', label: 'Registros', icon: ShieldCheck },
       { id: 'dashboard', label: 'Aderência Mensal', icon: BarChart3 },
+      { id: 'aderencia-anual', label: 'Aderência Anual', icon: TrendingUp },
       { id: 'controle-faltas', label: 'Controle Faltas', icon: UserRoundX },
       { id: 'produtividade-individual', label: 'Produtividade', icon: Gauge },
       { id: 'atraso', label: 'Atraso', icon: AlertTriangle },
@@ -108,6 +110,7 @@ function Navigation({
 function getPageTitle(isCoordination: boolean, activeTab: HeaderTab): string {
   if (isCoordination) {
     if (activeTab === 'dashboard') return 'Aderência Mensal';
+    if (activeTab === 'aderencia-anual') return 'Aderência Anual';
     if (activeTab === 'controle-faltas') return 'Controle de Faltas';
     if (activeTab === 'produtividade-individual') return 'Produtividade Individual';
     if (activeTab === 'atraso') return 'Controle de Atrasos';

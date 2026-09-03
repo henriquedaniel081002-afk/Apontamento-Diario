@@ -107,7 +107,7 @@ export function MonthlyDashboard({ dados, scope }: { dados: DashboardData; scope
       <div className="dashboard-scrollbar min-h-0 flex-1 overflow-y-auto">
         <div className="dashboard-content">
           <PageHeader
-            eyebrow="Dashboard integrado"
+            eyebrow="Visão integrada"
             title="Aderência Mensal"
             description={scope?.label ? `Acompanhamento do programado e produzido restrito a ${scope.label}.` : "Acompanhamento do programado e produzido com os mesmos critérios operacionais do sistema."}
             actions={<p className="dashboard-heading__updated">Atualizado em <time dateTime={dados.geradoEm}>{new Date(dados.geradoEm).toLocaleString('pt-BR')}</time></p>}

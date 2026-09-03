@@ -118,6 +118,8 @@ export async function parseAtrasoWorkbook(file: File): Promise<AtrasoImportPrevi
     const linha = String(getValue(map, ['LINHA']) ?? '').trim();
     const setor = String(getValue(map, ['SETOR']) ?? '').trim();
 
+    if (normalizeText(setor) === 'LABORATORIO') continue;
+
     if (serie === null || !dataProgramada || !linha || !setor) {
       throw new Error(`Linha ${index + 2}: registro de ${status === 'ATRASO' ? 'atraso' : 'adiantamento'} sem série, data programada, linha ou setor válido.`);
     }

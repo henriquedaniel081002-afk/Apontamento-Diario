@@ -47,7 +47,7 @@ describe('DashboardPage', () => {
 
     render(<DashboardPage />);
 
-    expect(screen.getByRole('status')).toHaveTextContent('Carregando Programado x Produzido');
+    expect(screen.getByRole('status')).toHaveTextContent('Carregando Aderência Mensal');
   });
 
   it('renderiza o painel mensal quando a consulta termina com dados', async () => {
@@ -67,7 +67,7 @@ describe('DashboardPage', () => {
     render(<DashboardPage />);
 
     expect(
-      await screen.findByRole('heading', { name: 'Dashboard pronto para receber a programação' }),
+      await screen.findByRole('heading', { name: 'Aderência Mensal pronta para receber a programação' }),
     ).toBeInTheDocument();
     expect(screen.getByText(/Importe um mês da BASE PROG/i)).toBeInTheDocument();
   });

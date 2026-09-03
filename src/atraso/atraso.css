@@ -74,6 +74,10 @@
   filter: brightness(1.08);
 }
 
+.atraso-bar-label {
+  pointer-events: none;
+}
+
 @media (max-width: 640px) {
   .atraso-status-toggle {
     gap: 0.35rem;

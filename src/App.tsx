@@ -194,7 +194,7 @@ export default function App() {
   return (
     <>
     <GlobalLoadingOverlay />
-    <AppShell className="flex flex-col bg-transparent font-sans text-slate-100 antialiased selection:bg-emerald-400/20 selection:text-emerald-50">
+    <AppShell className="block bg-transparent font-sans text-slate-100 antialiased selection:bg-emerald-400/20 selection:text-emerald-50 md:flex">
       <Header
         user={currentUser}
         activeTab={activeTab}
@@ -202,7 +202,8 @@ export default function App() {
         onLogout={handleLogout}
       />
 
-      <main id="conteudo-principal" className="flex-1 pb-12">
+      <div className="flex min-h-dvh min-w-0 flex-1 flex-col">
+      <main id="conteudo-principal" className="min-w-0 flex-1 pb-12">
         {activeTab === 'dashboard' ? (
           <DashboardPage user={currentUser} />
         ) : activeTab === 'controle-faltas' && isCoordenacao ? (
@@ -248,6 +249,7 @@ export default function App() {
       <footer className="border-t border-[var(--border-subtle)] bg-[var(--surface-raised)] px-4 py-4 text-center text-xs text-[var(--text-tertiary)]">
         <p>ITAM — Sistema de Apontamento Diário de Produção © {new Date().getFullYear()}</p>
       </footer>
+      </div>
     </AppShell>
     </>
   );

@@ -54,7 +54,7 @@ export function DashboardPage({ user }: DashboardPageProps) {
     try {
       setData(await dashboardService.getData(forceRefresh));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Falha ao carregar o dashboard.');
+      setError(e instanceof Error ? e.message : 'Falha ao carregar a Aderência Mensal.');
     } finally {
       await completeProgress();
       setLoading(false);
@@ -67,7 +67,7 @@ export function DashboardPage({ user }: DashboardPageProps) {
     return <PageContainer className="py-6 sm:py-8">
       <ProgressLoadingState
         progress={progress}
-        label="Carregando Dashboard de Aderência"
+        label="Carregando Aderência Mensal"
         description="Buscando programação, produção e ocorrências aprovadas para montar os indicadores."
       />
     </PageContainer>;
@@ -76,7 +76,7 @@ export function DashboardPage({ user }: DashboardPageProps) {
   if (error || !data) {
     return <PageContainer className="py-6 sm:py-8">
       <ErrorState
-        title="Não foi possível carregar o Dashboard de Aderência"
+        title="Não foi possível carregar a Aderência Mensal"
         description={error || 'Dados indisponíveis.'}
         action={<Button onClick={() => void load(true)} leftIcon={<RefreshCw className="size-4" aria-hidden="true" />}>Tentar novamente</Button>}
       />
@@ -87,7 +87,7 @@ export function DashboardPage({ user }: DashboardPageProps) {
     return <PageContainer className="py-6 sm:py-8">
       <EmptyState
         icon={<BarChart3 className="size-6" aria-hidden="true" />}
-        title="Dashboard pronto para receber a programação"
+        title="Aderência Mensal pronta para receber a programação"
         description={user?.perfil === 'APONTADOR'
           ? 'Ainda não há programação disponível para a sua área. A Coordenação pode importar a BASE PROG na tela de Registros.'
           : 'Importe um mês da BASE PROG na tela de Registros da Coordenação. Os apontamentos realizados já serão cruzados automaticamente.'}

@@ -46,7 +46,7 @@ describe('Header compartilhado', () => {
       <Header user={coordenacao} activeTab="dashboard" onTabChange={onTabChange} onLogout={onLogout} />,
     );
 
-    expect(screen.getAllByRole('button', { name: 'Dashboard' })[0]).toHaveAttribute('aria-current', 'page');
+    expect(screen.getAllByRole('button', { name: 'Aderência Mensal' })[0]).toHaveAttribute('aria-current', 'page');
     await user.click(screen.getAllByRole('button', { name: 'Registros' })[0]);
     expect(onTabChange).toHaveBeenCalledWith('apontamento');
     await user.click(screen.getAllByRole('button', { name: 'Controle Faltas' })[0]);
@@ -68,5 +68,19 @@ describe('Header compartilhado', () => {
       'href',
       '#conteudo-principal',
     );
+  });
+
+  it('permite recolher e expandir a barra lateral', async () => {
+    const user = userEvent.setup();
+    render(
+      <Header user={coordenacao} activeTab="dashboard" onTabChange={() => undefined} onLogout={() => undefined} />,
+    );
+
+    const collapseButton = screen.getByRole('button', { name: 'Recolher barra lateral' });
+    await user.click(collapseButton);
+    expect(screen.getByRole('button', { name: 'Expandir barra lateral' })).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(screen.getByRole('button', { name: 'Expandir barra lateral' }));
+    expect(screen.getByRole('button', { name: 'Recolher barra lateral' })).toHaveAttribute('aria-expanded', 'true');
   });
 });

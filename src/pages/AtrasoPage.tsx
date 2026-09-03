@@ -12,6 +12,7 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  LabelList,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -301,7 +302,7 @@ export function AtrasoPage() {
                   <BarChart
                     data={chartData}
                     layout="vertical"
-                    margin={{ top: 8, right: 32, bottom: 8, left: 12 }}
+                    margin={{ top: 8, right: 48, bottom: 8, left: 12 }}
                   >
                     <CartesianGrid stroke="rgba(255,255,255,0.055)" horizontal={false} />
                     <XAxis
@@ -330,6 +331,14 @@ export function AtrasoPage() {
                       }}
                       className="atraso-clickable-bar"
                     >
+                      <LabelList
+                        dataKey="total"
+                        position="right"
+                        className="atraso-bar-label"
+                        fill="#e5eee9"
+                        fontSize={12}
+                        fontWeight={800}
+                      />
                       {chartData.map((entry) => (
                         <Cell
                           key={entry.setor}

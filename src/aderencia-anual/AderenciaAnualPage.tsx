@@ -4,7 +4,6 @@ import {
   ChartColumnIncreasing,
   Database,
   PackageCheck,
-  Percent,
   RefreshCw,
 } from 'lucide-react';
 import {
@@ -23,19 +22,16 @@ import {
 import { CustomSelect } from '../components/common/CustomSelect';
 import { AderenciaAnualChart } from './components/AderenciaAnualChart';
 import { AderenciaAnualImport } from './components/AderenciaAnualImport';
-import { dashboardService } from '../services/dashboardService';
 import { aderenciaAnualService } from './services/aderenciaAnualService';
 import type { AderenciaAnualRecord, AderenciaAnualUpsertRow } from './types';
 import {
   buildAnnualComparison,
   calculateAnnualMetrics,
-  calculateMontagemFinalPartialProgrammed,
   deriveAvailableYears,
 } from './utils/metrics';
 
 const integerFormatter = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 });
 const decimalFormatter = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const percentFormatter = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 2 });
 
 export function AderenciaAnualPage() {
   const [records, setRecords] = useState<AderenciaAnualRecord[]>([]);
@@ -43,18 +39,13 @@ export function AderenciaAnualPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [currentMonthPartialProgrammed, setCurrentMonthPartialProgrammed] = useState<number | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [loadedRecords, monthlyDashboardData] = await Promise.all([
-        aderenciaAnualService.getAll(),
-        dashboardService.getData(),
-      ]);
+      const loadedRecords = await aderenciaAnualService.getAll();
       setRecords(loadedRecords);
-      setCurrentMonthPartialProgrammed(calculateMontagemFinalPartialProgrammed(monthlyDashboardData));
       const loadedYears = deriveAvailableYears(loadedRecords);
       setSelectedYear((current) => {
         if (current != null && loadedYears.includes(current)) return current;
@@ -76,13 +67,8 @@ export function AderenciaAnualPage() {
   const metrics = useMemo(
     () => selectedYear == null
       ? null
-      : calculateAnnualMetrics(
-        records,
-        selectedYear,
-        new Date(),
-        currentMonthPartialProgrammed ?? undefined,
-      ),
-    [currentMonthPartialProgrammed, records, selectedYear],
+      : calculateAnnualMetrics(records, selectedYear),
+    [records, selectedYear],
   );
   const chartData = useMemo(() => buildAnnualComparison(records, years), [records, years]);
 
@@ -143,7 +129,7 @@ export function AderenciaAnualPage() {
               description="A seleção abaixo não altera o gráfico comparativo."
               contentClassName="sm:max-w-sm"
             >
-              <Field label="Ano" htmlFor="aderencia-anual-year" hint="Afeta somente os três cartões.">
+              <Field label="Ano" htmlFor="aderencia-anual-year" hint="Afeta somente os dois cartões.">
                 <CustomSelect
                   id="aderencia-anual-year"
                   ariaLabel="Ano"
@@ -155,25 +141,13 @@ export function AderenciaAnualPage() {
               </Field>
             </FilterPanel>
 
-            <section aria-label={`Indicadores de ${selectedYear ?? ''}`} className="grid gap-4 md:grid-cols-3">
+            <section aria-label={`Indicadores de ${selectedYear ?? ''}`} className="grid gap-4 md:grid-cols-2">
               <MetricCard
                 label="Média de Dias Úteis"
                 value={metrics?.averageWorkdays == null ? '—' : decimalFormatter.format(metrics.averageWorkdays)}
                 description={metrics ? `${metrics.monthCount} mês(es) existente(s) no ano` : 'Sem dados para o ano'}
                 icon={<CalendarRange className="size-5" aria-hidden="true" />}
                 tone="info"
-              />
-              <MetricCard
-                label="Aderência Anual"
-                value={metrics?.adherence == null ? '—' : `${percentFormatter.format(metrics.adherence)}%`}
-                description={metrics
-                  ? selectedYear === new Date().getFullYear()
-                    ? 'Mês atual usa o Programado Parcial da Montagem Final'
-                    : `Calculada com ${metrics.adherenceMonthCount} mês(es) até o período aplicável`
-                  : 'Sem programação para calcular'}
-                icon={<Percent className="size-5" aria-hidden="true" />}
-                tone="success"
-                featured
               />
               <MetricCard
                 label="Total Produzido"

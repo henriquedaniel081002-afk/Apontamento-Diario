@@ -2232,6 +2232,81 @@ app.get('/api/coordenacao/dashboard', auth, async (req: any, res) => {
   }
 });
 
+// Consulta isolada e somente leitura para a Produção Diária. Mantém intacto o
+// contrato do dashboard mensal e reutiliza exatamente a mesma normalização de
+// setores aplicada acima, inclusive as regras de EPO/Montagem Final.
+app.get('/api/coordenacao/producao-diaria', auth, requireCoordenacao, async (req: any, res) => {
+  try {
+    const dataInicio = String(req.query.dataInicio || '').trim();
+    const dataFim = String(req.query.dataFim || '').trim();
+    const linhaSelecionada = String(req.query.linha || 'ALL').trim().toUpperCase();
+    const ymdPattern = /^\d{4}-\d{2}-\d{2}$/;
+
+    if (!ymdPattern.test(dataInicio) || !ymdPattern.test(dataFim) || dataInicio > dataFim) {
+      res.status(400).json({ error: 'Informe um período válido para consultar a Produção Diária.' });
+      return;
+    }
+
+    const [programacaoResult, producaoResult] = await Promise.all([
+      pool.query(`
+        SELECT setor, UPPER(TRIM(linha)) linha, SUM(quantidade)::bigint quantidade
+          FROM programacao
+         WHERE data_programada BETWEEN $1::date AND $2::date
+         GROUP BY setor, UPPER(TRIM(linha))
+         ORDER BY setor, linha
+      `, [dataInicio, dataFim]),
+      pool.query(`
+        SELECT s.nome setor, a.tipo_bobina, UPPER(TRIM(l.nome)) linha,
+               SUM(p.quantidade)::bigint quantidade
+          FROM producao p
+          JOIN apontamentos a ON a.id = p.apontamento_id
+          JOIN setores s ON s.id = a.setor_id
+          JOIN linhas l ON l.id = p.linha_id
+         WHERE a.data BETWEEN $1::date AND $2::date
+         GROUP BY s.nome, a.tipo_bobina, UPPER(TRIM(l.nome))
+         ORDER BY s.nome, linha
+      `, [dataInicio, dataFim]),
+    ]);
+
+    const linhas = [...new Set([
+      ...programacaoResult.rows.map((row: any) => String(row.linha || '').trim().toUpperCase()),
+      ...producaoResult.rows.map((row: any) => String(row.linha || '').trim().toUpperCase()),
+    ].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    const setores = new Map<string, { setor: string; programado: number; produzido: number }>();
+
+    const ensureSector = (setor: string) => {
+      const current = setores.get(setor) || { setor, programado: 0, produzido: 0 };
+      setores.set(setor, current);
+      return current;
+    };
+
+    for (const row of programacaoResult.rows) {
+      const linha = String(row.linha || '').trim().toUpperCase();
+      if (linhaSelecionada !== 'ALL' && linha !== linhaSelecionada) continue;
+      for (const setor of expandedDashboardSectors(String(row.setor || ''), linha)) {
+        ensureSector(setor).programado += Number(row.quantidade) || 0;
+      }
+    }
+
+    for (const row of producaoResult.rows) {
+      const linha = String(row.linha || '').trim().toUpperCase();
+      if (linhaSelecionada !== 'ALL' && linha !== linhaSelecionada) continue;
+      for (const setor of expandedDashboardSectors(String(row.setor || ''), linha, row.tipo_bobina)) {
+        ensureSector(setor).produzido += Number(row.quantidade) || 0;
+      }
+    }
+
+    res.json({
+      geradoEm: new Date().toISOString(),
+      filtros: { linhas },
+      setores: [...setores.values()].sort((a, b) => a.setor.localeCompare(b.setor, 'pt-BR')),
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Falha ao carregar os dados da Produção Diária.' });
+  }
+});
+
 app.get('/api/coordenacao/apontamentos', auth, requireCoordenacao, async (_req: any, res) => {
   try {
     await repairAllTurnSectorDuplicates();

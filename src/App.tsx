@@ -20,7 +20,11 @@ import { Header } from './components/common/Header';
 import { GlobalLoadingOverlay } from './components/common/GlobalLoadingOverlay';
 import { AppShell, LoadingState } from './components/common/ui';
 
-type AppTab = 'apontamento' | 'historico' | 'dashboard' | 'aderencia-anual' | 'controle-faltas' | 'produtividade-individual' | 'atraso';
+type AppTab = 'apontamento' | 'historico' | 'dashboard' | 'producao-diaria' | 'aderencia-anual' | 'controle-faltas' | 'produtividade-individual' | 'atraso';
+
+const ProducaoDiariaPage = React.lazy(() =>
+  import('./pages/ProducaoDiariaPage').then((module) => ({ default: module.ProducaoDiariaPage })),
+);
 
 const ProdutividadeIndividualPage = React.lazy(() =>
   import('./pages/ProdutividadeIndividualPage').then((module) => ({ default: module.ProdutividadeIndividualPage })),
@@ -210,6 +214,19 @@ export default function App() {
       <main id="conteudo-principal" className="min-w-0 flex-1 pb-12">
         {activeTab === 'dashboard' ? (
           <DashboardPage user={currentUser} />
+        ) : activeTab === 'producao-diaria' && isCoordenacao ? (
+          <React.Suspense
+            fallback={(
+              <div className="app-container app-container--wide py-6 sm:py-8">
+                <LoadingState
+                  label="Carregando Produção Diária..."
+                  description="Preparando a análise por período e setor."
+                />
+              </div>
+            )}
+          >
+            <ProducaoDiariaPage />
+          </React.Suspense>
         ) : activeTab === 'aderencia-anual' && isCoordenacao ? (
           <React.Suspense
             fallback={(

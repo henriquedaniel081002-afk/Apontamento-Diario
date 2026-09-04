@@ -47,6 +47,8 @@ describe('Header compartilhado', () => {
     );
 
     expect(screen.getAllByRole('button', { name: 'Aderência Mensal' })[0]).toHaveAttribute('aria-current', 'page');
+    await user.click(screen.getAllByRole('button', { name: 'Produção Diária' })[0]);
+    expect(onTabChange).toHaveBeenCalledWith('producao-diaria');
     await user.click(screen.getAllByRole('button', { name: 'Registros' })[0]);
     expect(onTabChange).toHaveBeenCalledWith('apontamento');
     await user.click(screen.getAllByRole('button', { name: 'Controle Faltas' })[0]);

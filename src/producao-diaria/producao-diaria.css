@@ -1,0 +1,28 @@
+.daily-production-page{min-width:0}
+.daily-summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}
+.daily-section-heading{display:flex;align-items:end;justify-content:space-between;gap:1rem;margin-bottom:.85rem}
+.daily-section-heading h2{margin:0;color:var(--text-primary);font-size:1.05rem;font-weight:850;letter-spacing:-.015em}
+.daily-section-heading p{margin:.3rem 0 0;color:var(--text-tertiary);font-size:.78rem}
+.daily-section-heading>span{flex:none;border:1px solid var(--border-subtle);border-radius:999px;background:var(--surface-muted);padding:.3rem .65rem;color:var(--text-secondary);font-size:.72rem;font-weight:800}
+.daily-sector-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1rem}
+.daily-sector-card{min-width:0;overflow:hidden;border:1px solid var(--border-subtle);border-radius:var(--radius-lg);background:linear-gradient(145deg,rgba(15,24,19,.98),rgba(7,12,9,.98));box-shadow:var(--shadow-surface)}
+.daily-sector-card__heading{display:flex;min-width:0;align-items:flex-start;justify-content:space-between;gap:.75rem;border-bottom:1px solid var(--border-subtle);padding:.9rem 1rem}
+.daily-sector-card__heading>div{min-width:0}.daily-sector-card__heading span:first-child{display:block;color:var(--text-tertiary);font-size:.64rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase}
+.daily-sector-card__heading h3{margin:.25rem 0 0;overflow-wrap:anywhere;color:var(--text-primary);font-size:.82rem;font-weight:850;line-height:1.25}
+.daily-sector-card__status{flex:none;border:1px solid var(--border-subtle);border-radius:999px;background:var(--surface-muted);padding:.22rem .45rem;color:var(--text-secondary);font-size:.62rem;font-weight:800}
+.daily-sector-card.is-success .daily-sector-card__status{border-color:var(--success-border);background:var(--success-soft);color:var(--success)}
+.daily-sector-card.is-warning .daily-sector-card__status{border-color:var(--warning-border);background:var(--warning-soft);color:var(--warning)}
+.daily-sector-card.is-danger .daily-sector-card__status{border-color:var(--danger-border);background:var(--danger-soft);color:var(--danger)}
+.daily-sector-card__body{display:grid;grid-template-columns:minmax(6.6rem,.9fr) minmax(0,1.1fr);align-items:center;gap:.9rem;padding:1rem}
+.daily-sector-gauge{--daily-progress:0deg;--daily-color:var(--accent);display:grid;width:100%;max-width:7.5rem;aspect-ratio:1;place-items:center;border-radius:50%;background:conic-gradient(var(--daily-color) var(--daily-progress),var(--border-subtle) 0)}
+.daily-sector-gauge>div{display:grid;width:73%;aspect-ratio:1;place-content:center;border-radius:50%;background:var(--surface-raised);text-align:center}
+.daily-sector-gauge strong{color:var(--daily-color);font-size:clamp(1rem,1.65vw,1.35rem);font-weight:900;letter-spacing:-.03em}
+.daily-sector-gauge span{margin-top:.15rem;color:var(--text-tertiary);font-size:.58rem;font-weight:800;text-transform:uppercase}
+.daily-sector-card dl{display:grid;gap:.55rem;margin:0}.daily-sector-card dl>div{min-width:0;border-bottom:1px solid var(--border-subtle);padding-bottom:.5rem}.daily-sector-card dl>div:last-child{border:0;padding-bottom:0}
+.daily-sector-card dt{color:var(--text-tertiary);font-size:.66rem;font-weight:750}.daily-sector-card dd{margin:.12rem 0 0;overflow-wrap:anywhere;color:var(--text-primary);font-size:1rem;font-weight:900}
+.daily-ranking-chart{min-width:0;width:100%}
+.daily-tooltip{display:grid;gap:.28rem;border:1px solid var(--border-strong);border-radius:.8rem;background:rgba(8,16,11,.97);padding:.7rem .8rem;box-shadow:var(--shadow-overlay)}
+.daily-tooltip strong{color:var(--text-primary);font-size:.78rem}.daily-tooltip span{color:var(--text-secondary);font-size:.72rem}
+@media(max-width:1240px){.daily-sector-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:980px){.daily-sector-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.daily-summary-grid{grid-template-columns:1fr 1fr}.daily-summary-grid>*:last-child{grid-column:1/-1}}
+@media(max-width:640px){.daily-summary-grid,.daily-sector-grid{grid-template-columns:1fr}.daily-summary-grid>*:last-child{grid-column:auto}.daily-section-heading{align-items:flex-start;flex-direction:column}.daily-sector-card__body{grid-template-columns:7rem minmax(0,1fr)}.daily-ranking-chart{overflow-x:auto}}

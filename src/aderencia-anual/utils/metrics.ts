@@ -1,3 +1,4 @@
+import type { DashboardData } from '../../dashboard/types';
 import type {
   AderenciaAnualMetrics,
   AderenciaAnualRecord,
@@ -47,10 +48,26 @@ export function deriveAvailableYears(records: AderenciaAnualRecord[]): number[] 
   )).sort((a, b) => a - b);
 }
 
+export function calculateMontagemFinalPartialProgrammed(
+  dashboardData: DashboardData,
+  today = new Date(),
+): number {
+  const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+  const cutoffDay = Math.max(today.getDate() - 1, 0);
+
+  return dashboardData.programacao.reduce((sum, record) => {
+    if (record.setor !== 'MONTAGEM FINAL' || !record.data.startsWith(`${currentMonth}-`)) return sum;
+    const day = Number(record.data.slice(8, 10));
+    if (!Number.isInteger(day) || day < 1 || day > cutoffDay) return sum;
+    return sum + numericValue(record.quantidade);
+  }, 0);
+}
+
 export function calculateAnnualMetrics(
   records: AderenciaAnualRecord[],
   selectedYear: number,
   today = new Date(),
+  currentMonthPartialProgrammed?: number,
 ): AderenciaAnualMetrics {
   const selectedRecords = records.filter((record) => getMonthReference(record.mes)?.year === selectedYear);
   const totalWorkdays = selectedRecords.reduce((sum, record) => sum + numericValue(record.dias_uteis), 0);
@@ -66,10 +83,16 @@ export function calculateAnnualMetrics(
     return reference.month <= currentMonth;
   });
 
-  const programmedToPeriod = adherenceRecords.reduce(
-    (sum, record) => sum + numericValue(record.programado),
-    0,
-  );
+  const programmedToPeriod = adherenceRecords.reduce((sum, record) => {
+    const reference = getMonthReference(record.mes);
+    const isCurrentMonth = selectedYear === currentYear && reference?.month === currentMonth;
+
+    if (isCurrentMonth && currentMonthPartialProgrammed != null) {
+      return sum + numericValue(currentMonthPartialProgrammed);
+    }
+
+    return sum + numericValue(record.programado);
+  }, 0);
   const producedToPeriod = adherenceRecords.reduce(
     (sum, record) => sum + numericValue(record.realizado),
     0,

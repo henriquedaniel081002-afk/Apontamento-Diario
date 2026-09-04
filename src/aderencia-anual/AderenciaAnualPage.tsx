@@ -23,13 +23,19 @@ import {
 import { CustomSelect } from '../components/common/CustomSelect';
 import { AderenciaAnualChart } from './components/AderenciaAnualChart';
 import { AderenciaAnualImport } from './components/AderenciaAnualImport';
+import { dashboardService } from '../services/dashboardService';
 import { aderenciaAnualService } from './services/aderenciaAnualService';
 import type { AderenciaAnualRecord, AderenciaAnualUpsertRow } from './types';
-import { buildAnnualComparison, calculateAnnualMetrics, deriveAvailableYears } from './utils/metrics';
+import {
+  buildAnnualComparison,
+  calculateAnnualMetrics,
+  calculateMontagemFinalPartialProgrammed,
+  deriveAvailableYears,
+} from './utils/metrics';
 
 const integerFormatter = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 });
 const decimalFormatter = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const percentFormatter = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const percentFormatter = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 2 });
 
 export function AderenciaAnualPage() {
   const [records, setRecords] = useState<AderenciaAnualRecord[]>([]);
@@ -37,13 +43,18 @@ export function AderenciaAnualPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [currentMonthPartialProgrammed, setCurrentMonthPartialProgrammed] = useState<number | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const loadedRecords = await aderenciaAnualService.getAll();
+      const [loadedRecords, monthlyDashboardData] = await Promise.all([
+        aderenciaAnualService.getAll(),
+        dashboardService.getData(),
+      ]);
       setRecords(loadedRecords);
+      setCurrentMonthPartialProgrammed(calculateMontagemFinalPartialProgrammed(monthlyDashboardData));
       const loadedYears = deriveAvailableYears(loadedRecords);
       setSelectedYear((current) => {
         if (current != null && loadedYears.includes(current)) return current;
@@ -63,8 +74,15 @@ export function AderenciaAnualPage() {
 
   const years = useMemo(() => deriveAvailableYears(records), [records]);
   const metrics = useMemo(
-    () => selectedYear == null ? null : calculateAnnualMetrics(records, selectedYear),
-    [records, selectedYear],
+    () => selectedYear == null
+      ? null
+      : calculateAnnualMetrics(
+        records,
+        selectedYear,
+        new Date(),
+        currentMonthPartialProgrammed ?? undefined,
+      ),
+    [currentMonthPartialProgrammed, records, selectedYear],
   );
   const chartData = useMemo(() => buildAnnualComparison(records, years), [records, years]);
 
@@ -148,7 +166,11 @@ export function AderenciaAnualPage() {
               <MetricCard
                 label="Aderência Anual"
                 value={metrics?.adherence == null ? '—' : `${percentFormatter.format(metrics.adherence)}%`}
-                description={metrics ? `Calculada com ${metrics.adherenceMonthCount} mês(es) até o período aplicável` : 'Sem programação para calcular'}
+                description={metrics
+                  ? selectedYear === new Date().getFullYear()
+                    ? 'Mês atual usa o Programado Parcial da Montagem Final'
+                    : `Calculada com ${metrics.adherenceMonthCount} mês(es) até o período aplicável`
+                  : 'Sem programação para calcular'}
                 icon={<Percent className="size-5" aria-hidden="true" />}
                 tone="success"
                 featured

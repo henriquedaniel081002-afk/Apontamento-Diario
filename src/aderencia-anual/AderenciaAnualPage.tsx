@@ -18,9 +18,9 @@ import {
   MetricCard,
   PageContainer,
   PageHeader,
-  SelectField,
   Surface,
 } from '../components/common/ui';
+import { CustomSelect } from '../components/common/CustomSelect';
 import { AderenciaAnualChart } from './components/AderenciaAnualChart';
 import { AderenciaAnualImport } from './components/AderenciaAnualImport';
 import { aderenciaAnualService } from './services/aderenciaAnualService';
@@ -126,13 +126,14 @@ export function AderenciaAnualPage() {
               contentClassName="sm:max-w-sm"
             >
               <Field label="Ano" htmlFor="aderencia-anual-year" hint="Afeta somente os três cartões.">
-                <SelectField
+                <CustomSelect
                   id="aderencia-anual-year"
-                  value={selectedYear ?? ''}
-                  onChange={(event) => setSelectedYear(Number(event.target.value))}
-                >
-                  {years.map((year) => <option key={year} value={year}>{year}</option>)}
-                </SelectField>
+                  ariaLabel="Ano"
+                  value={selectedYear == null ? '' : String(selectedYear)}
+                  options={years.map((year) => ({ value: String(year), label: String(year) }))}
+                  onChange={(value) => setSelectedYear(Number(value))}
+                  className="min-h-11"
+                />
               </Field>
             </FilterPanel>
 

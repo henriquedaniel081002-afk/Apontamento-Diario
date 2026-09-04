@@ -22,13 +22,14 @@ interface AderenciaAnualChartProps {
 }
 
 export function AderenciaAnualChart({ data, years }: AderenciaAnualChartProps) {
-  const minimumWidth = Math.max(760, years.length * 170);
+  const minimumWidth = Math.max(900, years.length * 180);
+  const barSize = years.length <= 3 ? 28 : years.length === 4 ? 23 : years.length <= 6 ? 18 : 14;
 
   return (
     <div className="min-w-0 overflow-x-auto" aria-label="Comparativo anual da quantidade realizada">
       <div style={{ minWidth: minimumWidth }}>
-        <ResponsiveContainer width="100%" height={420}>
-          <BarChart data={data} margin={{ top: 34, right: 24, left: 8, bottom: 8 }} barGap={2} barCategoryGap="18%">
+        <ResponsiveContainer width="100%" height={480}>
+          <BarChart data={data} margin={{ top: 42, right: 28, left: 10, bottom: 10 }} barGap={3} barCategoryGap="10%">
             <CartesianGrid stroke="rgba(196,255,222,0.08)" vertical={false} />
             <XAxis
               dataKey="month"
@@ -42,7 +43,7 @@ export function AderenciaAnualChart({ data, years }: AderenciaAnualChartProps) {
               tickLine={false}
               tickFormatter={(value) => compactFormatter.format(Number(value))}
               tick={{ fill: '#64748b', fontSize: 11, fontWeight: 700 }}
-              width={58}
+              width={62}
             />
             <Tooltip
               cursor={{ fill: 'rgba(255,255,255,0.035)' }}
@@ -61,7 +62,7 @@ export function AderenciaAnualChart({ data, years }: AderenciaAnualChartProps) {
               verticalAlign="top"
               align="right"
               iconType="circle"
-              wrapperStyle={{ paddingBottom: 18, color: '#cbd5e1', fontSize: 12, fontWeight: 700 }}
+              wrapperStyle={{ paddingBottom: 22, color: '#cbd5e1', fontSize: 12, fontWeight: 700 }}
             />
             {years.map((year, index) => (
               <Bar
@@ -69,8 +70,9 @@ export function AderenciaAnualChart({ data, years }: AderenciaAnualChartProps) {
                 dataKey={String(year)}
                 name={String(year)}
                 fill={COLORS[index % COLORS.length]}
-                maxBarSize={34}
-                radius={[5, 5, 0, 0]}
+                barSize={barSize}
+                maxBarSize={barSize}
+                radius={[6, 6, 0, 0]}
               >
                 <LabelList
                   dataKey={String(year)}

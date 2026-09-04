@@ -39,7 +39,8 @@ describe('AderenciaAnualPage', () => {
     expect(screen.getByTestId('annual-chart-years')).toHaveTextContent('2024,2025');
     expect(screen.getByRole('region', { name: 'Indicadores de 2025' })).toHaveTextContent('200');
 
-    await user.selectOptions(screen.getByLabelText('Ano'), '2024');
+    await user.click(screen.getByRole('combobox', { name: 'Ano' }));
+    await user.click(screen.getByRole('option', { name: '2024' }));
 
     await waitFor(() => {
       expect(screen.getByRole('region', { name: 'Indicadores de 2024' })).toHaveTextContent('90');

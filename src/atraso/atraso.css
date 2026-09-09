@@ -87,15 +87,3 @@
     font-size: 0.72rem;
   }
 }
-
-/* ITAM presentation — container-aware operational layout. */
-
-.atraso-status-toggle { background: var(--surface-muted); border-radius: var(--radius-sm); gap: .25rem; }
-.atraso-status-toggle button { font-weight: 600; font-size: .8125rem; min-height: 2.5rem; }
-.atraso-status-toggle .is-active { box-shadow: none; }
-.status-dot--danger, .status-dot--success { box-shadow: none; }
-.atraso-chart-wrap { overflow-x: auto; }
-.atraso-chart-wrap > .recharts-responsive-container { min-width: 520px; }
-.atraso-clickable-bar:hover { filter: brightness(1.12); }
-.atraso-clickable-bar path[stroke="#ffffff"] { stroke: var(--text-primary); stroke-width: 2; }
-@media(max-width: 920px) { .atraso-page > .filter-panel > div:last-child { grid-template-columns: minmax(0,1fr); } }

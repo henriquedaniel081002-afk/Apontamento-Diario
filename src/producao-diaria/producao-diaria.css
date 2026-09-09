@@ -26,3 +26,36 @@
 @media(max-width:1240px){.daily-sector-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:980px){.daily-sector-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.daily-summary-grid{grid-template-columns:1fr 1fr}.daily-summary-grid>*:last-child{grid-column:1/-1}}
 @media(max-width:640px){.daily-summary-grid,.daily-sector-grid{grid-template-columns:1fr}.daily-summary-grid>*:last-child{grid-column:auto}.daily-section-heading{align-items:flex-start;flex-direction:column}.daily-sector-card__body{grid-template-columns:7rem minmax(0,1fr)}.daily-ranking-chart{overflow-x:auto}}
+
+/* ITAM presentation — container-aware operational layout. */
+
+.daily-summary-grid { gap: .875rem; }
+.daily-sector-grid { grid-template-columns: repeat(auto-fit,minmax(min(100%,15rem),1fr)); gap: .875rem; }
+.daily-sector-card { background: var(--surface-base); container-type: inline-size; }
+.daily-sector-card__heading { flex-wrap: wrap; gap: .5rem; padding: .875rem 1rem; }
+.daily-sector-card__heading h3 { font-size: .875rem; font-weight: 600; line-height: 1.4; }
+.daily-sector-card__heading span:first-child { font-size: .625rem; font-weight: 500; }
+.daily-sector-card__status { font-size: .625rem; font-weight: 500; padding: .2rem .45rem; }
+.daily-sector-card__body { grid-template-columns: minmax(0,1fr); gap: 1rem; }
+/* The existing percentage is outside a small ring, so even large values never overlap. */
+.daily-sector-gauge { display: flex; align-items: center; gap: .875rem; max-width: none; width: 100%; aspect-ratio: auto; border-radius: 0; background: none; }
+.daily-sector-gauge::before { content: ""; width: 2.75rem; height: 2.75rem; flex: 0 0 auto; border-radius: 50%; background: conic-gradient(var(--daily-color) var(--daily-progress),var(--border-subtle) 0); mask: radial-gradient(farthest-side,transparent calc(100% - 4px),black calc(100% - 3px)); }
+.daily-sector-gauge > div { display: flex; flex-direction: column; min-width: 0; width: auto; aspect-ratio: auto; border-radius: 0; background: none; text-align: left; }
+.daily-sector-gauge strong { font-size: clamp(1.4rem,9cqi,1.85rem); font-weight: 650; line-height: 1.2; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.daily-sector-gauge span { font-size: .6875rem; font-weight: 500; text-transform: none; }
+.daily-sector-card dl { grid-template-columns: repeat(2,minmax(0,1fr)); gap: .75rem; border-top: 1px solid var(--border-subtle); padding-top: .75rem; }
+.daily-sector-card dl > div { border: 0; padding: 0; }
+.daily-sector-card dt { font-size: .6875rem; font-weight: 500; }
+.daily-sector-card dd { font-size: 1.125rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.daily-sector-card dl > div:first-child dd { color: var(--info); }
+.daily-tooltip { background: var(--surface-overlay); border-radius: var(--radius-md); }
+.daily-ranking-chart { overflow-x: auto; }
+.daily-ranking-chart > .recharts-responsive-container { min-width: 560px; }
+@media(max-width: 1000px) {
+ .daily-summary-grid { grid-template-columns: minmax(0,1fr); }
+ .daily-summary-grid > * { grid-column: 1; }
+ .daily-production-page > .filter-panel > div:last-child { grid-template-columns: minmax(0,1fr); }
+}
+@media(min-width: 1001px) {
+ .daily-production-page > .filter-panel > div:last-child { grid-template-columns: repeat(3,minmax(0,1fr)); }
+}

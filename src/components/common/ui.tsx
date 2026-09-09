@@ -20,7 +20,7 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 const buttonVariants: Record<ButtonVariant, string> = {
   primary:
-    'border-[#00c76f] bg-[#00c76f] text-[#03150d] shadow-[0_10px_30px_rgba(0,199,111,0.16)] hover:border-[#1cdb85] hover:bg-[#1cdb85] active:bg-[#00a85e]',
+    'border-[var(--accent)] bg-[var(--accent)] text-[#072219] hover:border-[var(--accent-hover)] hover:bg-[var(--accent-hover)] active:bg-[var(--accent-strong)]',
   secondary:
     'border-white/12 bg-white/[0.06] text-slate-100 hover:border-white/20 hover:bg-white/[0.10] active:bg-white/[0.14]',
   ghost:
@@ -64,7 +64,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       disabled={disabled || isLoading}
       aria-busy={isLoading || undefined}
       className={cx(
-        'inline-flex items-center justify-center border font-bold transition-[background-color,border-color,color,box-shadow,transform] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#070b08] disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
+        'ui-button inline-flex items-center justify-center border font-semibold transition-[background-color,border-color,color,box-shadow,transform] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#070b08] disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
         buttonVariants[variant],
         buttonSizes[size],
         fullWidth && 'w-full',
@@ -155,7 +155,7 @@ export function PageHeader({
   return (
     <header
       className={cx(
-        'flex min-w-0 flex-col gap-4 border-b border-white/[0.08] pb-5 sm:flex-row sm:items-end sm:justify-between sm:gap-6 sm:pb-6',
+        'ui-page-header flex min-w-0 flex-col gap-4 border-b border-white/[0.08] pb-5 sm:flex-row sm:items-end sm:justify-between sm:gap-6 sm:pb-6',
         className,
       )}
       {...props}
@@ -168,11 +168,11 @@ export function PageHeader({
         )}
         <div className="min-w-0">
           {eyebrow && (
-            <p className="mb-1.5 text-xs font-extrabold uppercase tracking-[0.12em] text-emerald-300">
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-emerald-300">
               {eyebrow}
             </p>
           )}
-          <h1 className="text-[clamp(1.5rem,2.2vw,2.25rem)] font-black leading-[1.12] tracking-[-0.025em] text-white">
+          <h1 className="text-[clamp(1.4rem,2vw,1.9rem)] font-bold leading-[1.12] tracking-[-0.025em] text-white">
             {title}
           </h1>
           {description && (
@@ -198,10 +198,10 @@ export interface SurfaceProps extends React.HTMLAttributes<HTMLElement> {
 }
 
 const surfaceTones: Record<SurfaceTone, string> = {
-  base: 'border-[rgba(196,255,222,0.10)] bg-[linear-gradient(180deg,rgba(12,19,15,.98),rgba(7,12,9,.98))] shadow-[inset_0_1px_rgba(255,255,255,.02)]',
-  muted: 'border-[rgba(196,255,222,0.08)] bg-[linear-gradient(180deg,rgba(9,15,12,.96),rgba(5,9,7,.96))]',
-  raised: 'border-[rgba(0,199,111,.16)] bg-[linear-gradient(145deg,rgba(14,23,18,.99),rgba(7,12,9,.99))] shadow-[0_24px_70px_rgba(0,0,0,.28)]',
-  inset: 'border-white/[0.08] bg-black/20',
+  base: 'border-[var(--border-subtle)] bg-[var(--surface-base)] shadow-[var(--shadow-surface)]',
+  muted: 'border-[var(--border-subtle)] bg-[var(--surface-muted)]',
+  raised: 'border-[var(--border-strong)] bg-[var(--surface-raised)] shadow-[var(--shadow-surface)]',
+  inset: 'border-[var(--border-subtle)] bg-[var(--surface-muted)]',
 };
 
 const surfacePaddings: Record<SurfacePadding, string> = {
@@ -215,7 +215,7 @@ export const Surface = React.forwardRef<HTMLElement, SurfaceProps>(
   ({ as: Component = 'div', tone = 'base', padding = 'none', className, ...props }, ref) => (
     <Component
       ref={ref as React.Ref<never>}
-      className={cx('rounded-[1.15rem] border', surfaceTones[tone], surfacePaddings[padding], className)}
+      className={cx('ui-surface min-w-0 rounded-[var(--radius-lg)] border', surfaceTones[tone], surfacePaddings[padding], className)}
       {...props}
     />
   ),
@@ -271,7 +271,7 @@ export const SectionCard = React.forwardRef<HTMLElement, SectionCardProps>(
                 </span>
               )}
               <div className="min-w-0">
-                {title && <h2 className="text-base font-extrabold tracking-tight text-white sm:text-lg">{title}</h2>}
+                {title && <h2 className="text-base font-semibold tracking-tight text-white sm:text-lg">{title}</h2>}
                 {description && <p className="mt-1 text-sm leading-5 text-slate-400">{description}</p>}
               </div>
             </div>
@@ -316,13 +316,13 @@ export const MetricCard = React.forwardRef<HTMLElement, MetricCardProps>(
       padding="md"
       className={cx(
         'kpi-industrial flex min-w-0 flex-col justify-between gap-4',
-        featured && 'min-h-40 sm:min-h-44',
+        featured && 'ui-kpi-featured',
         className,
       )}
       {...props}
     >
       <div className="flex min-w-0 items-start justify-between gap-3">
-        <p className="text-xs font-extrabold uppercase tracking-[0.1em] text-slate-400">{label}</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-400">{label}</p>
         {icon && (
           <span className={cx('flex size-10 shrink-0 items-center justify-center rounded-xl border bg-black/20', metricToneClasses[tone])}>
             {icon}
@@ -333,7 +333,7 @@ export const MetricCard = React.forwardRef<HTMLElement, MetricCardProps>(
         <div className="flex min-w-0 flex-wrap items-end gap-x-3 gap-y-1">
           <p
             className={cx(
-              'break-words font-black leading-none tracking-[-0.035em] text-white',
+              'ui-kpi-value break-words font-semibold leading-none tracking-[-0.035em] text-white',
               featured ? 'text-[clamp(2rem,4vw,3.25rem)]' : 'text-[clamp(1.65rem,3vw,2.35rem)]',
             )}
           >
@@ -361,7 +361,7 @@ export const FilterPanel = React.forwardRef<HTMLElement, FilterPanelProps>(
     <Surface ref={ref} as="section" padding="none" className={cx('filter-panel overflow-visible', className)} {...props}>
       <div className="flex min-w-0 flex-col gap-3 border-b border-white/[0.08] px-4 py-3.5 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between sm:px-5">
         <div className="min-w-0">
-          <h2 className="text-xs font-black uppercase tracking-[0.12em] text-slate-200">{title}</h2>
+          <h2 className="text-xs font-bold uppercase tracking-[0.12em] text-slate-200">{title}</h2>
           {description && <p className="mt-1 text-sm text-slate-400">{description}</p>}
         </div>
         {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
@@ -445,7 +445,7 @@ export function EmptyState({ icon, title, description, action, className }: Empt
   return (
     <div
       className={cx(
-        'flex min-h-52 flex-col items-center justify-center rounded-2xl border border-dashed border-white/12 bg-white/[0.025] px-5 py-10 text-center',
+        'ui-empty-state flex min-h-44 flex-col items-center justify-center rounded-xl border border-dashed border-white/12 bg-white/[0.025] px-5 py-10 text-center',
         className,
       )}
     >
@@ -618,7 +618,7 @@ export function DataTable<T>({
   }
 
   return (
-    <div className={cx('min-w-0 overflow-x-auto rounded-2xl border border-white/[0.08]', containerClassName)}>
+    <div className={cx('ui-table-scroll min-w-0 overflow-x-auto rounded-xl border border-[var(--border-subtle)]', containerClassName)}>
       <table className={cx('w-full min-w-[42rem] border-collapse text-sm', className)} {...props}>
         {caption && <caption className="sr-only">{caption}</caption>}
         <thead className="bg-white/[0.045]">
@@ -628,7 +628,7 @@ export function DataTable<T>({
                 key={column.id}
                 scope="col"
                 className={cx(
-                  'border-b border-white/[0.08] px-4 py-3 text-xs font-extrabold uppercase tracking-[0.08em] text-slate-400',
+                  'border-b border-white/[0.08] px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em] text-slate-400',
                   tableAlignment[column.align || 'left'],
                   column.headerClassName,
                 )}
@@ -638,7 +638,7 @@ export function DataTable<T>({
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-white/[0.07] bg-[rgba(7,12,9,.72)]">
+        <tbody className="divide-y divide-white/[0.07] bg-[var(--surface-base)]">
           {rows.map((row, rowIndex) => {
             const key = getRowKey
               ? getRowKey(row, rowIndex)
@@ -733,7 +733,7 @@ export function ProgressLoadingState({
       aria-live="polite"
       aria-label={`${String(label)}: ${normalizedProgress}%`}
       className={cx(
-        'relative isolate flex min-h-[21rem] items-center justify-center overflow-hidden rounded-[1.4rem] border border-emerald-400/15 bg-[linear-gradient(145deg,rgba(10,19,14,.99),rgba(4,9,6,.99))] px-5 py-10 shadow-[0_28px_90px_rgba(0,0,0,.32)] sm:px-8',
+        'ui-progress-state relative isolate flex min-h-[16rem] items-center justify-center overflow-hidden rounded-[1.4rem] border border-emerald-400/15 bg-[linear-gradient(145deg,rgba(10,19,14,.99),rgba(4,9,6,.99))] px-5 py-10 shadow-[0_28px_90px_rgba(0,0,0,.32)] sm:px-8',
         className,
       )}
       {...props}
@@ -748,17 +748,17 @@ export function ProgressLoadingState({
           <LoaderCircle className="size-8 animate-spin text-emerald-300" aria-hidden="true" />
         </div>
 
-        <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-emerald-300/90">Sistema ITAM</p>
-        <h2 className="mt-2 text-xl font-black tracking-tight text-white sm:text-2xl">{label}</h2>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/90">Sistema ITAM</p>
+        <h2 className="mt-2 text-xl font-bold tracking-tight text-white sm:text-2xl">{label}</h2>
         <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-400">{description}</p>
 
         <div className="mt-8 rounded-2xl border border-white/[0.08] bg-black/20 p-4 text-left sm:p-5">
           <div className="mb-3 flex items-end justify-between gap-4">
             <div>
-              <p className="text-xs font-extrabold uppercase tracking-[0.1em] text-slate-500">Progresso</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Progresso</p>
               <p className="mt-1 text-sm font-bold text-slate-200">{stage}</p>
             </div>
-            <span className="tabular-nums text-3xl font-black tracking-[-0.04em] text-emerald-300 sm:text-4xl">
+            <span className="tabular-nums text-3xl font-bold tracking-[-0.04em] text-emerald-300 sm:text-4xl">
               {normalizedProgress}%
             </span>
           </div>
@@ -806,7 +806,7 @@ export function ErrorState({
     <div
       role="alert"
       className={cx(
-        'flex min-h-52 flex-col items-center justify-center rounded-2xl border border-rose-400/20 bg-rose-400/[0.055] px-5 py-10 text-center',
+        'ui-error-state flex min-h-44 flex-col items-center justify-center rounded-xl border border-rose-400/20 bg-rose-400/[0.055] px-5 py-10 text-center',
         className,
       )}
       {...props}
@@ -814,7 +814,7 @@ export function ErrorState({
       <span className="mb-4 flex size-12 items-center justify-center rounded-2xl border border-rose-400/20 bg-rose-400/10 text-rose-300">
         <AlertTriangle className="size-6" aria-hidden="true" />
       </span>
-      <h3 className="text-base font-extrabold text-slate-100">{title}</h3>
+      <h3 className="text-base font-semibold text-slate-100">{title}</h3>
       <p className="mt-1.5 max-w-lg text-sm leading-6 text-slate-400">{description}</p>
       {action && <div className="mt-5">{action}</div>}
     </div>
@@ -853,7 +853,7 @@ export function Stepper({
             <>
               <span
                 className={cx(
-                  'flex size-7 shrink-0 items-center justify-center rounded-full border text-xs font-black',
+                  'flex size-7 shrink-0 items-center justify-center rounded-full border text-xs font-bold',
                   isActive && 'border-emerald-300 bg-emerald-300 text-emerald-950',
                   isComplete && 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300',
                   !isActive && !isComplete && 'border-white/12 bg-black/20 text-slate-500',

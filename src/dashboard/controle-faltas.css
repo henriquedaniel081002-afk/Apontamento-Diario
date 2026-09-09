@@ -23,3 +23,18 @@
 .absence-rank-number{display:grid;width:1.75rem;aspect-ratio:1;place-items:center;border:1px solid var(--accent-border);border-radius:.55rem;background:var(--accent-soft);color:var(--accent);font-size:.72rem;font-weight:900}
 @media(max-width:1100px){.absence-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.absence-chart-grid{grid-template-columns:1fr}}
 @media(max-width:620px){.absence-kpi-grid{grid-template-columns:1fr}.absence-sector-row{grid-template-columns:minmax(6.5rem,8rem) minmax(6rem,1fr) 2rem}.absence-line-chart svg{min-width:34rem}}
+
+/* ITAM presentation — container-aware operational layout. */
+
+.absence-chart-gridline { stroke: var(--chart-grid); }
+.absence-chart-line, .absence-chart-point-active { filter: none; }
+.absence-chart-line { stroke-width: 2.5; }
+.absence-chart-value, .absence-chart-tooltip-value { font-weight: 600; }
+.absence-sector-track span { background: var(--accent); box-shadow: none; }
+.absence-sector-label { white-space: normal; overflow: visible; text-overflow: clip; font-weight: 500; }
+.absence-sector-row { grid-template-columns: minmax(0,1.1fr) minmax(0,1fr) minmax(2rem,auto); }
+@media(max-width: 1300px) {
+ .absence-chart-grid { grid-template-columns: minmax(0,1fr); }
+ .absence-kpi-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+@media(max-width: 700px) { .absence-kpi-grid { grid-template-columns: minmax(0,1fr); } }

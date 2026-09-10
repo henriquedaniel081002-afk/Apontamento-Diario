@@ -29,6 +29,7 @@ import { CoordinationSettingsModal } from '../components/coordenacao/Coordinatio
 import { BulkDeletePayload, DeleteApontamentosModal } from '../components/coordenacao/DeleteApontamentosModal';
 import type { ProgramacaoImportGroup } from '../utils/importProgramacaoExcel';
 import { CoordinationRecords } from '../components/coordenacao/CoordinationRecords';
+import { PendingApprovals } from '../components/coordenacao/PendingApprovals';
 import { ConfirmModal } from '../components/common/ConfirmModal';
 import { Toast, ToastMessage } from '../components/common/Toast';
 import { CustomSelect } from '../components/common/CustomSelect';
@@ -267,7 +268,7 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
   };
 
 
-  const handleApprovalChange = async (record: Apontamento, status: StatusAprovacao) => {
+  const handleApprovalChange = async (record: Pick<Apontamento, 'id'>, status: StatusAprovacao) => {
     if (approvalBusyId) return;
     setApprovalBusyId(record.id);
     try {
@@ -369,6 +370,15 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
             tone={dataFilter && operationalStatus.pendingUnits.length > 0 ? 'warning' : 'neutral'}
           />
         </section>
+      )}
+
+      {user.perfil === 'COORDENACAO' && !loading && !loadError && (
+        <PendingApprovals
+          recordsRevision={apontamentos}
+          approvalBusyId={approvalBusyId}
+          feedback={toast}
+          onApprove={(record) => handleApprovalChange(record, 'APROVADO')}
+        />
       )}
 
       {!loading && !loadError && (

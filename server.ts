@@ -2307,6 +2307,129 @@ app.get('/api/coordenacao/producao-diaria', auth, requireCoordenacao, async (req
   }
 });
 
+// Visão somente leitura. A aprovação continua exclusivamente no PATCH existente,
+// por apontamento inteiro; produção isolada não compõe esta fila.
+app.get('/api/coordenacao/pendencias-aprovacao', auth, requireCoordenacao, async (req: any, res) => {
+  const dataInicio = String(req.query.dataInicio || '').trim();
+  const dataFim = String(req.query.dataFim || '').trim();
+  const setor = String(req.query.setor || '').trim();
+  const tipo = String(req.query.tipo || '').trim();
+  const pagina = Number(req.query.pagina || 1);
+  const resumo = req.query.resumo === 'true';
+  const tamanhoPagina = 20;
+  const validDate = (value: string) => {
+    if (!value) return true;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const parsed = new Date(`${value}T00:00:00Z`);
+    return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+  };
+  if (!validDate(dataInicio) || !validDate(dataFim) || (dataInicio && dataFim && dataInicio > dataFim)) {
+    return res.status(400).json({ error: 'Informe um período válido para consultar as pendências.' });
+  }
+  if (!['', 'MATERIAL', 'MAQUINA', 'NC', 'FALTAS', 'OBSERVACOES'].includes(tipo)
+      || !Number.isSafeInteger(pagina) || pagina < 1) {
+    return res.status(400).json({ error: 'Filtros de pendências inválidos.' });
+  }
+
+  try {
+    const result = await pool.query(`
+      WITH pendentes AS (
+        SELECT a.id, a.data, a.criado_em, a.origem_producao, a.complementado,
+               CASE WHEN s.nome = 'BOBINA AT/BT' AND UPPER(a.tipo_bobina::text) IN ('AT', 'BT')
+                    THEN 'BOBINA ' || UPPER(a.tipo_bobina::text) ELSE s.nome END AS setor
+          FROM apontamentos a
+          JOIN setores s ON s.id = a.setor_id
+         WHERE UPPER(COALESCE(NULLIF(a.status_aprovacao::text, ''), 'PENDENTE')) = 'PENDENTE'
+      ), ocorrencias AS (
+        SELECT o.apontamento_id, 'MATERIAL' AS tipo FROM paradas_falta_material o JOIN pendentes p ON p.id = o.apontamento_id
+        UNION ALL
+        SELECT o.apontamento_id, 'MAQUINA' FROM paradas_maquina o JOIN pendentes p ON p.id = o.apontamento_id
+        UNION ALL
+        SELECT o.apontamento_id, 'NC' FROM nao_conformidades o JOIN pendentes p ON p.id = o.apontamento_id
+        UNION ALL
+        SELECT o.apontamento_id, 'FALTAS' FROM faltas o JOIN pendentes p ON p.id = o.apontamento_id
+        UNION ALL
+        SELECT o.apontamento_id, 'OBSERVACOES' FROM observacoes o JOIN pendentes p ON p.id = o.apontamento_id
+      ), contagens AS (
+        SELECT apontamento_id, COUNT(*) AS quantidade, ARRAY_AGG(DISTINCT tipo) AS tipos
+          FROM ocorrencias GROUP BY apontamento_id
+      ), base AS (
+        SELECT p.*, c.quantidade, c.tipos FROM pendentes p JOIN contagens c ON c.apontamento_id = p.id
+      ), filtrados AS (
+        SELECT * FROM base
+         WHERE ($1::date IS NULL OR data >= $1::date)
+           AND ($2::date IS NULL OR data <= $2::date)
+           AND ($3::text = '' OR setor = $3)
+           AND ($4::text = '' OR $4 = ANY(tipos))
+      ), pagina_atual AS (
+        SELECT LEAST($5::bigint, GREATEST(1, CEIL(COUNT(*)::numeric / $6::integer)))::integer AS numero
+          FROM filtrados
+      ), pagina_registros AS (
+        SELECT * FROM filtrados ORDER BY data, id
+         LIMIT CASE WHEN $7::boolean THEN 0 ELSE $6::integer END
+        OFFSET ((SELECT numero FROM pagina_atual) - 1) * $6::integer
+      )
+      SELECT (SELECT COUNT(*)::integer FROM base) AS total,
+             (SELECT COALESCE(SUM(quantidade), 0)::integer FROM base) AS "totalOcorrencias",
+             (SELECT COUNT(*)::integer FROM filtrados) AS "totalFiltrado",
+             (SELECT numero FROM pagina_atual) AS pagina,
+             COALESCE((SELECT JSONB_AGG(setor ORDER BY setor) FROM (SELECT DISTINCT setor FROM base) s), '[]'::jsonb) AS setores,
+             COALESCE((SELECT JSONB_AGG(JSONB_BUILD_OBJECT(
+               'id', p.id::text, 'data', p.data, 'setor', p.setor, 'createdAt', p.criado_em,
+               'statusAprovacao', 'PENDENTE', 'origemProducao', p.origem_producao,
+               'complementado', p.complementado, 'totalOcorrencias', p.quantidade,
+               'possuiProducao', EXISTS(SELECT 1 FROM producao pr WHERE pr.apontamento_id = p.id)
+             ) ORDER BY p.data, p.id) FROM pagina_registros p), '[]'::jsonb) AS registros
+    `, [dataInicio || null, dataFim || null, setor, tipo, pagina, tamanhoPagina, resumo]);
+
+    const response = result.rows[0];
+    const ids = response.registros.map((record: any) => record.id);
+    // Uma única consulta em lote para os detalhes da página, sem buscar produção
+    // nem fazer uma chamada por apontamento. O tipo seleciona o conjunto inteiro.
+    const details = ids.length ? await pool.query(`
+      SELECT apontamento_id::text, id::text, 'MATERIAL' AS tipo, NULL::text AS linha, turno,
+             JSONB_BUILD_OBJECT('Material', material, 'Causa / motivo', causa_motivo,
+               'Hora inicial', hora_inicio, 'Hora final', hora_fim) AS detalhes
+        FROM paradas_falta_material WHERE apontamento_id = ANY($1::bigint[])
+      UNION ALL
+      SELECT apontamento_id::text, id::text, 'MAQUINA', NULL::text, turno,
+             JSONB_BUILD_OBJECT('Máquina / equipamento', maquina_equipamento, 'Observação', observacao,
+               'Hora inicial', hora_inicio, 'Hora final', hora_fim)
+        FROM paradas_maquina WHERE apontamento_id = ANY($1::bigint[])
+      UNION ALL
+      SELECT apontamento_id::text, id::text, 'NC', NULL::text, turno,
+             JSONB_BUILD_OBJECT('Causa', causa_nao_conformidade, 'OP', op, 'Série', numero_serie)
+        FROM nao_conformidades WHERE apontamento_id = ANY($1::bigint[])
+      UNION ALL
+      SELECT f.apontamento_id::text, f.id::text, 'FALTAS', l.nome, f.turno,
+             JSONB_BUILD_OBJECT('Nome', f.nome, 'Quantidade de faltas', f.quantidade,
+               'Justificativa', f.justificativa, 'Motivo / justificativa', f.motivo_justificativa, 'Atestado', f.atestado)
+        FROM faltas f LEFT JOIN linhas l ON l.id = f.linha_id WHERE f.apontamento_id = ANY($1::bigint[])
+      UNION ALL
+      SELECT o.apontamento_id::text, o.id::text, 'OBSERVACOES', l.nome, o.turno,
+             JSONB_BUILD_OBJECT('Observação', o.observacao, 'Justificativa da meta', o.justificativa_meta)
+        FROM observacoes o LEFT JOIN linhas l ON l.id = o.linha_id WHERE o.apontamento_id = ANY($1::bigint[])
+      ORDER BY apontamento_id, tipo, id
+    `, [ids]) : { rows: [] };
+    const byId = new Map<string, any[]>();
+    for (const { apontamento_id, ...item } of details.rows) {
+      const items = byId.get(apontamento_id) || [];
+      items.push({ ...item, turno: item.turno ? String(item.turno).toLowerCase() : null });
+      byId.set(apontamento_id, items);
+    }
+    res.json({
+      ...response, tamanhoPagina,
+      registros: response.registros.map((record: any) => ({
+        ...record, data: dateOnly(record.data), createdAt: isoDateTime(record.createdAt),
+        ocorrencias: byId.get(record.id) || [],
+      })),
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Falha ao carregar as pendências de aprovação.' });
+  }
+});
+
 app.get('/api/coordenacao/apontamentos', auth, requireCoordenacao, async (_req: any, res) => {
   try {
     await repairAllTurnSectorDuplicates();

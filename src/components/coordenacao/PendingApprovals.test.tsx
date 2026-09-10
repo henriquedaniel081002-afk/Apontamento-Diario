@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '../../services/apiClient';
 import { PendingApprovals } from './PendingApprovals';
 import { pendenciasAprovacaoService, type PendingApproval, type PendingApprovalResult } from '../../services/pendenciasAprovacaoService';
 
@@ -10,7 +11,7 @@ vi.mock('../../services/pendenciasAprovacaoService', async (importOriginal) => (
 }));
 
 const record: PendingApproval = {
-  id: '10', data: '2026-09-10', setor: 'SOLDA', createdAt: '2026-09-10T11:00:00Z',
+  id: '10', versao: '2026-09-10 11:00:00+00', data: '2026-09-10', setor: 'SOLDA', createdAt: '2026-09-10T11:00:00Z',
   statusAprovacao: 'PENDENTE', possuiProducao: true, origemProducao: 'IMPORTADO', complementado: true,
   totalOcorrencias: 2,
   ocorrencias: [
@@ -22,7 +23,7 @@ const response = (registros = [record]): PendingApprovalResult => ({
   total: registros.length, totalOcorrencias: registros.length * 2, totalFiltrado: registros.length,
   setores: ['SOLDA'], pagina: 1, tamanhoPagina: 20, registros,
 });
-const props = () => ({ recordsRevision: [], approvalBusyId: null, feedback: null, onApprove: vi.fn().mockResolvedValue(undefined) });
+const props = () => ({ recordsRevision: [], approvalBusyId: null, feedback: null, onAction: vi.fn().mockResolvedValue(undefined) });
 
 beforeEach(() => vi.mocked(pendenciasAprovacaoService.get).mockResolvedValue(response()));
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
@@ -47,18 +48,17 @@ describe('Pendências de aprovação', () => {
     expect(screen.getByText('Não')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /reprovar/i })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Aprovar apontamento 10 de SOLDA' }));
-    expect(p.onApprove).toHaveBeenCalledExactlyOnceWith(record);
+    expect(p.onAction).toHaveBeenCalledExactlyOnceWith(record, 'APROVAR');
   });
 
   it.each([
-    [{ possuiProducao: false }, 'Aguardando importação da produção'],
     [{ complementado: false }, 'Aguardando o apontador finalizar'],
   ])('mantém o bloqueio atual de aprovação: %j', async (override, message) => {
     vi.mocked(pendenciasAprovacaoService.get).mockResolvedValue(response([{ ...record, ...override }]));
     const p = props(); render(<PendingApprovals {...p} />); await open();
     expect(screen.getByText(new RegExp(message))).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Aprovar apontamento 10 de SOLDA' })).toBeDisabled();
-    expect(p.onApprove).not.toHaveBeenCalled();
+    expect(p.onAction).not.toHaveBeenCalled();
   });
 
   it('envia período, setor e tipo somente ao aplicar os filtros próprios', async () => {
@@ -110,5 +110,63 @@ describe('Pendências de aprovação', () => {
     await user.click(screen.getByRole('button', { name: 'Atualizar pendências' }));
     expect(await screen.findByText('Nenhuma pendência corresponde aos filtros.')).toBeInTheDocument();
     expect(screen.getByText('21 apontamento(s) pendente(s)')).toBeInTheDocument();
+  });
+});
+
+
+describe('Novas ações da fila', () => {
+  it('permite aprovar sem produção, inclusive sem complemento, e impede clique duplo', async () => {
+    const pending = { ...record, possuiProducao: false, complementado: false };
+    vi.mocked(pendenciasAprovacaoService.get).mockResolvedValue(response([pending]));
+    const p = props(); p.onAction.mockImplementation(() => new Promise(() => {}));
+    render(<PendingApprovals {...p} />); const user = await open();
+    expect(screen.getByText('Aguardando Produção · Aprovação manual disponível.')).toBeInTheDocument();
+    const approve = screen.getByRole('button', { name: 'Aprovar apontamento 10 de SOLDA' });
+    await user.dblClick(approve);
+    expect(p.onAction).toHaveBeenCalledExactlyOnceWith(pending, 'APROVAR');
+    expect(approve).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Excluir apontamento 10 de SOLDA' })).toBeDisabled();
+  });
+
+  it('cancelar a confirmação não executa ação alguma', async () => {
+    const p = props(); render(<PendingApprovals {...p} />); const user = await open();
+    await user.click(screen.getByRole('button', { name: 'Excluir apontamento 10 de SOLDA' }));
+    const confirm = screen.getByRole('dialog', { name: 'Excluir apontamento?' });
+    expect(within(confirm).getByText(/A produção vinculada será preservada/)).toBeInTheDocument();
+    await user.click(within(confirm).getByRole('button', { name: 'Cancelar' }));
+    expect(p.onAction).not.toHaveBeenCalled();
+    expect(screen.getByText('Chapa 2,65 mm')).toBeInTheDocument();
+  });
+
+  it.each([true, false])('exclui somente após confirmação (possui produção: %s)', async (possuiProducao) => {
+    const target = { ...record, possuiProducao };
+    vi.mocked(pendenciasAprovacaoService.get).mockResolvedValue(response([target]));
+    const p = props(); render(<PendingApprovals {...p} />); const user = await open();
+    await user.click(screen.getByRole('button', { name: 'Excluir apontamento 10 de SOLDA' }));
+    expect(p.onAction).not.toHaveBeenCalled();
+    await user.click(within(screen.getByRole('dialog', { name: 'Excluir apontamento?' })).getByRole('button', { name: /^Excluir$/ }));
+    expect(p.onAction).toHaveBeenCalledExactlyOnceWith(target, 'EXCLUIR');
+  });
+
+  it('falha de exclusão mantém o registro e mostra erro', async () => {
+    const p = props(); p.onAction.mockRejectedValue(new Error('Falha ao excluir'));
+    render(<PendingApprovals {...p} />); const user = await open();
+    await user.click(screen.getByRole('button', { name: 'Excluir apontamento 10 de SOLDA' }));
+    await user.click(within(screen.getByRole('dialog', { name: 'Excluir apontamento?' })).getByRole('button', { name: /^Excluir$/ }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Falha ao excluir');
+    expect(screen.getByText('Chapa 2,65 mm')).toBeInTheDocument();
+  });
+
+  it('conflito em outra sessão recarrega a fila mantendo o período aplicado', async () => {
+    const p = props(); p.onAction.mockRejectedValue(new ApiError('Registro alterado', 409, {}));
+    render(<PendingApprovals {...p} />); const user = await open();
+    fireEvent.change(screen.getByLabelText('Data inicial'), { target: { value: '2026-09-01' } });
+    await user.click(screen.getByRole('button', { name: 'Aplicar filtros' }));
+    await screen.findByText('Chapa 2,65 mm');
+    vi.mocked(pendenciasAprovacaoService.get).mockResolvedValue(response([]));
+    await user.click(screen.getByRole('button', { name: 'Aprovar apontamento 10 de SOLDA' }));
+    expect(await screen.findByText('Nenhum apontamento pendente de aprovação.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Data inicial')).toHaveValue('2026-09-01');
+    expect(screen.getByRole('alert')).toHaveTextContent('Registro alterado');
   });
 });

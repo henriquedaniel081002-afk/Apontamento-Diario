@@ -115,6 +115,19 @@ export const coordenacaoService = {
     return result;
   },
 
+  async pendingAction(id: string, versao: string, action: 'APROVAR' | 'EXCLUIR'): Promise<{ id: string; preservouProducao: boolean; updatedAt?: string }> {
+    const approve = action === 'APROVAR';
+    const path = approve
+      ? `/api/coordenacao/apontamentos/${encodeURIComponent(id)}/aprovacao`
+      : `/api/coordenacao/pendencias-aprovacao/${encodeURIComponent(id)}`;
+    const result = await apiRequest<{ id: string; preservouProducao: boolean; updatedAt?: string }>(path, {
+      method: approve ? 'PATCH' : 'DELETE',
+      body: JSON.stringify({ versao, ...(approve ? { status: 'APROVADO', escopo: 'PENDENCIAS' } : {}) }),
+    });
+    invalidateAfterMutation();
+    return result;
+  },
+
   async delete(id: string): Promise<boolean> {
     await apiRequest<unknown>(`/api/coordenacao/apontamentos/${encodeURIComponent(id)}`, { method: 'DELETE' });
     invalidateAfterMutation();

@@ -4,7 +4,7 @@ import type { Server } from 'node:http';
 import jwt from 'jsonwebtoken';
 
 const { query } = vi.hoisted(() => ({ query: vi.fn() }));
-vi.mock('pg', () => ({ default: { Pool: class { query = query; } } }));
+vi.mock('pg', () => ({ default: { Pool: class { query = query; async connect() { return { query, release: vi.fn() }; } } } }));
 vi.mock('dotenv', () => ({ default: { config: vi.fn() } }));
 let server: Server;
 let base: string;
@@ -24,7 +24,7 @@ beforeAll(async () => {
   const address = server.address();
   base = `http://127.0.0.1:${typeof address === 'object' && address ? address.port : 0}`;
 });
-beforeEach(() => query.mockReset());
+beforeEach(() => { query.mockReset(); });
 afterAll(async () => {
   await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   vi.unstubAllEnvs();
@@ -69,5 +69,64 @@ describe('API de pendências — acesso e preservação do fluxo', () => {
     const r = await request('/api/coordenacao/apontamentos/10/aprovacao', 'COORDENACAO', { method: 'PATCH', body: JSON.stringify({ status: 'APROVADO' }) });
     expect(r.status).toBe(409); expect(query).toHaveBeenCalledTimes(1);
     expect(query.mock.calls[0][0]).not.toContain('UPDATE');
+  });
+});
+
+
+describe('Ações transacionais da fila', () => {
+  const body = { status: 'APROVADO', escopo: 'PENDENCIAS', versao: 'v1' };
+  function mockRecord(overrides: Record<string, unknown> = {}, production = false, occurrences = true) {
+    query.mockImplementation(async (sql: string) => {
+      if (sql.includes('FOR UPDATE')) return { rows: [{ status_aprovacao: 'PENDENTE', versao: 'v1', origem_producao: 'IMPORTADO', complementado: false, ...overrides }] };
+      if (sql.includes('AS possui_ocorrencias')) return { rows: [{ possui_producao: production, possui_ocorrencias: occurrences }] };
+      if (sql.includes('RETURNING atualizado_em')) return { rows: [{ atualizado_em: '2026-09-10T12:00:00Z' }] };
+      return { rows: [], rowCount: 1 };
+    });
+  }
+  it.each(['PATCH', 'DELETE'])('nega %s a apontador', async (method) => {
+    const path = method === 'PATCH' ? '/api/coordenacao/apontamentos/10/aprovacao' : '/api/coordenacao/pendencias-aprovacao/10';
+    expect((await request(path, 'APONTADOR', { method, body: JSON.stringify(body) })).status).toBe(403);
+    expect(query).not.toHaveBeenCalled();
+  });
+  it('aprova aguardando produção sem criar produção ou mudar complemento', async () => {
+    mockRecord();
+    const r = await request('/api/coordenacao/apontamentos/10/aprovacao', 'COORDENACAO', { method: 'PATCH', body: JSON.stringify(body) });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ id: '10', preservouProducao: false });
+    const writes = query.mock.calls.map(c => c[0]).filter(sql => /^(UPDATE|DELETE|INSERT)/.test(sql.trim()));
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toContain("status_aprovacao = 'APROVADO'");
+    expect(writes[0]).not.toMatch(/complementado|producao/);
+    expect(query.mock.calls.at(-1)?.[0]).toBe('COMMIT');
+  });
+  it('preserva bloqueio de complemento quando já existe produção', async () => {
+    mockRecord({}, true);
+    const r = await request('/api/coordenacao/apontamentos/10/aprovacao', 'COORDENACAO', { method: 'PATCH', body: JSON.stringify(body) });
+    expect(r.status).toBe(409);
+    expect(query.mock.calls.at(-1)?.[0]).toBe('ROLLBACK');
+  });
+  it.each([true, false])('exclui ocorrências preservando produção existente: %s', async (production) => {
+    mockRecord({}, production);
+    const r = await request('/api/coordenacao/pendencias-aprovacao/10', 'COORDENACAO', { method: 'DELETE', body: JSON.stringify({ versao: 'v1' }) });
+    expect(r.status).toBe(200);
+    const sql = query.mock.calls.map(c => c[0]).join('\n');
+    expect(sql).not.toMatch(/DELETE FROM (producao|programacao)/);
+    expect(sql.includes('DELETE FROM apontamentos')).toBe(!production);
+    expect(sql).toContain('DELETE FROM paradas_falta_material');
+    expect(sql).toContain('DELETE FROM observacoes');
+    expect(query.mock.calls.at(-1)?.[0]).toBe('COMMIT');
+  });
+  it.each([{ versao: 'v2' }, { status_aprovacao: 'APROVADO' }])('rejeita versão/estado alterado: %j', async (overrides) => {
+    mockRecord(overrides);
+    const r = await request('/api/coordenacao/pendencias-aprovacao/10', 'COORDENACAO', { method: 'DELETE', body: JSON.stringify({ versao: 'v1' }) });
+    expect(r.status).toBe(409);
+    expect(query.mock.calls.map(c => c[0]).join('\n')).not.toContain('DELETE FROM');
+    expect(query.mock.calls.at(-1)?.[0]).toBe('ROLLBACK');
+  });
+  it('registro removido responde 404, sem exclusões', async () => {
+    query.mockResolvedValue({ rows: [] });
+    const r = await request('/api/coordenacao/pendencias-aprovacao/10', 'COORDENACAO', { method: 'DELETE', body: JSON.stringify({ versao: 'v1' }) });
+    expect(r.status).toBe(404);
+    expect(query.mock.calls.map(c => c[0]).join('\n')).not.toContain('DELETE FROM');
   });
 });

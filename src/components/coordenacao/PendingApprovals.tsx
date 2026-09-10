@@ -6,6 +6,8 @@ import {
   type PendingApproval, type PendingApprovalFilters, type PendingApprovalResult,
 } from '../../services/pendenciasAprovacaoService';
 import { formatDateBR } from '../../utils/formatters';
+import { ApiError } from '../../services/apiClient';
+import { ConfirmModal } from '../common/ConfirmModal';
 import { ModalShell } from '../common/ModalShell';
 import type { ToastMessage } from '../common/Toast';
 import { CustomSelect } from '../common/CustomSelect';
@@ -17,18 +19,22 @@ interface Props {
   recordsRevision: Apontamento[];
   approvalBusyId: string | null;
   feedback: ToastMessage | null;
-  onApprove: (record: Pick<Apontamento, 'id'>) => Promise<void>;
+  onAction: (record: PendingApproval, action: 'APROVAR' | 'EXCLUIR') => Promise<void>;
 }
 
 function approvalBlock(record: PendingApproval): string | null {
-  if (!record.possuiProducao) return 'Aguardando importação da produção para liberar a aprovação.';
+  if (!record.possuiProducao) return null;
   if (String(record.origemProducao || '').toUpperCase() === 'IMPORTADO' && record.complementado === false) {
     return 'Aguardando o apontador finalizar o complemento das ocorrências.';
   }
   return null;
 }
 
-export function PendingApprovals({ recordsRevision, approvalBusyId, feedback, onApprove }: Props) {
+export function PendingApprovals({ recordsRevision, approvalBusyId, feedback, onAction }: Props) {
+  const [deleteTarget, setDeleteTarget] = useState<PendingApproval | null>(null);
+  const [actionId, setActionId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const actionLock = useRef(false);
   const [isOpen, setIsOpen] = useState(false);
   const [draft, setDraft] = useState(EMPTY_FILTERS);
   const [filters, setFilters] = useState(EMPTY_FILTERS);
@@ -63,11 +69,11 @@ export function PendingApprovals({ recordsRevision, approvalBusyId, feedback, on
   // Retornar à janela permite consultar novos envios sem polling contínuo.
   useEffect(() => {
     const onFocus = () => {
-      if (!loading && !approvalBusyId) setRefresh((value) => value + 1);
+      if (!loading && !approvalBusyId && !actionId && !deleteTarget) setRefresh((value) => value + 1);
     };
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
-  }, [loading, approvalBusyId]);
+  }, [loading, approvalBusyId, actionId, deleteTarget]);
 
   const clearFilters = () => {
     setDraft(EMPTY_FILTERS);
@@ -79,7 +85,25 @@ export function PendingApprovals({ recordsRevision, approvalBusyId, feedback, on
     contentRef.current?.closest('[data-modal-scroll]')?.scrollTo?.({ top: 0, behavior: 'smooth' });
   };
   const pages = result ? Math.max(1, Math.ceil(result.totalFiltrado / result.tamanhoPagina)) : 1;
-  const busy = loading || Boolean(approvalBusyId);
+  const busy = loading || Boolean(approvalBusyId) || Boolean(actionId);
+  const runAction = async (record: PendingApproval, action: 'APROVAR' | 'EXCLUIR') => {
+    if (actionLock.current || busy) return;
+    actionLock.current = true;
+    setActionId(record.id);
+    setActionError(null);
+    try {
+      await onAction(record, action);
+      setDeleteTarget(null);
+      // A atualização de recordsRevision feita pela Coordenação recarrega a fila.
+    } catch (reason) {
+      setActionError(reason instanceof Error ? reason.message : 'Não foi possível concluir a ação.');
+      setDeleteTarget(null);
+      if (reason instanceof ApiError && [404, 409].includes(reason.status)) setRefresh((value) => value + 1);
+    } finally {
+      actionLock.current = false;
+      setActionId(null);
+    }
+  };
 
   return <>
     <Surface as="section" padding="md" aria-labelledby="approval-pending-title">
@@ -107,7 +131,7 @@ export function PendingApprovals({ recordsRevision, approvalBusyId, feedback, on
     <ModalShell
       isOpen={isOpen}
       onClose={() => setIsOpen(false)}
-      busy={Boolean(approvalBusyId)}
+      busy={Boolean(approvalBusyId) || Boolean(actionId) || Boolean(deleteTarget)}
       title="Pendentes de Aprovação"
       description="A aprovação vale para todas as ocorrências de cada apontamento, conforme o fluxo atual."
       size="xl"
@@ -156,7 +180,9 @@ export function PendingApprovals({ recordsRevision, approvalBusyId, feedback, on
           <Button variant="ghost" size="sm" disabled={busy} onClick={() => setRefresh((value) => value + 1)} leftIcon={<RefreshCw className="size-4" aria-hidden="true" />}>Atualizar pendências</Button>
         </div>
 
-        {feedback && <Surface padding="sm" role={feedback.type === 'error' ? 'alert' : 'status'} className={feedback.type === 'error' ? 'text-rose-300' : 'text-emerald-300'}>
+        {actionError && <Surface padding="sm" role="alert" className="text-rose-300"><p className="text-sm [overflow-wrap:anywhere]">{actionError}</p></Surface>}
+
+        {!actionError && feedback && <Surface padding="sm" role={feedback.type === 'error' ? 'alert' : 'status'} className={feedback.type === 'error' ? 'text-rose-300' : 'text-emerald-300'}>
           <p className="text-sm [overflow-wrap:anywhere]">{feedback.message}</p>
         </Surface>}
 
@@ -194,15 +220,23 @@ export function PendingApprovals({ recordsRevision, approvalBusyId, feedback, on
                     })}
                   </div>
                   <div className="flex min-w-0 flex-col gap-3 border-t border-white/10 pt-3 sm:flex-row sm:items-center sm:justify-between">
-                    <p className={`min-w-0 text-xs ${block ? 'text-amber-200' : 'text-slate-400'}`}>{block || `A ação aprova as ${record.totalOcorrencias} ocorrência(s) deste apontamento.`}</p>
+                    <p className={`min-w-0 text-xs ${block ? 'text-amber-200' : 'text-slate-400'}`}>{!record.possuiProducao ? 'Aguardando Produção · Aprovação manual disponível.' : block || `A ação aprova as ${record.totalOcorrencias} ocorrência(s) deste apontamento.`}</p>
+                    <div className="flex shrink-0 flex-wrap gap-2">
+                    <Button variant="danger" disabled={busy} aria-label={`Excluir apontamento ${record.id} de ${record.setor}`} onClick={() => { setActionError(null); setDeleteTarget(record); }}>Excluir</Button>
                     <Button variant="success" className="shrink-0" disabled={busy || !!block} isLoading={approvalBusyId === record.id} loadingLabel="Aprovando…"
-                      aria-label={`Aprovar apontamento ${record.id} de ${record.setor}`} onClick={() => void onApprove(record)}>
+                      aria-label={`Aprovar apontamento ${record.id} de ${record.setor}`} onClick={() => void runAction(record, 'APROVAR')}>
                       Aprovar apontamento
                     </Button>
+                    </div>
                   </div>
                 </Surface>;
               })}
       </div>
     </ModalShell>
+    <ConfirmModal isOpen={!!deleteTarget} title="Excluir apontamento?"
+      description={deleteTarget ? `Excluir permanentemente todas as ocorrências do apontamento #${deleteTarget.id}, de ${formatDateBR(deleteTarget.data)}, setor ${deleteTarget.setor}? ${deleteTarget.possuiProducao ? 'A produção vinculada será preservada.' : 'O registro sem produção também será removido.'}` : ''}
+      confirmLabel="Excluir" cancelLabel="Cancelar" variant="danger" isBusy={Boolean(actionId)}
+      onCancel={() => { if (!actionLock.current) setDeleteTarget(null); }}
+      onConfirm={() => { if (deleteTarget) void runAction(deleteTarget, 'EXCLUIR'); }} />
   </>;
 }

@@ -29,6 +29,7 @@ import { CoordinationSettingsModal } from '../components/coordenacao/Coordinatio
 import { BulkDeletePayload, DeleteApontamentosModal } from '../components/coordenacao/DeleteApontamentosModal';
 import type { ProgramacaoImportGroup } from '../utils/importProgramacaoExcel';
 import { CoordinationRecords } from '../components/coordenacao/CoordinationRecords';
+import type { PendingApproval } from '../services/pendenciasAprovacaoService';
 import { PendingApprovals } from '../components/coordenacao/PendingApprovals';
 import { ConfirmModal } from '../components/common/ConfirmModal';
 import { Toast, ToastMessage } from '../components/common/Toast';
@@ -294,6 +295,25 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
     }
   };
 
+  const handlePendingAction = async (record: PendingApproval, action: 'APROVAR' | 'EXCLUIR') => {
+    setApprovalBusyId(record.id);
+    try {
+      const result = await coordenacaoService.pendingAction(record.id, record.versao, action);
+      const update = (item: Apontamento): Apontamento => action === 'APROVAR'
+        ? { ...item, statusAprovacao: 'APROVADO', aprovadoEm: result.updatedAt, aprovadoPorId: user.id, aprovadoPorNome: user.name, updatedAt: result.updatedAt || item.updatedAt }
+        : { ...item, paradasFaltaMaterial: [], paradasMaquina: [], naoConformidades: [], faltas: [], observacoes: [], updatedAt: result.updatedAt || item.updatedAt };
+      setApontamentos((current) => current.flatMap((item) => item.id !== result.id ? [item]
+        : action === 'EXCLUIR' && !result.preservouProducao ? [] : [update(item)]));
+      if (detailItem?.id === result.id) setDetailItem(action === 'EXCLUIR' ? null : update(detailItem));
+      if (editItem?.id === result.id) setEditItem(null);
+      setToast({ id: Date.now().toString(), type: 'success', message: action === 'APROVAR'
+        ? 'Apontamento aprovado com sucesso.'
+        : result.preservouProducao ? 'Ocorrências excluídas com sucesso. Produção preservada.' : 'Apontamento excluído com sucesso.' });
+    } finally {
+      setApprovalBusyId(null);
+    }
+  };
+
   const handleDelete = async () => {
     if (!deleteItem || deleting) return;
     setDeleting(true);
@@ -377,7 +397,7 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
           recordsRevision={apontamentos}
           approvalBusyId={approvalBusyId}
           feedback={toast}
-          onApprove={(record) => handleApprovalChange(record, 'APROVADO')}
+          onAction={handlePendingAction}
         />
       )}
 

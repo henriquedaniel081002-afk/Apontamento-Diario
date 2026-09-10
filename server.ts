@@ -2334,7 +2334,7 @@ app.get('/api/coordenacao/pendencias-aprovacao', auth, requireCoordenacao, async
   try {
     const result = await pool.query(`
       WITH pendentes AS (
-        SELECT a.id, a.data, a.criado_em, a.origem_producao, a.complementado,
+        SELECT a.id, a.data, a.criado_em, a.atualizado_em, a.origem_producao, a.complementado,
                CASE WHEN s.nome = 'BOBINA AT/BT' AND UPPER(a.tipo_bobina::text) IN ('AT', 'BT')
                     THEN 'BOBINA ' || UPPER(a.tipo_bobina::text) ELSE s.nome END AS setor
           FROM apontamentos a
@@ -2376,6 +2376,7 @@ app.get('/api/coordenacao/pendencias-aprovacao', auth, requireCoordenacao, async
              COALESCE((SELECT JSONB_AGG(setor ORDER BY setor) FROM (SELECT DISTINCT setor FROM base) s), '[]'::jsonb) AS setores,
              COALESCE((SELECT JSONB_AGG(JSONB_BUILD_OBJECT(
                'id', p.id::text, 'data', p.data, 'setor', p.setor, 'createdAt', p.criado_em,
+               'versao', p.atualizado_em::text,
                'statusAprovacao', 'PENDENTE', 'origemProducao', p.origem_producao,
                'complementado', p.complementado, 'totalOcorrencias', p.quantidade,
                'possuiProducao', EXISTS(SELECT 1 FROM producao pr WHERE pr.apontamento_id = p.id)
@@ -2555,7 +2556,86 @@ app.put('/api/coordenacao/apontamentos/:id', auth, requireCoordenacao, async (re
   }
 });
 
+// Ações exclusivas da fila: bloqueio transacional e versão impedem agir sobre
+// um apontamento que outra sessão já alterou. Não modifica o fluxo original.
+async function mutatePendingApproval(req: any, res: any, action: 'APROVAR' | 'EXCLUIR') {
+  const id = Number(req.params.id);
+  const versao = req.body?.versao;
+  if (!Number.isSafeInteger(id) || id <= 0 || typeof versao !== 'string' || !versao) {
+    return res.status(400).json({ error: 'Atualize as pendências antes de executar esta ação.' });
+  }
+  let client: any;
+  try {
+    client = await pool.connect();
+    await client.query('BEGIN');
+    const locked = await client.query(
+      `SELECT status_aprovacao, atualizado_em::text AS versao, origem_producao, complementado
+         FROM apontamentos WHERE id = $1 FOR UPDATE`, [id],
+    );
+    const record = locked.rows[0];
+    if (!record) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Este apontamento já foi excluído. A lista será atualizada.' });
+    }
+    if (String(record.status_aprovacao || 'PENDENTE').toUpperCase() !== 'PENDENTE' || record.versao !== versao) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Este apontamento foi alterado em outra sessão. Analise a versão atualizada.' });
+    }
+    const related = await client.query(`SELECT
+      EXISTS(SELECT 1 FROM producao WHERE apontamento_id = $1) AS possui_producao,
+      (EXISTS(SELECT 1 FROM paradas_falta_material WHERE apontamento_id = $1)
+       OR EXISTS(SELECT 1 FROM paradas_maquina WHERE apontamento_id = $1)
+       OR EXISTS(SELECT 1 FROM nao_conformidades WHERE apontamento_id = $1)
+       OR EXISTS(SELECT 1 FROM faltas WHERE apontamento_id = $1)
+       OR EXISTS(SELECT 1 FROM observacoes WHERE apontamento_id = $1)) AS possui_ocorrencias`, [id]);
+    const { possui_producao, possui_ocorrencias } = related.rows[0];
+    if (!possui_ocorrencias) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Este apontamento não possui mais ocorrências pendentes.' });
+    }
+    if (action === 'APROVAR' && possui_producao
+        && String(record.origem_producao || '').toUpperCase() === 'IMPORTADO' && record.complementado === false) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Este registro ainda aguarda o apontador finalizar o complemento das ocorrências.' });
+    }
+    let updatedAt: string | undefined;
+    if (action === 'APROVAR') {
+      const updated = await client.query(`UPDATE apontamentos
+        SET status_aprovacao = 'APROVADO', aprovado_em = NOW(), aprovado_por = $1, atualizado_em = NOW()
+        WHERE id = $2 RETURNING atualizado_em`, [req.auth.userId, id]);
+      updatedAt = isoDateTime(updated.rows[0].atualizado_em);
+    } else {
+      // Reutiliza a exclusão das cinco coleções já empregada na edição.
+      // Nunca apaga a produção nem o cabeçalho ao qual ela está vinculada.
+      await deleteOccurrenceCollections(client, id, {
+        paradasFaltaMaterial: [], paradasMaquina: [], naoConformidades: [], faltas: [], observacoes: [],
+      });
+      if (possui_producao) {
+        const updated = await client.query('UPDATE apontamentos SET atualizado_em = NOW() WHERE id = $1 RETURNING atualizado_em', [id]);
+        updatedAt = isoDateTime(updated.rows[0].atualizado_em);
+      } else {
+        await client.query('DELETE FROM apontamentos WHERE id = $1', [id]);
+      }
+    }
+    await client.query('COMMIT');
+    return res.json({ id: String(id), preservouProducao: possui_producao, updatedAt });
+  } catch (e) {
+    if (client) await client.query('ROLLBACK').catch(() => undefined);
+    console.error(e);
+    return res.status(500).json({ error: 'Não foi possível concluir a ação. Nenhuma alteração parcial foi mantida.' });
+  } finally {
+    client?.release();
+  }
+}
+
+app.delete('/api/coordenacao/pendencias-aprovacao/:id', auth, requireCoordenacao, async (req: any, res) => {
+  return mutatePendingApproval(req, res, 'EXCLUIR');
+});
+
 app.patch('/api/coordenacao/apontamentos/:id/aprovacao', auth, requireCoordenacao, async (req: any, res) => {
+  if (req.body?.escopo === 'PENDENCIAS' && req.body?.status === 'APROVADO') {
+    return mutatePendingApproval(req, res, 'APROVAR');
+  }
   const id = Number(req.params.id);
   const status = String(req.body?.status || '').toUpperCase();
 

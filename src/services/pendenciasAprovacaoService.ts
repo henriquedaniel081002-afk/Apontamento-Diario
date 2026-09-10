@@ -21,6 +21,7 @@ export interface PendingApproval {
   data: string;
   setor: string;
   createdAt: string;
+  versao: string;
   statusAprovacao: 'PENDENTE';
   possuiProducao: boolean;
   origemProducao: string;

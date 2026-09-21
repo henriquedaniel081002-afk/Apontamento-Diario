@@ -24,7 +24,9 @@ interface Props {
 
 function approvalBlock(record: PendingApproval): string | null {
   if (!record.possuiProducao) return null;
-  if (String(record.origemProducao || '').toUpperCase() === 'IMPORTADO' && record.complementado === false) {
+  const possuiTurnoComplementado = record.turno1Complementado || record.turno2Complementado;
+  if (String(record.origemProducao || '').toUpperCase() === 'IMPORTADO'
+      && record.complementado === false && !possuiTurnoComplementado) {
     return 'Aguardando o apontador finalizar o complemento das ocorrências.';
   }
   return null;

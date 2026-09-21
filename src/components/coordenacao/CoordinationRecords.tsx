@@ -53,7 +53,10 @@ function RecordActions({
   const isApprovalBusy = approvalBusyId === record.id;
   const isAnyApprovalBusy = Boolean(approvalBusyId);
   const awaitingProduction = record.producoes.length === 0;
-  const awaitingComplement = record.origemProducao === 'IMPORTADO' && record.complementado === false;
+  const awaitingComplement = record.origemProducao === 'IMPORTADO'
+    && record.complementado === false
+    && !record.turno1Complementado
+    && !record.turno2Complementado;
   const columnsClass = showApprovalActions ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-1 min-[420px]:grid-cols-3';
 
   return (
@@ -169,7 +172,10 @@ function Metric({ icon, label, value, valueClassName, iconClassName, helper }: M
 function ApprovalBadge({ record }: { record: Apontamento }) {
   const isApproved = record.statusAprovacao === 'APROVADO';
   const awaitingProduction = record.producoes.length === 0;
-  const awaitingComplement = record.origemProducao === 'IMPORTADO' && record.complementado === false;
+  const awaitingComplement = record.origemProducao === 'IMPORTADO'
+    && record.complementado === false
+    && !record.turno1Complementado
+    && !record.turno2Complementado;
 
   if (awaitingProduction && !isApproved) {
     return (

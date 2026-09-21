@@ -26,6 +26,8 @@ export interface PendingApproval {
   possuiProducao: boolean;
   origemProducao: string;
   complementado: boolean | null;
+  turno1Complementado: boolean;
+  turno2Complementado: boolean;
   totalOcorrencias: number;
   ocorrencias: PendingOccurrence[];
 }

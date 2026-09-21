@@ -62,6 +62,32 @@ describe('CoordinationRecords — aprovação', () => {
     expect(onApprovalChange).not.toHaveBeenCalled();
   });
 
+  it('permite aprovação quando um dos turnos já foi concluído', async () => {
+    const user = userEvent.setup();
+    const onApprovalChange = vi.fn();
+    const record = makeRecord({
+      origemProducao: 'IMPORTADO',
+      complementado: false,
+      turno1Complementado: true,
+      turno2Complementado: false,
+    });
+
+    render(
+      <CoordinationRecords
+        {...passiveActions}
+        records={[record]}
+        showApprovalActions
+        onApprovalChange={onApprovalChange}
+      />,
+    );
+
+    expect(screen.queryByText('Aguardando complemento')).not.toBeInTheDocument();
+    const approval = screen.getByRole('button', { name: /Aprovar Pintura/i });
+    expect(approval).toBeEnabled();
+    await user.click(approval);
+    expect(onApprovalChange).toHaveBeenCalledWith(record, 'APROVADO');
+  });
+
 
   it('exibe ocorrências antecipadas no card e bloqueia aprovação até a produção ser importada', async () => {
     const user = userEvent.setup();

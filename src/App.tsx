@@ -10,10 +10,6 @@ import {
 } from './services/sessionStore';
 import { LoginPage } from './pages/LoginPage';
 import { ApontamentoPage } from './pages/ApontamentoPage';
-import { HistoricoPage } from './pages/HistoricoPage';
-import { CoordenacaoPage } from './pages/CoordenacaoPage';
-import { DashboardPage } from './pages/DashboardPage';
-import { ControleFaltasPage } from './pages/ControleFaltasPage';
 import { invalidateDashboardCache } from './services/dashboardService';
 import { controleFaltasService } from './services/controleFaltasService';
 import { Header } from './components/common/Header';
@@ -24,6 +20,22 @@ type AppTab = 'apontamento' | 'historico' | 'dashboard' | 'producao-diaria' | 'a
 
 const ProducaoDiariaPage = React.lazy(() =>
   import('./pages/ProducaoDiariaPage').then((module) => ({ default: module.ProducaoDiariaPage })),
+);
+
+const HistoricoPage = React.lazy(() =>
+  import('./pages/HistoricoPage').then((module) => ({ default: module.HistoricoPage })),
+);
+
+const CoordenacaoPage = React.lazy(() =>
+  import('./pages/CoordenacaoPage').then((module) => ({ default: module.CoordenacaoPage })),
+);
+
+const DashboardPage = React.lazy(() =>
+  import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })),
+);
+
+const ControleFaltasPage = React.lazy(() =>
+  import('./pages/ControleFaltasPage').then((module) => ({ default: module.ControleFaltasPage })),
 );
 
 const ProdutividadeIndividualPage = React.lazy(() =>
@@ -198,6 +210,17 @@ export default function App() {
   }
 
   const isCoordenacao = currentUser.perfil === 'COORDENACAO';
+  const isBobinagem = String(currentUser.setor || '').trim().toUpperCase() === 'BOBINA AT/BT';
+  const canAccessProductivity = isCoordenacao || isBobinagem;
+
+  const pageFallback = (
+    <div className="app-container app-container--wide py-6 sm:py-8">
+      <LoadingState
+        label="Carregando tela..."
+        description="Preparando somente os recursos necessários para esta área."
+      />
+    </div>
+  );
 
   return (
     <>
@@ -213,7 +236,9 @@ export default function App() {
       <div className="flex min-h-dvh min-w-0 flex-1 flex-col">
       <main id="conteudo-principal" className="min-w-0 flex-1 pb-12">
         {activeTab === 'dashboard' ? (
-          <DashboardPage user={currentUser} />
+          <React.Suspense fallback={pageFallback}>
+            <DashboardPage user={currentUser} />
+          </React.Suspense>
         ) : activeTab === 'producao-diaria' && isCoordenacao ? (
           <React.Suspense
             fallback={(
@@ -241,8 +266,10 @@ export default function App() {
             <AderenciaAnualPage />
           </React.Suspense>
         ) : activeTab === 'controle-faltas' && isCoordenacao ? (
-          <ControleFaltasPage />
-        ) : activeTab === 'produtividade-individual' && isCoordenacao ? (
+          <React.Suspense fallback={pageFallback}>
+            <ControleFaltasPage />
+          </React.Suspense>
+        ) : activeTab === 'produtividade-individual' && canAccessProductivity ? (
           <React.Suspense
             fallback={(
               <div className="app-container app-container--wide py-6 sm:py-8">
@@ -269,14 +296,18 @@ export default function App() {
             <AtrasoPage />
           </React.Suspense>
         ) : isCoordenacao ? (
-          <CoordenacaoPage user={currentUser} />
+          <React.Suspense fallback={pageFallback}>
+            <CoordenacaoPage user={currentUser} />
+          </React.Suspense>
         ) : activeTab === 'apontamento' ? (
           <ApontamentoPage
             user={currentUser}
             onNavigateToHistory={() => setActiveTab('historico')}
           />
         ) : (
-          <HistoricoPage user={currentUser} />
+          <React.Suspense fallback={pageFallback}>
+            <HistoricoPage user={currentUser} />
+          </React.Suspense>
         )}
       </main>
 

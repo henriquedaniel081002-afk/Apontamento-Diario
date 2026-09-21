@@ -13,6 +13,7 @@ vi.mock('../../services/pendenciasAprovacaoService', async (importOriginal) => (
 const record: PendingApproval = {
   id: '10', versao: '2026-09-10 11:00:00+00', data: '2026-09-10', setor: 'SOLDA', createdAt: '2026-09-10T11:00:00Z',
   statusAprovacao: 'PENDENTE', possuiProducao: true, origemProducao: 'IMPORTADO', complementado: true,
+  turno1Complementado: false, turno2Complementado: false,
   totalOcorrencias: 2,
   ocorrencias: [
     { id: '1', tipo: 'MATERIAL', turno: '1º turno', linha: null, detalhes: { Material: 'Chapa 2,65 mm', Motivo: 'Sem estoque' } },
@@ -59,6 +60,16 @@ describe('Pendências de aprovação', () => {
     expect(screen.getByText(new RegExp(message))).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Aprovar apontamento 10 de SOLDA' })).toBeDisabled();
     expect(p.onAction).not.toHaveBeenCalled();
+  });
+
+  it('permite aprovar quando somente um turno foi finalizado', async () => {
+    const oneTurn = { ...record, complementado: false, turno1Complementado: true, turno2Complementado: false };
+    vi.mocked(pendenciasAprovacaoService.get).mockResolvedValue(response([oneTurn]));
+    const p = props(); render(<PendingApprovals {...p} />); const user = await open();
+    const approve = screen.getByRole('button', { name: 'Aprovar apontamento 10 de SOLDA' });
+    expect(approve).toBeEnabled();
+    await user.click(approve);
+    expect(p.onAction).toHaveBeenCalledExactlyOnceWith(oneTurn, 'APROVAR');
   });
 
   it('envia período, setor e tipo somente ao aplicar os filtros próprios', async () => {

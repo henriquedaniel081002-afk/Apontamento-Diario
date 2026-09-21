@@ -26,7 +26,8 @@ export const coordenacaoService = {
     if (!forceRefresh && cachedRecords && now - cachedAt < CACHE_TTL_MS) return cachedRecords;
     if (!forceRefresh && pendingRequest) return pendingRequest;
 
-    pendingRequest = apiRequest<Apontamento[]>('/api/coordenacao/apontamentos', { cache: 'no-store' })
+    const endpoint = forceRefresh ? '/api/coordenacao/apontamentos?refresh=1' : '/api/coordenacao/apontamentos';
+    pendingRequest = apiRequest<Apontamento[]>(endpoint, { cache: 'no-store' })
       .then((data) => {
         cachedRecords = data;
         cachedAt = Date.now();

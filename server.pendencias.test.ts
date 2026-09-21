@@ -105,6 +105,14 @@ describe('Ações transacionais da fila', () => {
     expect(r.status).toBe(409);
     expect(query.mock.calls.at(-1)?.[0]).toBe('ROLLBACK');
   });
+  it('aprova produção importada quando somente um turno foi complementado', async () => {
+    mockRecord({ turno1_complementado: true, turno2_complementado: false }, true);
+    const r = await request('/api/coordenacao/apontamentos/10/aprovacao', 'COORDENACAO', { method: 'PATCH', body: JSON.stringify(body) });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ id: '10', preservouProducao: true });
+    expect(query.mock.calls.map(c => c[0]).join('\n')).toContain("status_aprovacao = 'APROVADO'");
+    expect(query.mock.calls.at(-1)?.[0]).toBe('COMMIT');
+  });
   it.each([true, false])('exclui ocorrências preservando produção existente: %s', async (production) => {
     mockRecord({}, production);
     const r = await request('/api/coordenacao/pendencias-aprovacao/10', 'COORDENACAO', { method: 'DELETE', body: JSON.stringify({ versao: 'v1' }) });

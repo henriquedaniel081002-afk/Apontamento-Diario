@@ -23,11 +23,49 @@ const atrasoPool = ATRASO_DATABASE_URL === String(DATABASE_URL).trim()
   ? pool
   : new Pool({ connectionString: ATRASO_DATABASE_URL, ssl: { rejectUnauthorized: false } });
 
+type ReadCacheEntry<T> = { expiresAt: number; value: T };
+const neonReadCache = new Map<string, ReadCacheEntry<unknown>>();
+const userAccessCache = new Map<number, ReadCacheEntry<any[]>>();
+const DASHBOARD_CACHE_TTL_MS = 45_000;
+const COORDINATION_CACHE_TTL_MS = 20_000;
+const USER_ACCESS_CACHE_TTL_MS = 60_000;
+const TURN_REPAIR_INTERVAL_MS = 5 * 60_000;
+let lastTurnDuplicateRepairAt = 0;
+
+function readCache<T>(key: string): T | null {
+  const entry = neonReadCache.get(key);
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    neonReadCache.delete(key);
+    return null;
+  }
+  return entry.value as T;
+}
+
+function writeCache<T>(key: string, value: T, ttlMs: number): T {
+  neonReadCache.set(key, { expiresAt: Date.now() + ttlMs, value });
+  return value;
+}
+
+function invalidateNeonReadCaches() {
+  neonReadCache.clear();
+  userAccessCache.clear();
+  lastTurnDuplicateRepairAt = 0;
+}
+
 app.use(express.json({ limit: '5mb' }));
 app.use('/api', (_req, res, next) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
+  next();
+});
+app.use('/api', (req, _res, next) => {
+  // Login não altera dados operacionais. As demais mutações invalidam os caches
+  // curtos de leitura para manter as telas coerentes sem repetir consultas caras.
+  if (req.method !== 'GET' && !(req.method === 'POST' && req.path === '/auth/login')) {
+    invalidateNeonReadCaches();
+  }
   next();
 });
 
@@ -134,6 +172,9 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 async function getUserAccess(userId: number) {
+  const cached = userAccessCache.get(userId);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  if (cached) userAccessCache.delete(userId);
   const r = await pool.query(
     `SELECT s.id setor_id, s.nome setor, l.id linha_id, l.nome linha
        FROM usuario_acessos ua
@@ -142,6 +183,7 @@ async function getUserAccess(userId: number) {
       WHERE ua.usuario_id = $1`,
     [userId],
   );
+  userAccessCache.set(userId, { expiresAt: Date.now() + USER_ACCESS_CACHE_TTL_MS, value: r.rows });
   return r.rows;
 }
 
@@ -724,6 +766,10 @@ async function mergeTurnSectorDuplicateGroup(
 }
 
 async function repairAllTurnSectorDuplicates() {
+  // A consolidação continua existindo como proteção para bases antigas, mas não
+  // precisa varrer o Neon em toda abertura de tela. Mutações zeram este relógio.
+  if (Date.now() - lastTurnDuplicateRepairAt < TURN_REPAIR_INTERVAL_MS) return;
+  lastTurnDuplicateRepairAt = Date.now();
   const client = await pool.connect();
   try {
     const groups = await client.query(
@@ -748,6 +794,7 @@ async function repairAllTurnSectorDuplicates() {
     }
     await client.query('COMMIT');
   } catch (error) {
+    lastTurnDuplicateRepairAt = 0;
     await client.query('ROLLBACK').catch(() => undefined);
     console.error('Falha ao consolidar cartões duplicados por turno:', error);
   } finally {
@@ -2010,6 +2057,12 @@ app.get('/api/coordenacao/controle-faltas', auth, requireCoordenacao, async (req
 
 app.get('/api/coordenacao/dashboard', auth, async (req: any, res) => {
   try {
+    const forceRefresh = req.query.refresh === '1';
+    const dashboardCacheKey = `dashboard:${req.auth?.perfil || 'APONTADOR'}:${req.auth?.userId || 'anon'}`;
+    if (!forceRefresh) {
+      const cached = readCache<any>(dashboardCacheKey);
+      if (cached) return res.json(cached);
+    }
     await repairAllTurnSectorDuplicates();
     const isCoordination = req.auth?.perfil === 'COORDENACAO';
     const accessRows = isCoordination ? [] : await getUserAccess(req.auth.userId);
@@ -2207,7 +2260,7 @@ app.get('/api/coordenacao/dashboard', auth, async (req: any, res) => {
       ? monthsResult.rows.map((row: any) => String(row.mes)).filter(Boolean)
       : [...new Set([...programacao, ...apontamento].map((row: any) => String(row.data || '').slice(0, 7)).filter(Boolean))].sort();
 
-    res.json({
+    const payload = {
       geradoEm: new Date().toISOString(),
       periodo: { meses: mesesVisiveis },
       filtros: { linhas, setores, turnos },
@@ -2225,7 +2278,9 @@ app.get('/api/coordenacao/dashboard', auth, async (req: any, res) => {
       faltasMaterial,
       maquinasQuebradas,
       naoConformidades,
-    });
+    };
+    writeCache(dashboardCacheKey, payload, DASHBOARD_CACHE_TTL_MS);
+    res.json(payload);
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Falha ao carregar os dados do Dashboard de Aderência.' });
@@ -2335,6 +2390,7 @@ app.get('/api/coordenacao/pendencias-aprovacao', auth, requireCoordenacao, async
     const result = await pool.query(`
       WITH pendentes AS (
         SELECT a.id, a.data, a.criado_em, a.atualizado_em, a.origem_producao, a.complementado,
+               a.turno1_complementado, a.turno2_complementado,
                CASE WHEN s.nome = 'BOBINA AT/BT' AND UPPER(a.tipo_bobina::text) IN ('AT', 'BT')
                     THEN 'BOBINA ' || UPPER(a.tipo_bobina::text) ELSE s.nome END AS setor
           FROM apontamentos a
@@ -2378,7 +2434,10 @@ app.get('/api/coordenacao/pendencias-aprovacao', auth, requireCoordenacao, async
                'id', p.id::text, 'data', p.data, 'setor', p.setor, 'createdAt', p.criado_em,
                'versao', p.atualizado_em::text,
                'statusAprovacao', 'PENDENTE', 'origemProducao', p.origem_producao,
-               'complementado', p.complementado, 'totalOcorrencias', p.quantidade,
+               'complementado', p.complementado,
+               'turno1Complementado', COALESCE(p.turno1_complementado, FALSE),
+               'turno2Complementado', COALESCE(p.turno2_complementado, FALSE),
+               'totalOcorrencias', p.quantidade,
                'possuiProducao', EXISTS(SELECT 1 FROM producao pr WHERE pr.apontamento_id = p.id)
              ) ORDER BY p.data, p.id) FROM pagina_registros p), '[]'::jsonb) AS registros
     `, [dataInicio || null, dataFim || null, setor, tipo, pagina, tamanhoPagina, resumo]);
@@ -2431,10 +2490,17 @@ app.get('/api/coordenacao/pendencias-aprovacao', auth, requireCoordenacao, async
   }
 });
 
-app.get('/api/coordenacao/apontamentos', auth, requireCoordenacao, async (_req: any, res) => {
+app.get('/api/coordenacao/apontamentos', auth, requireCoordenacao, async (req: any, res) => {
   try {
+    const forceRefresh = req.query.refresh === '1';
+    const cacheKey = 'coordenacao:apontamentos';
+    if (!forceRefresh) {
+      const cached = readCache<any[]>(cacheKey);
+      if (cached) return res.json(cached);
+    }
     await repairAllTurnSectorDuplicates();
     const registros = await loadApontamentosBatch();
+    writeCache(cacheKey, registros, COORDINATION_CACHE_TTL_MS);
     res.json(registros);
   } catch (e) {
     console.error(e);
@@ -2569,7 +2635,8 @@ async function mutatePendingApproval(req: any, res: any, action: 'APROVAR' | 'EX
     client = await pool.connect();
     await client.query('BEGIN');
     const locked = await client.query(
-      `SELECT status_aprovacao, atualizado_em::text AS versao, origem_producao, complementado
+      `SELECT status_aprovacao, atualizado_em::text AS versao, origem_producao, complementado,
+              turno1_complementado, turno2_complementado
          FROM apontamentos WHERE id = $1 FOR UPDATE`, [id],
     );
     const record = locked.rows[0];
@@ -2593,8 +2660,10 @@ async function mutatePendingApproval(req: any, res: any, action: 'APROVAR' | 'EX
       await client.query('ROLLBACK');
       return res.status(409).json({ error: 'Este apontamento não possui mais ocorrências pendentes.' });
     }
+    const possuiTurnoComplementado = record.turno1_complementado === true || record.turno2_complementado === true;
     if (action === 'APROVAR' && possui_producao
-        && String(record.origem_producao || '').toUpperCase() === 'IMPORTADO' && record.complementado === false) {
+        && String(record.origem_producao || '').toUpperCase() === 'IMPORTADO'
+        && record.complementado === false && !possuiTurnoComplementado) {
       await client.query('ROLLBACK');
       return res.status(409).json({ error: 'Este registro ainda aguarda o apontador finalizar o complemento das ocorrências.' });
     }
@@ -2647,7 +2716,7 @@ app.patch('/api/coordenacao/apontamentos/:id/aprovacao', auth, requireCoordenaca
   try {
     if (status === 'APROVADO') {
       const readiness = await pool.query(
-        `SELECT a.origem_producao, a.complementado,
+        `SELECT a.origem_producao, a.complementado, a.turno1_complementado, a.turno2_complementado,
                 EXISTS(SELECT 1 FROM producao p WHERE p.apontamento_id = a.id) AS possui_producao
            FROM apontamentos a
           WHERE a.id = $1`,
@@ -2657,7 +2726,9 @@ app.patch('/api/coordenacao/apontamentos/:id/aprovacao', auth, requireCoordenaca
       if (readiness.rows[0].possui_producao !== true) {
         return res.status(409).json({ error: 'A produção ainda não foi importada para este apontamento.' });
       }
-      if (String(readiness.rows[0].origem_producao || '').toUpperCase() === 'IMPORTADO' && readiness.rows[0].complementado === false) {
+      const possuiTurnoComplementado = readiness.rows[0].turno1_complementado === true || readiness.rows[0].turno2_complementado === true;
+      if (String(readiness.rows[0].origem_producao || '').toUpperCase() === 'IMPORTADO'
+          && readiness.rows[0].complementado === false && !possuiTurnoComplementado) {
         return res.status(409).json({ error: 'Este registro ainda aguarda o apontador finalizar o complemento das ocorrências.' });
       }
     }

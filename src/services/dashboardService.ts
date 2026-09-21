@@ -21,7 +21,8 @@ export const dashboardService = {
     if (!forceRefresh && pendingRequest) return pendingRequest;
 
     const requestGeneration = cacheGeneration;
-    const request = apiRequest<DashboardData>('/api/coordenacao/dashboard', { cache: 'no-store' })
+    const endpoint = forceRefresh ? '/api/coordenacao/dashboard?refresh=1' : '/api/coordenacao/dashboard';
+    const request = apiRequest<DashboardData>(endpoint, { cache: 'no-store' })
       .then((data) => {
         if (requestGeneration === cacheGeneration) {
           cachedData = data;

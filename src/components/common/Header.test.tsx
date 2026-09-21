@@ -23,6 +23,14 @@ const coordenacao: User = {
   linhas: ['MON', 'TRI', 'EPO'],
 };
 
+const bobinagem: User = {
+  id: 'usr-bobinagem',
+  name: 'Bobinagem',
+  perfil: 'APONTADOR',
+  setor: 'BOBINA AT/BT',
+  linhas: ['MON', 'TRI'],
+};
+
 describe('Header compartilhado', () => {
   it('preserva as abas do apontador e comunica a página ativa', async () => {
     const onTabChange = vi.fn();
@@ -59,6 +67,22 @@ describe('Header compartilhado', () => {
     expect(onTabChange).toHaveBeenCalledWith('atraso');
     await user.click(screen.getByRole('button', { name: 'Sair do sistema' }));
     expect(onLogout).toHaveBeenCalledTimes(1);
+  });
+
+  it('libera Produtividade somente para o apontador da Bobinagem', async () => {
+    const onTabChange = vi.fn();
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <Header user={bobinagem} activeTab="apontamento" onTabChange={onTabChange} onLogout={() => undefined} />,
+    );
+
+    await user.click(screen.getAllByRole('button', { name: 'Produtividade' })[0]);
+    expect(onTabChange).toHaveBeenCalledWith('produtividade-individual');
+
+    rerender(
+      <Header user={apontador} activeTab="apontamento" onTabChange={onTabChange} onLogout={() => undefined} />,
+    );
+    expect(screen.queryByRole('button', { name: 'Produtividade' })).not.toBeInTheDocument();
   });
 
   it('mantém o atalho de salto para o conteúdo principal', () => {

@@ -110,12 +110,12 @@ function Navigation({
 }
 
 function getPageTitle(isCoordination: boolean, activeTab: HeaderTab): string {
+  if (activeTab === 'produtividade-individual') return 'Produtividade Individual';
   if (isCoordination) {
     if (activeTab === 'dashboard') return 'Aderência Mensal';
     if (activeTab === 'producao-diaria') return 'Produção Diária';
     if (activeTab === 'aderencia-anual') return 'Aderência Anual';
     if (activeTab === 'controle-faltas') return 'Controle de Faltas';
-    if (activeTab === 'produtividade-individual') return 'Produtividade Individual';
     if (activeTab === 'atraso') return 'Controle de Atrasos';
     return 'Coordenação';
   }
@@ -127,6 +127,7 @@ export const Header: React.FC<HeaderProps> = ({ user, activeTab, onTabChange, on
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const isCoordination = user.perfil === 'COORDENACAO';
+  const isBobinagem = String(user.setor || '').trim().toUpperCase() === 'BOBINA AT/BT';
   const lineLabel = user.linhas.join(' / ');
   const contextLabel = isCoordination
     ? 'Acesso global'
@@ -135,7 +136,16 @@ export const Header: React.FC<HeaderProps> = ({ user, activeTab, onTabChange, on
       : user.setor === 'MONTAGEM NUCLEO'
         ? 'Montagem do Núcleo/Corte do Núcleo'
         : user.setor || 'Setor não informado';
-  const navigation = navigationByProfile[user.perfil];
+  const baseNavigation = navigationByProfile[user.perfil];
+  const navigation = !isCoordination && isBobinagem
+    ? {
+        ...baseNavigation,
+        items: [
+          ...baseNavigation.items,
+          { id: 'produtividade-individual' as const, label: 'Produtividade', icon: Gauge },
+        ],
+      }
+    : baseNavigation;
 
   const handleNavigation = (tab: HeaderTab) => {
     onTabChange(tab);

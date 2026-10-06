@@ -236,6 +236,130 @@ function occurrenceAccessSector(setor: string): string {
   return setor;
 }
 
+function canAccessNaoConformidade(perfil: Perfil, access: any[], setor: string): boolean {
+  if (perfil === 'COORDENACAO') return true;
+  const accessSector = occurrenceAccessSector(String(setor).trim().toUpperCase());
+  return access.some((row: any) => String(row.setor || '').trim().toUpperCase() === accessSector);
+}
+
+function naoConformidadeDashboardItem(row: any) {
+  return {
+    id: String(row.id),
+    apontamentoId: String(row.apontamento_id),
+    data: dateOnly(row.data),
+    setorId: String(row.setor_id),
+    setor: row.setor,
+    tipoBobina: row.tipo_bobina || undefined,
+    turno: row.turno ? String(row.turno).toLowerCase() : undefined,
+    op: row.op || '',
+    numeroSerie: row.numero_serie || '',
+    causaNaoConformidade: row.causa_nao_conformidade || '',
+    criadoEm: isoDateTime(row.criado_em),
+    statusReparo: row.status_reparo,
+    descricaoReparo: row.descricao_reparo ?? undefined,
+    reparadoEm: row.reparado_em ? isoDateTime(row.reparado_em) : undefined,
+    reparadoPorId: row.reparado_por == null ? undefined : String(row.reparado_por),
+    reparadoPorNome: row.reparado_por_nome ? displayLoginName(row.reparado_por_nome) : undefined,
+  };
+}
+
+const naoConformidadesSelect = `SELECT nc.id, nc.apontamento_id, a.data, a.setor_id, s.nome setor, a.tipo_bobina,
+  nc.turno, nc.op, nc.numero_serie, nc.causa_nao_conformidade, nc.criado_em,
+  nc.status_reparo, nc.descricao_reparo, nc.reparado_em, nc.reparado_por, u.login reparado_por_nome
+  FROM nao_conformidades nc
+  JOIN apontamentos a ON a.id = nc.apontamento_id
+  JOIN setores s ON s.id = a.setor_id
+  LEFT JOIN usuarios u ON u.id = nc.reparado_por`;
+
+app.get('/api/nao-conformidades', auth, async (req: any, res) => {
+  const dataInicio = String(req.query.dataInicio || '').trim();
+  const dataFim = String(req.query.dataFim || '').trim();
+  const setorId = String(req.query.setorId || '').trim();
+  const status = String(req.query.status || 'ALL').trim();
+  const busca = String(req.query.busca || '').trim();
+  const validDate = (value: string) => {
+    if (!value) return true;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const parsed = new Date(`${value}T00:00:00Z`);
+    return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+  };
+  if (!validDate(dataInicio) || !validDate(dataFim) || (dataInicio && dataFim && dataInicio > dataFim)) {
+    return res.status(400).json({ error: 'Informe um período válido para consultar as Não Conformidades.' });
+  }
+  if (!['ALL', 'AGUARDANDO_REPARO', 'REPARADO'].includes(status)
+      || (setorId && (!/^\d+$/.test(setorId) || !Number.isSafeInteger(Number(setorId)) || Number(setorId) <= 0))) {
+    return res.status(400).json({ error: 'Filtro de setor ou status inválido.' });
+  }
+  try {
+    const [sectors, access] = await Promise.all([
+      pool.query('SELECT id, nome FROM setores ORDER BY nome'),
+      req.auth.perfil === 'COORDENACAO' ? Promise.resolve([]) : getUserAccess(req.auth.userId),
+    ]);
+    const permitted = sectors.rows.filter((row: any) => canAccessNaoConformidade(req.auth.perfil, access, row.nome));
+    // O filtro do cliente só restringe o conjunto autorizado, nunca o amplia.
+    const selectedIds = permitted.filter((row: any) => !setorId || String(row.id) === setorId).map((row: any) => String(row.id));
+    const result = await pool.query(`${naoConformidadesSelect}
+      WHERE a.setor_id = ANY($1::bigint[])
+        AND ($2::date IS NULL OR a.data >= $2::date)
+        AND ($3::date IS NULL OR a.data <= $3::date)
+        AND ($4::text = 'ALL' OR nc.status_reparo = $4::text)
+        AND ($5::text = '' OR STRPOS(LOWER(COALESCE(nc.op, '')), LOWER($5::text)) > 0
+             OR STRPOS(LOWER(COALESCE(nc.numero_serie, '')), LOWER($5::text)) > 0)
+      ORDER BY a.data DESC, nc.criado_em DESC, nc.id DESC`,
+    [selectedIds, dataInicio || null, dataFim || null, status, busca]);
+    res.json({
+      registros: result.rows.map(naoConformidadeDashboardItem),
+      setores: permitted.map((row: any) => ({ id: String(row.id), nome: row.nome })),
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Falha ao carregar as Não Conformidades.' });
+  }
+});
+
+app.patch('/api/nao-conformidades/:id/reparar', auth, async (req: any, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Não Conformidade inválida.' });
+  let client: pg.PoolClient | undefined;
+  try {
+    client = await pool.connect();
+    await client.query('BEGIN');
+    const locked = await client.query(`${naoConformidadesSelect} WHERE nc.id = $1 FOR UPDATE OF nc`, [id]);
+    const record = locked.rows[0];
+    if (!record) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Não Conformidade não encontrada.' });
+    }
+    const access = req.auth.perfil === 'COORDENACAO' ? [] : await getUserAccess(req.auth.userId);
+    if (!canAccessNaoConformidade(req.auth.perfil, access, record.setor)) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Você não possui acesso ao setor desta Não Conformidade.' });
+    }
+    if (record.status_reparo !== 'AGUARDANDO_REPARO') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Esta Não Conformidade já foi reparada. Atualize a lista para consultar o reparo.' });
+    }
+    const descricao = typeof req.body?.descricaoReparo === 'string' ? req.body.descricaoReparo.trim() : '';
+    if (!descricao) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Descreva como a Não Conformidade foi reparada.' });
+    }
+    await client.query(`UPDATE nao_conformidades
+      SET status_reparo = 'REPARADO', descricao_reparo = $1, reparado_em = NOW(), reparado_por = $2
+      WHERE id = $3`, [descricao, req.auth.userId, id]);
+    const updated = await client.query(`${naoConformidadesSelect} WHERE nc.id = $1`, [id]);
+    await client.query('COMMIT');
+    invalidateNeonReadCaches();
+    res.json(naoConformidadeDashboardItem(updated.rows[0]));
+  } catch (error) {
+    if (client) await client.query('ROLLBACK').catch(() => undefined);
+    console.error(error);
+    res.status(500).json({ error: 'Não foi possível registrar o reparo. Nenhuma alteração parcial foi mantida.' });
+  } finally {
+    client?.release();
+  }
+});
+
 function isSharedOccurrenceSector(setor: string): boolean {
   return setor === 'FERRAGEM' || setor === 'CORTE DO NUCLEO';
 }
@@ -605,6 +729,62 @@ async function deleteOccurrenceCollections(client: any, apontamentoId: number, d
   if (has('observacoes')) await deleteCollection('observacoes');
 }
 
+class NaoConformidadeSyncConflict extends Error {
+  constructor() {
+    super('Uma Não Conformidade foi removida, alterada de apontamento ou não pertence a este turno. Recarregue o apontamento antes de salvar.');
+  }
+}
+
+async function syncNaoConformidades(client: any, apontamentoId: number, data: any, turno?: string | null) {
+  if (!Object.prototype.hasOwnProperty.call(data || {}, 'naoConformidades')) return;
+  const current = await client.query(
+    `SELECT id, turno FROM nao_conformidades WHERE apontamento_id = $1
+       AND ($2::text IS NULL OR UPPER(COALESCE(turno, '')) = UPPER($2::text))
+     ORDER BY id FOR UPDATE`, [apontamentoId, turno || null],
+  );
+  const existing = new Map<string, any>(current.rows.map((row: any) => [String(row.id), row]));
+  const retained = new Set<string>();
+  const items = occurrenceList(data.naoConformidades);
+  // IDs persistidos precisam pertencer ao apontamento e ao turno bloqueados.
+  // Um ID antigo/forjado nunca vira silenciosamente uma nova NC sem seu reparo.
+  for (const item of items) {
+    const id = String(item.id || '');
+    if (!/^\d+$/.test(id)) continue;
+    if (!existing.has(id) || retained.has(id)) throw new NaoConformidadeSyncConflict();
+    retained.add(id);
+  }
+  for (const item of items) {
+    const id = String(item.id || '');
+    const saved = existing.get(id);
+    // O editor legado não envia turno ao editar uma NC isolada. Conserva-o
+    // quando ausente; o fluxo por turno continua impondo o turno selecionado.
+    const itemTurn = turno || (item.turno === undefined ? saved?.turno : item.turno);
+    const values = [apontamentoId, String(item.causaNaoConformidade || '').trim(),
+      String(item.op || '').trim(), String(item.numeroSerie || '').trim(), itemTurn ? String(itemTurn).toUpperCase() : null];
+    if (saved) {
+      await client.query(`UPDATE nao_conformidades
+        SET causa_nao_conformidade = $2, op = $3, numero_serie = $4, turno = $5
+        WHERE apontamento_id = $1 AND id = $6`, [...values, id]);
+    } else {
+      await client.query(`INSERT INTO nao_conformidades(apontamento_id, causa_nao_conformidade, op, numero_serie, turno)
+        VALUES($1, $2, $3, $4, $5)`, values);
+    }
+  }
+  const removed = [...existing.keys()].filter((id) => !retained.has(id));
+  if (removed.length) {
+    await client.query('DELETE FROM nao_conformidades WHERE apontamento_id = $1 AND id = ANY($2::bigint[])', [apontamentoId, removed]);
+  }
+}
+
+async function syncOccurrenceCollections(client: any, apontamentoId: number, data: any, lineMap: Map<any, any>, turno?: string | null) {
+  const { naoConformidades: _nc, ...otherCollections } = data;
+  await syncNaoConformidades(client, apontamentoId, data, turno);
+  // As outras quatro coleções mantêm exatamente a estratégia e o escopo atuais.
+  // deleteOccurrenceCollections continua incluindo NC nas exclusões intencionais.
+  await deleteOccurrenceCollections(client, apontamentoId, otherCollections, turno);
+  await insertOccurrenceCollections(client, apontamentoId, otherCollections, lineMap);
+}
+
 async function insertOccurrenceCollections(client: any, apontamentoId: number, data: any, lineMap: Map<any, any>) {
   for (const item of occurrenceList(data.paradasFaltaMaterial)) {
     await client.query(
@@ -618,13 +798,6 @@ async function insertOccurrenceCollections(client: any, apontamentoId: number, d
       `INSERT INTO paradas_maquina(apontamento_id, maquina_equipamento, hora_inicio, hora_fim, observacao, turno)
        VALUES($1, $2, $3, $4, $5, $6)`,
       [apontamentoId, String(item.maquinaEquipamento || '').trim(), item.horaInicio || null, item.horaFim || null, String(item.observacao || '').trim(), item.turno ? String(item.turno).toUpperCase() : null],
-    );
-  }
-  for (const item of occurrenceList(data.naoConformidades)) {
-    await client.query(
-      `INSERT INTO nao_conformidades(apontamento_id, causa_nao_conformidade, op, numero_serie, turno)
-       VALUES($1, $2, $3, $4, $5)`,
-      [apontamentoId, String(item.causaNaoConformidade || '').trim(), String(item.op || '').trim(), String(item.numeroSerie || '').trim(), item.turno ? String(item.turno).toUpperCase() : null],
     );
   }
   for (const item of occurrenceList(data.faltas)) {
@@ -1264,12 +1437,12 @@ app.post('/api/apontamentos/ocorrencias', auth, async (req: any, res) => {
       );
     }
 
-    await deleteOccurrenceCollections(client, apontamentoId, scopedData, turnoDb);
-    await insertOccurrenceCollections(client, apontamentoId, scopedData, allowed);
+    await syncOccurrenceCollections(client, apontamentoId, scopedData, allowed, turnoDb);
     await client.query('COMMIT');
     res.json(await loadApontamento(apontamentoId));
   } catch (e: any) {
     await client.query('ROLLBACK').catch(() => undefined);
+    if (e instanceof NaoConformidadeSyncConflict) return res.status(409).json({ error: e.message });
     console.error(e);
     if (e?.code === '42P01' || e?.code === '42703') {
       return res.status(500).json({ error: 'A estrutura de turnos do Neon não está atualizada. Execute a migração de turnos já utilizada pelo sistema.' });
@@ -1374,12 +1547,12 @@ app.put('/api/apontamentos/:id/complemento', auth, async (req: any, res) => {
         [id, req.auth.userId],
       );
     }
-    await deleteOccurrenceCollections(client, id, scopedData, turnoDb);
-    await insertOccurrenceCollections(client, id, scopedData, allowed);
+    await syncOccurrenceCollections(client, id, scopedData, allowed, turnoDb);
     await client.query('COMMIT');
     res.json(await loadApontamento(id));
   } catch (e: any) {
     await client.query('ROLLBACK').catch(() => undefined);
+    if (e instanceof NaoConformidadeSyncConflict) return res.status(409).json({ error: e.message });
     console.error(e);
     if (e?.code === '42P01' || e?.code === '42703') {
       return res.status(500).json({ error: 'A estrutura de turnos do Neon não está atualizada. Execute a migração de turnos já utilizada pelo sistema.' });
@@ -1459,8 +1632,7 @@ app.put('/api/apontamentos/:id', auth, async (req: any, res) => {
         );
       }
     }
-    await deleteOccurrenceCollections(client, id, data);
-    await insertOccurrenceCollections(client, id, data, allowed);
+    await syncOccurrenceCollections(client, id, data, allowed);
 
     let finalId = id;
     if (nextDate !== originalDate && TURN_OCCURRENCE_SECTORS.has(setorNome)) {
@@ -1494,6 +1666,7 @@ app.put('/api/apontamentos/:id', auth, async (req: any, res) => {
     res.json(await loadApontamento(finalId));
   } catch (e: any) {
     await client.query('ROLLBACK').catch(() => undefined);
+    if (e instanceof NaoConformidadeSyncConflict) return res.status(409).json({ error: e.message });
     console.error(e);
     if (e?.code === '23505') return res.status(409).json({ error: 'Já existe um apontamento desse usuário/setor para a data informada.' });
     res.status(500).json({ error: 'Falha ao editar apontamento.' });
@@ -2579,8 +2752,7 @@ app.put('/api/coordenacao/apontamentos/:id', auth, requireCoordenacao, async (re
         );
       }
     }
-    await deleteOccurrenceCollections(client, id, data);
-    await insertOccurrenceCollections(client, id, data, lineMap);
+    await syncOccurrenceCollections(client, id, data, lineMap);
 
     let finalId = id;
     if (nextDate !== originalDate && TURN_OCCURRENCE_SECTORS.has(setorNome)) {
@@ -2614,6 +2786,7 @@ app.put('/api/coordenacao/apontamentos/:id', auth, requireCoordenacao, async (re
     res.json(await loadApontamento(finalId));
   } catch (e: any) {
     await client.query('ROLLBACK').catch(() => undefined);
+    if (e instanceof NaoConformidadeSyncConflict) return res.status(409).json({ error: e.message });
     console.error(e);
     if (e?.code === '23505') return res.status(409).json({ error: 'Já existe um apontamento desse usuário/setor para a data informada.' });
     res.status(500).json({ error: 'Falha ao editar apontamento.' });

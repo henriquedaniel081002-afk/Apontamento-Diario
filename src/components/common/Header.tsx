@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   BarChart3,
   ClipboardList,
+  ClipboardCheck,
   Gauge,
   History,
   LogOut,
@@ -20,7 +21,7 @@ import { User } from '../../types';
 import logoItam from '../../assets/logo-itam.png';
 import { cx } from './ui';
 
-export type HeaderTab = 'apontamento' | 'historico' | 'dashboard' | 'producao-diaria' | 'aderencia-anual' | 'controle-faltas' | 'produtividade-individual' | 'atraso';
+export type HeaderTab = 'apontamento' | 'historico' | 'dashboard' | 'producao-diaria' | 'aderencia-anual' | 'controle-faltas' | 'produtividade-individual' | 'atraso' | 'nao-conformidades';
 
 export interface HeaderProps {
   user: User;
@@ -52,6 +53,7 @@ const navigationByProfile: Record<User['perfil'], NavigationConfig> = {
     items: [
       { id: 'apontamento', label: 'Apontamento', icon: ClipboardList },
       { id: 'historico', label: 'Histórico', icon: History },
+      { id: 'nao-conformidades', label: 'Não Conformidades', icon: ClipboardCheck },
       { id: 'dashboard', label: 'Aderência Mensal', icon: BarChart3 },
     ],
   },
@@ -59,6 +61,7 @@ const navigationByProfile: Record<User['perfil'], NavigationConfig> = {
     ariaLabel: 'Navegação da coordenação',
     items: [
       { id: 'apontamento', label: 'Registros', icon: ShieldCheck },
+      { id: 'nao-conformidades', label: 'Não Conformidades', icon: ClipboardCheck },
       { id: 'dashboard', label: 'Aderência Mensal', icon: BarChart3 },
       { id: 'producao-diaria', label: 'Produção Diária', icon: PanelsTopLeft },
       { id: 'aderencia-anual', label: 'Aderência Anual', icon: TrendingUp },
@@ -110,6 +113,7 @@ function Navigation({
 }
 
 function getPageTitle(isCoordination: boolean, activeTab: HeaderTab): string {
+  if (activeTab === 'nao-conformidades') return 'Não Conformidades';
   if (activeTab === 'produtividade-individual') return 'Produtividade Individual';
   if (isCoordination) {
     if (activeTab === 'dashboard') return 'Aderência Mensal';

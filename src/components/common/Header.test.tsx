@@ -32,6 +32,16 @@ const bobinagem: User = {
 };
 
 describe('Header compartilhado', () => {
+  it.each([apontador, coordenacao])('abre Não Conformidades para $perfil', async (profile) => {
+    const onTabChange = vi.fn();
+    const user = userEvent.setup();
+    render(<Header user={profile} activeTab="nao-conformidades" onTabChange={onTabChange} onLogout={() => undefined} />);
+    const tab = screen.getByRole('button', { name: 'Não Conformidades' });
+    expect(tab).toHaveAttribute('aria-current', 'page');
+    await user.click(tab);
+    expect(onTabChange).toHaveBeenCalledWith('nao-conformidades');
+  });
+
   it('preserva as abas do apontador e comunica a página ativa', async () => {
     const onTabChange = vi.fn();
     const user = userEvent.setup();

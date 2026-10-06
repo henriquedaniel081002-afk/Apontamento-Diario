@@ -16,7 +16,11 @@ import { Header } from './components/common/Header';
 import { GlobalLoadingOverlay } from './components/common/GlobalLoadingOverlay';
 import { AppShell, LoadingState } from './components/common/ui';
 
-type AppTab = 'apontamento' | 'historico' | 'dashboard' | 'producao-diaria' | 'aderencia-anual' | 'controle-faltas' | 'produtividade-individual' | 'atraso';
+type AppTab = 'apontamento' | 'historico' | 'dashboard' | 'producao-diaria' | 'aderencia-anual' | 'controle-faltas' | 'produtividade-individual' | 'atraso' | 'nao-conformidades';
+
+const NaoConformidadesPage = React.lazy(() =>
+  import('./pages/NaoConformidadesPage').then((module) => ({ default: module.NaoConformidadesPage })),
+);
 
 const ProducaoDiariaPage = React.lazy(() =>
   import('./pages/ProducaoDiariaPage').then((module) => ({ default: module.ProducaoDiariaPage })),
@@ -235,7 +239,11 @@ export default function App() {
 
       <div className="flex min-h-dvh min-w-0 flex-1 flex-col">
       <main id="conteudo-principal" className="min-w-0 flex-1 pb-12">
-        {activeTab === 'dashboard' ? (
+        {activeTab === 'nao-conformidades' ? (
+          <React.Suspense fallback={pageFallback}>
+            <NaoConformidadesPage />
+          </React.Suspense>
+        ) : activeTab === 'dashboard' ? (
           <React.Suspense fallback={pageFallback}>
             <DashboardPage user={currentUser} />
           </React.Suspense>

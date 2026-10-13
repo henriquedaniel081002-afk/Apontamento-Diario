@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   buildFinalImportGroups,
   classifyRawProductionGroup,
+  productionImportSectorForRawGroup,
+  importUnitLabel,
   type ProductionImportPreview,
 } from './importProductionExcel';
 
@@ -57,6 +59,59 @@ describe('equivalências da importação de produção', () => {
         quantidade: 4,
       },
     });
+  });
+
+  it.each(['BOBINAGEM EPOXI', 'ENCAPSULAMENTO'])(
+    'reconhece %s como produção EPO do apontador EPOXI', (setorOriginal) => {
+      expect(classifyRawProductionGroup({
+        id: setorOriginal,
+        setorOriginal,
+        linhaOriginal: 'EPO',
+        turno: '1º',
+        potencia: 500,
+        quantidade: 1,
+      })).toEqual({ group: { setor: 'EPOXI', linha: 'EPO', turno: '1º', potencia: 500, quantidade: 1 } });
+      expect(productionImportSectorForRawGroup(setorOriginal, 'EPO')).toBe('EPOXI');
+    },
+  );
+
+  it('aceita espaços extras e diferenças de caixa nos novos nomes', () => {
+    expect(productionImportSectorForRawGroup('  bobinagem   epoxi ', 'epo')).toBe('EPOXI');
+    expect(productionImportSectorForRawGroup(' encapsulamento ', 'EPO')).toBe('EPOXI');
+  });
+
+  it('impede linha incompatível nos novos setores sem converter MON/TRI para EPO', () => {
+    for (const setorOriginal of ['BOBINAGEM EPOXI', 'ENCAPSULAMENTO']) {
+      const result = classifyRawProductionGroup({
+        id: setorOriginal,
+        setorOriginal,
+        linhaOriginal: 'TRI',
+        potencia: 500,
+        quantidade: 1,
+      });
+      expect(result.issue).toEqual(expect.objectContaining({ kind: 'LINHA', allowedLines: ['EPO'] }));
+    }
+  });
+
+  it('consolida as etapas e Montagem Final EPO sem perder quantidade', () => {
+    const setorOriginal = ['MONTAGEM FINAL', 'BOBINAGEM EPOXI', 'ENCAPSULAMENTO'];
+    const preview: ProductionImportPreview = {
+      fileName: 'Apontamento Final.xlsx',
+      data: '2026-10-13', rowsProcessed: 3, rowsMatched: 3, ignoredWithoutPower: 0,
+      validGroups: setorOriginal.map((setor, i) => {
+        const result = classifyRawProductionGroup({
+          id: String(i), setorOriginal: setor, linhaOriginal: 'EPO',
+          turno: '1º', potencia: 500, quantidade: i + 1,
+        });
+        if (!result.group) throw new Error('Grupo não reconhecido');
+        return result.group;
+      }),
+      issues: [],
+    };
+    expect(buildFinalImportGroups(preview, {})).toEqual([
+      { setor: 'EPOXI', linha: 'EPO', turno: '1º', potencia: 500, quantidade: 6 },
+    ]);
+    expect(importUnitLabel(preview.validGroups[0])).toBe('Epóxi · 1º turno');
   });
 
   it('mantém EPO de Ferragem no próprio setor', () => {

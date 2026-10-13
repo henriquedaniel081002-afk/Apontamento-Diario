@@ -79,6 +79,10 @@ function sectorRule(rawSector: string): SectorRule | null {
   const rules: Record<string, SectorRule> = {
     'BOBINA AT': { setor: 'BOBINA AT/BT', tipoBobina: 'AT', allowedLines: ['MON', 'TRI', 'EPO'] },
     'BOBINA BT': { setor: 'BOBINA AT/BT', tipoBobina: 'BT', allowedLines: ['MON', 'TRI', 'EPO'] },
+    // Etapas produtivas da linha Epóxi usam o mesmo apontador EPOXI.
+    // A linha EPO evita que ocorrências e produções sejam associadas a outro apontador.
+    'BOBINAGEM EPOXI': { setor: 'EPOXI', allowedLines: ['EPO'] },
+    'ENCAPSULAMENTO': { setor: 'EPOXI', allowedLines: ['EPO'] },
     'CORTE DO LASER': { setor: 'CORTE LASER', allowedLines: ['MON', 'TRI', 'EPO'] },
     'CORTE LASER': { setor: 'CORTE LASER', allowedLines: ['MON', 'TRI', 'EPO'] },
     'CORTE DO NUCLEO': { setor: 'CORTE DO NUCLEO', allowedLines: ['MON', 'TRI', 'EPO'] },

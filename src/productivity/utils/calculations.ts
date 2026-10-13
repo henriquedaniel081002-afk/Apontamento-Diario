@@ -30,7 +30,7 @@ export function calculateConvertedQuantity(rawQuantity: number, partCode: string
  * - Wednesday: 424 min
  * - Thursday: 424 min
  * - Friday: 389 min
- * - Saturday/Sunday: 0 min
+ * - Saturday/Sunday: 389 min
  */
 export function getStandardDayMinutes(dateStr: string, config?: WorkdayConfig['standardMinutes']): number {
   // Parse date without timezone shifts
@@ -44,7 +44,7 @@ export function getStandardDayMinutes(dateStr: string, config?: WorkdayConfig['s
     wednesday: 424,
     thursday: 424,
     friday: 389,
-    weekend: 0,
+    weekend: 389,
   };
 
   switch (dayOfWeek) {

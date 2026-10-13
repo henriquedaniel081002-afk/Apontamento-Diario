@@ -9,12 +9,14 @@ describe('regras preservadas da Produtividade Individual', () => {
     expect(calculateConvertedQuantity(9, 'AX123')).toBe(9);
   });
 
-  it('mantém 424 minutos de segunda a quinta, 389 na sexta e zero no fim de semana', () => {
+  it('mantém 424 minutos de segunda a quinta, 389 na sexta e no fim de semana', () => {
     expect(getStandardDayMinutes('2026-08-31')).toBe(424); // segunda
     expect(getStandardDayMinutes('2026-09-01')).toBe(424); // terça
     expect(getStandardDayMinutes('2026-09-02')).toBe(424); // quarta
     expect(getStandardDayMinutes('2026-09-03')).toBe(424); // quinta
     expect(getStandardDayMinutes('2026-09-04')).toBe(389); // sexta
-    expect(getStandardDayMinutes('2026-09-05')).toBe(0); // sábado
+    expect(getStandardDayMinutes('2026-09-05')).toBe(389); // sábado
+    expect(getStandardDayMinutes('2026-09-06')).toBe(389); // domingo
+    expect(getStandardDayMinutes('2026-10-10')).toBe(389); // sábado com produção
   });
 });

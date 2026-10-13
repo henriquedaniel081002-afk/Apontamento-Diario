@@ -54,7 +54,7 @@ export const KpiCards: React.FC<KpiCardsProps> = ({ stats, productivityTarget = 
         <div id="card-tempo-disponivel" className={`${baseCard} hover:border-cyan-500/45`}>
           <div className="flex items-center justify-between gap-2"><span className="text-[9px] font-bold tracking-wider uppercase text-slate-400">Tempo disponível</span><div className="p-1 rounded-md bg-cyan-950/60 text-cyan-400 border border-cyan-500/25"><Clock className="w-3.5 h-3.5" /></div></div>
           <div className="flex items-baseline gap-1 mt-1"><span className="text-xl 2xl:text-2xl font-extrabold text-cyan-300 font-mono tracking-tight">{formatNumberBR(Math.round(stats.totalAvailableMinutes))}</span><span className="text-[9px] text-slate-500 font-mono">min</span></div>
-          <div className="pt-1.5 mt-1.5 border-t border-[var(--border-subtle)] text-[9px] text-slate-500 flex justify-between gap-2"><span>Seg-Qui 424m • Sex 389m</span><span className="text-cyan-400">+ H.E.</span></div>
+          <div className="pt-1.5 mt-1.5 border-t border-[var(--border-subtle)] text-[9px] text-slate-500 flex justify-between gap-2"><span>Seg-Qui 424m • Sex-Dom 389m</span><span className="text-cyan-400">+ H.E.</span></div>
         </div>
 
         <div id="card-tempo-produzido" className={`${baseCard} hover:border-teal-500/45`}>

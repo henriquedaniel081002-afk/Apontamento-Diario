@@ -37,7 +37,7 @@ const defaultWorkdayConfig: WorkdayConfig = {
     wednesday: 424,
     thursday: 424,
     friday: 389,
-    weekend: 0,
+    weekend: 389,
   },
   productivityTarget: 95,
 };

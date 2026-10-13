@@ -55,6 +55,7 @@ type OccurrenceSector = Setor;
 const TURNOS: Turno[] = ['1º turno', '2º turno'];
 const CORTE_AREAS: OccurrenceSector[] = ['CORTE LASER', 'FERRAGEM'];
 const NUCLEO_AREAS: OccurrenceSector[] = ['MONTAGEM NUCLEO', 'CORTE DO NUCLEO'];
+const EPOXI_AREAS: OccurrenceSector[] = ['EPOXI', 'BOBINAGEM EPOXI', 'ENCAPSULAMENTO'];
 const TURN_SECTORS = new Set<OccurrenceSector>([
   'BOBINA AT/BT',
   'PINTURA',
@@ -76,6 +77,8 @@ const OCCURRENCE_SECTORS = new Set<OccurrenceSector>([
   'PINTURA',
   'SOLDA',
   'EPOXI',
+  'BOBINAGEM EPOXI',
+  'ENCAPSULAMENTO',
 ]);
 const SECTOR_LABELS: Partial<Record<OccurrenceSector, string>> = {
   'BOBINA AT/BT': 'Bobinagem',
@@ -91,6 +94,8 @@ const SECTOR_LABELS: Partial<Record<OccurrenceSector, string>> = {
   'MONTAGEM FINAL': 'Montagem Final',
   MPA: 'MPA',
   EPOXI: 'Epóxi',
+  'BOBINAGEM EPOXI': 'Bobinagem Epóxi',
+  ENCAPSULAMENTO: 'Encapsulamento',
 };
 const stepLabels = ['Falta de material', 'Máquina quebrada', 'Não conformidade', 'Faltas', 'Observações', 'Revisão e envio'] as const;
 
@@ -109,9 +114,11 @@ export const TurnOccurrencePage: React.FC<Props> = ({ user, onNavigateToHistory,
   const isCorteFerragemLogin = user.setor === 'CORTE LASER';
   const isNucleoLogin = user.setor === 'MONTAGEM NUCLEO';
   const isSharedSectorLogin = isCorteFerragemLogin || isNucleoLogin;
+  const isEpoxiLogin = user.setor === 'EPOXI';
+  const needsSectorSelection = isSharedSectorLogin || isEpoxiLogin;
   const isBobinagemLogin = user.setor === 'BOBINA AT/BT';
-  const sharedAreas = isCorteFerragemLogin ? CORTE_AREAS : isNucleoLogin ? NUCLEO_AREAS : [];
-  const defaultSector = user.setor && OCCURRENCE_SECTORS.has(user.setor) && !isSharedSectorLogin
+  const sharedAreas = isCorteFerragemLogin ? CORTE_AREAS : isNucleoLogin ? NUCLEO_AREAS : isEpoxiLogin ? EPOXI_AREAS : [];
+  const defaultSector = user.setor && OCCURRENCE_SECTORS.has(user.setor) && !needsSectorSelection
     ? user.setor
     : null;
 
@@ -135,11 +142,13 @@ export const TurnOccurrencePage: React.FC<Props> = ({ user, onNavigateToHistory,
   const [draftResetVersion, setDraftResetVersion] = useState(0);
 
   const activeSector = selectedSector;
-  // Nos dois logins agrupados todos os setores disponíveis usam controle de turno,
-  // então o turno já pode ser escolhido antes do setor, preservando o fluxo atual.
+  // Corte/Ferragem e Núcleo mantêm controle de turno; Epóxi escolhe a área
+  // mas preserva o registro sem obrigatoriedade de turno do setor original.
   const usesTurnFlow = Boolean(isSharedSectorLogin || (activeSector && TURN_SECTORS.has(activeSector)));
   const activeSectorLabel = activeSector ? (SECTOR_LABELS[activeSector] || String(activeSector)) : null;
-  const pageSectorLabel = isCorteFerragemLogin
+  const pageSectorLabel = isEpoxiLogin
+    ? 'Epóxi / Bobinagem Epóxi / Encapsulamento'
+    : isCorteFerragemLogin
     ? 'Corte do Laser/Ferragem'
     : isNucleoLogin
       ? 'Montagem do Núcleo/Corte do Núcleo'
@@ -274,7 +283,7 @@ export const TurnOccurrencePage: React.FC<Props> = ({ user, onNavigateToHistory,
       setRecord(updated);
       setRegistrationOpen(false);
       if (usesTurnFlow) setSelectedTurn(null);
-      if (isSharedSectorLogin) setSelectedSector(null);
+      if (needsSectorSelection) setSelectedSector(null);
       if (isBobinagemLogin) setSelectedTipoBobina(null);
       setToast({
         id: Date.now().toString(),
@@ -292,14 +301,14 @@ export const TurnOccurrencePage: React.FC<Props> = ({ user, onNavigateToHistory,
   };
 
   if (!registrationOpen) {
-    const registerStepNumber = (usesTurnFlow ? 1 : 0) + (isSharedSectorLogin || isBobinagemLogin ? 1 : 0) + 1;
+    const registerStepNumber = (usesTurnFlow ? 1 : 0) + (needsSectorSelection || isBobinagemLogin ? 1 : 0) + 1;
     return (
       <PageContainer className="app-page space-y-5 py-6 sm:py-8">
         <PageHeader
           icon={<ClipboardPlus className="size-5" aria-hidden="true" />}
-          eyebrow={usesTurnFlow || isSharedSectorLogin ? 'Registro por turno' : 'Registro antecipado'}
+          eyebrow={usesTurnFlow ? 'Registro por turno' : 'Registro antecipado'}
           title="Ocorrências do apontamento"
-          description={usesTurnFlow || isSharedSectorLogin
+          description={usesTurnFlow || needsSectorSelection
             ? 'Selecione o contexto do apontamento. As ocorrências podem ser registradas mesmo antes da importação da produção.'
             : 'As ocorrências podem ser registradas antes da importação da produção. A data será conferida na próxima etapa.'}
           metadata={<Badge variant="neutral">{pageSectorLabel}</Badge>}
@@ -342,7 +351,7 @@ export const TurnOccurrencePage: React.FC<Props> = ({ user, onNavigateToHistory,
             </>
           )}
 
-          {isSharedSectorLogin && (
+          {needsSectorSelection && (
             <div className={`space-y-3 ${usesTurnFlow ? 'border-t border-[var(--border-subtle)] pt-5' : ''}`}>
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--accent)]">{usesTurnFlow ? '2' : '1'}. Selecione o setor</p>
@@ -350,7 +359,9 @@ export const TurnOccurrencePage: React.FC<Props> = ({ user, onNavigateToHistory,
                 <p className="mt-1 text-sm text-[var(--text-secondary)]">
                   {isCorteFerragemLogin
                     ? 'Corte do Laser e Ferragem usam o mesmo login, mas os registros permanecem separados no sistema.'
-                    : 'Montagem do Núcleo e Corte do Núcleo usam o mesmo login, mas os registros permanecem separados no sistema.'}
+                    : isNucleoLogin
+                      ? 'Montagem do Núcleo e Corte do Núcleo usam o mesmo login, mas os registros permanecem separados no sistema.'
+                      : 'Epóxi, Bobinagem Epóxi e Encapsulamento usam o mesmo login, mas os registros permanecem separados no sistema.'}
                 </p>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -416,7 +427,7 @@ export const TurnOccurrencePage: React.FC<Props> = ({ user, onNavigateToHistory,
             </div>
           )}
 
-          {!usesTurnFlow && !isSharedSectorLogin && !isBobinagemLogin && (
+          {!usesTurnFlow && !needsSectorSelection && !isBobinagemLogin && (
             <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-muted)] p-4">
               <div className="flex items-start gap-3">
                 <Factory className="mt-0.5 h-5 w-5 shrink-0 text-[var(--accent)]" />
@@ -436,7 +447,7 @@ export const TurnOccurrencePage: React.FC<Props> = ({ user, onNavigateToHistory,
                   {usesTurnFlow && !selectedTurn
                     ? 'Selecione um turno para continuar'
                     : !activeSector
-                      ? `Selecione ${isNucleoLogin ? 'Montagem do Núcleo ou Corte do Núcleo' : 'Corte do Laser ou Ferragem'} para continuar`
+                      ? `Selecione ${isEpoxiLogin ? 'Epóxi, Bobinagem Epóxi ou Encapsulamento' : isNucleoLogin ? 'Montagem do Núcleo ou Corte do Núcleo' : 'Corte do Laser ou Ferragem'} para continuar`
                       : isBobinagemLogin && !selectedTipoBobina
                         ? 'Selecione Bobina AT ou Bobina BT para continuar'
                         : `${selectedTipoBobina ? `${activeSectorLabel} ${selectedTipoBobina}` : activeSectorLabel}${selectedTurn ? ` · ${selectedTurn}` : ''} pronto para registrar`}
@@ -454,8 +465,8 @@ export const TurnOccurrencePage: React.FC<Props> = ({ user, onNavigateToHistory,
   }
 
   const contextTitle = `${activeSectorLabel || activeSector}${selectedTipoBobina ? ` ${selectedTipoBobina}` : ''}${selectedTurn ? ` · ${selectedTurn}` : ''}`;
-  const changeContextLabel = isSharedSectorLogin
-    ? 'Trocar turno/setor'
+  const changeContextLabel = needsSectorSelection
+    ? (usesTurnFlow ? 'Trocar turno/setor' : 'Trocar setor')
     : usesTurnFlow
       ? 'Trocar turno'
       : isBobinagemLogin

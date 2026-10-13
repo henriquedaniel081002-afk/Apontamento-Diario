@@ -26,7 +26,7 @@ function getUserDashboardScope(user?: User): DashboardScope | undefined {
   const setor = setorMap[user.setor] || user.setor;
 
   if (user.setor === 'EPOXI') {
-    return { setores: ['EPOXI'], linhas: ['EPO'], label: 'Epóxi' };
+    return { setores: ['EPOXI', 'BOBINAGEM EPOXI', 'ENCAPSULAMENTO'], linhas: ['EPO'], label: 'Epóxi / Bobinagem Epóxi / Encapsulamento' };
   }
 
   if ((user.setor === 'MONTAGEM FINAL' || user.setor === 'MPA') && user.linhas.length === 1) {

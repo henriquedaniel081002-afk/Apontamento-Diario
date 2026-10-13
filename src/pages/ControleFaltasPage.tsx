@@ -71,6 +71,8 @@ function formatSectorLabel(value: string): string {
     'MPA MON': 'MPA MON',
     'MPA TRI': 'MPA TRI',
     'EPOXI': 'Epóxi',
+    'BOBINAGEM EPOXI': 'Bobinagem Epóxi',
+    'ENCAPSULAMENTO': 'Encapsulamento',
   };
   if (fixed[normalized]) return fixed[normalized];
   return normalized

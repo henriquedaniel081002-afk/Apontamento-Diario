@@ -55,13 +55,14 @@ export function MonthlyDashboard({ dados, scope }: { dados: DashboardData; scope
   }, [fixedLine, linha]);
 
   const isEpoxi = setor === 'EPOXI';
+  const isEpoxiArea = ['EPOXI', 'BOBINAGEM EPOXI', 'ENCAPSULAMENTO'].includes(setor);
   const handleSetor = (value:string) => {
     if (!setorOptions.includes(value)) return;
     setSetor(value);
     setDiaSelecionado(null);
-    if (value === 'EPOXI') setLinha('EPO');
+    if (['EPOXI', 'BOBINAGEM EPOXI', 'ENCAPSULAMENTO'].includes(value)) setLinha('EPO');
     else if (fixedLine) setLinha(fixedLine);
-    else if (setor === 'EPOXI') setLinha('Todas');
+    else if (isEpoxiArea) setLinha('Todas');
   };
 
   const calculado = useMemo(() => {
@@ -96,7 +97,7 @@ export function MonthlyDashboard({ dados, scope }: { dados: DashboardData; scope
   const limpar = () => { setMes(defaultMes); setSetor(defaultSetor); setLinha(defaultLinha); setTurno('Todos'); setDiaSelecionado(null); };
   const filtrosAtivos = mes !== defaultMes || linha !== defaultLinha || setor !== defaultSetor || turno !== 'Todos';
   const setorLocked = Boolean(scope?.setores?.length) && setorOptions.length === 1;
-  const linhaOptions = isEpoxi
+  const linhaOptions = isEpoxiArea
     ? ['EPO']
     : scope?.linhas?.length
       ? ['Todas', ...scopedLineOptions]

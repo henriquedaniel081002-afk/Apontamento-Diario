@@ -106,6 +106,8 @@ export function getOperationalUnitLabel(apontamento: Apontamento): string {
     PINTURA: 'Pintura',
     SOLDA: 'Solda',
     EPOXI: 'Epóxi',
+    'BOBINAGEM EPOXI': 'Bobinagem Epóxi',
+    ENCAPSULAMENTO: 'Encapsulamento',
   };
   const base = baseLabels[apontamento.setor] || String(apontamento.setor);
   const lines = getApontamentoLines(apontamento);

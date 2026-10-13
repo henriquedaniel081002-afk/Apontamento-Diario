@@ -25,7 +25,7 @@ function recordLabel(record: Apontamento): string {
   if (record.setor === 'BOBINA AT' || record.setor === 'BOBINA BT') return record.setor.replace('BOBINA', 'Bobina');
   if (record.setor === 'MONTAGEM FINAL') { const line = record.producoes[0]?.linha || record.linhasPermitidas?.[0]; return `Montagem Final${line ? ` ${line}` : ''}`; }
   if (record.setor === 'MPA') { const line = record.producoes[0]?.linha || record.linhasPermitidas?.[0]; return `MPA${line ? ` ${line}` : ''}`; }
-  const labels: Record<string, string> = { 'CORTE LASER': 'Corte do Laser', 'CORTE DO NUCLEO': 'Corte do Núcleo', FERRAGEM: 'Ferragem', ISOLANTE: 'Isolante', 'MONTAGEM NUCLEO': 'Montagem do Núcleo', PINTURA: 'Pintura', SOLDA: 'Solda', EPOXI: 'Epóxi' };
+  const labels: Record<string, string> = { 'CORTE LASER': 'Corte do Laser', 'CORTE DO NUCLEO': 'Corte do Núcleo', FERRAGEM: 'Ferragem', ISOLANTE: 'Isolante', 'MONTAGEM NUCLEO': 'Montagem do Núcleo', PINTURA: 'Pintura', SOLDA: 'Solda', EPOXI: 'Epóxi', 'BOBINAGEM EPOXI': 'Bobinagem Epóxi', ENCAPSULAMENTO: 'Encapsulamento' };
   return labels[record.setor] || String(record.setor);
 }
 

@@ -55,6 +55,8 @@ export function programacaoImportSector(value: string): Setor | null {
     'PINTURA': 'PINTURA',
     'SOLDA': 'SOLDA',
     'EPOXI': 'EPOXI',
+    'BOBINAGEM EPOXI': 'BOBINAGEM EPOXI',
+    'ENCAPSULAMENTO': 'ENCAPSULAMENTO',
   };
   return aliases[sector] || null;
 }

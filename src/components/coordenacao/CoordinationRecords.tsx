@@ -128,6 +128,8 @@ function getSectorSubtitle(record: Apontamento): string {
     PINTURA: 'PINTURA',
     SOLDA: 'SOLDA',
     EPOXI: 'EPOXI',
+    'BOBINAGEM EPOXI': 'BOBINAGEM EPOXI',
+    ENCAPSULAMENTO: 'ENCAPSULAMENTO',
   };
 
   return labels[record.setor] ?? String(record.setor);

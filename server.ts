@@ -154,7 +154,10 @@ app.post('/api/auth/login', async (req, res) => {
       id: String(first.usuario_id),
       name: displayLoginName(first.login),
       perfil,
-      setor: first.setor || null,
+      // Um login pode possuir vários setores; Epoxi permanece como setor-base
+      // para liberar a escolha EPOXI/BOBINAGEM EPOXI/ENCAPSULAMENTO na interface.
+      setor: String(first.login || '').trim().toUpperCase() === 'EPOXI'
+        ? 'EPOXI' : first.setor || null,
       linhas,
     };
 
@@ -216,6 +219,8 @@ const IMPORT_SECTORS = new Set([
   'PINTURA',
   'SOLDA',
   'EPOXI',
+  'BOBINAGEM EPOXI',
+  'ENCAPSULAMENTO',
 ]);
 const IMPORT_LINES = new Set<ImportLine>(['MON', 'TRI', 'EPO']);
 const IMPORT_FALLBACK_SECTORS = new Set(['CORTE DO NUCLEO', 'FERRAGEM']);
@@ -400,6 +405,8 @@ function normalizeProgramacaoImportSector(value: unknown): string | null {
     'PINTURA': 'PINTURA',
     'SOLDA': 'SOLDA',
     'EPOXI': 'EPOXI',
+    'BOBINAGEM EPOXI': 'BOBINAGEM EPOXI',
+    'ENCAPSULAMENTO': 'ENCAPSULAMENTO',
   };
   return aliases[sector] || null;
 }
@@ -428,7 +435,9 @@ function validateImportGroups(value: unknown): ImportGroup[] {
     if (!Number.isFinite(potencia) || potencia <= 0) throw new Error('A potência importada precisa ser maior que zero.');
     if (!Number.isInteger(quantidade) || quantidade <= 0) throw new Error('A quantidade importada precisa ser um inteiro maior que zero.');
     if (turno && !['1º', '2º'].includes(turno)) throw new Error(`Turno de importação inválido: ${String(item?.turno || '').trim()}.`);
-    if (setor === 'EPOXI' && linha !== 'EPO') throw new Error('Epóxi aceita somente registros da linha EPO.');
+    if (['EPOXI', 'BOBINAGEM EPOXI', 'ENCAPSULAMENTO'].includes(setor) && linha !== 'EPO') {
+      throw new Error(`${setor} aceita somente registros da linha EPO.`);
+    }
     if (setor === 'BOBINA AT/BT' && !['AT', 'BT'].includes(tipoBobina)) {
       throw new Error('A produção de Bobinagem precisa identificar AT ou BT.');
     }
@@ -2250,7 +2259,7 @@ app.get('/api/coordenacao/dashboard', auth, async (req: any, res) => {
     );
     const restrictLine = !isCoordination
       && accessSectorNames.length > 0
-      && accessSectorNames.every((setor) => ['MONTAGEM FINAL', 'MPA', 'EPOXI'].includes(setor))
+      && accessSectorNames.every((setor) => ['MONTAGEM FINAL', 'MPA', 'EPOXI', 'BOBINAGEM EPOXI', 'ENCAPSULAMENTO'].includes(setor))
       && allowedLines.size === 1;
 
     const dashboardItemAllowed = (setor: string, linha?: string | null) => {

@@ -26,6 +26,8 @@ const IMPORT_SECTOR_OPTIONS: Array<{ value: ImportSectorFilter; label: string }>
   { value: 'PINTURA', label: 'Pintura' },
   { value: 'SOLDA', label: 'Solda' },
   { value: 'EPOXI', label: 'Epóxi' },
+  { value: 'BOBINAGEM EPOXI', label: 'Bobinagem Epóxi' },
+  { value: 'ENCAPSULAMENTO', label: 'Encapsulamento' },
 ];
 
 function sectorLabel(value: ImportSectorFilter): string {

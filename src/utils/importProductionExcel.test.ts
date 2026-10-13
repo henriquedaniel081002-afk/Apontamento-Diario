@@ -62,7 +62,7 @@ describe('equivalências da importação de produção', () => {
   });
 
   it.each(['BOBINAGEM EPOXI', 'ENCAPSULAMENTO'])(
-    'reconhece %s como produção EPO do apontador EPOXI', (setorOriginal) => {
+    'reconhece %s como setor independente na linha EPO', (setorOriginal) => {
       expect(classifyRawProductionGroup({
         id: setorOriginal,
         setorOriginal,
@@ -70,14 +70,14 @@ describe('equivalências da importação de produção', () => {
         turno: '1º',
         potencia: 500,
         quantidade: 1,
-      })).toEqual({ group: { setor: 'EPOXI', linha: 'EPO', turno: '1º', potencia: 500, quantidade: 1 } });
-      expect(productionImportSectorForRawGroup(setorOriginal, 'EPO')).toBe('EPOXI');
+      })).toEqual({ group: { setor: setorOriginal, linha: 'EPO', turno: '1º', potencia: 500, quantidade: 1 } });
+      expect(productionImportSectorForRawGroup(setorOriginal, 'EPO')).toBe(setorOriginal);
     },
   );
 
   it('aceita espaços extras e diferenças de caixa nos novos nomes', () => {
-    expect(productionImportSectorForRawGroup('  bobinagem   epoxi ', 'epo')).toBe('EPOXI');
-    expect(productionImportSectorForRawGroup(' encapsulamento ', 'EPO')).toBe('EPOXI');
+    expect(productionImportSectorForRawGroup('  bobinagem   epoxi ', 'epo')).toBe('BOBINAGEM EPOXI');
+    expect(productionImportSectorForRawGroup(' encapsulamento ', 'EPO')).toBe('ENCAPSULAMENTO');
   });
 
   it('impede linha incompatível nos novos setores sem converter MON/TRI para EPO', () => {
@@ -93,7 +93,7 @@ describe('equivalências da importação de produção', () => {
     }
   });
 
-  it('consolida as etapas e Montagem Final EPO sem perder quantidade', () => {
+  it('não mescla setores Epóxi diferentes durante a importação', () => {
     const setorOriginal = ['MONTAGEM FINAL', 'BOBINAGEM EPOXI', 'ENCAPSULAMENTO'];
     const preview: ProductionImportPreview = {
       fileName: 'Apontamento Final.xlsx',
@@ -109,9 +109,13 @@ describe('equivalências da importação de produção', () => {
       issues: [],
     };
     expect(buildFinalImportGroups(preview, {})).toEqual([
-      { setor: 'EPOXI', linha: 'EPO', turno: '1º', potencia: 500, quantidade: 6 },
+      { setor: 'BOBINAGEM EPOXI', linha: 'EPO', turno: '1º', potencia: 500, quantidade: 2 },
+      { setor: 'ENCAPSULAMENTO', linha: 'EPO', turno: '1º', potencia: 500, quantidade: 3 },
+      { setor: 'EPOXI', linha: 'EPO', turno: '1º', potencia: 500, quantidade: 1 },
     ]);
     expect(importUnitLabel(preview.validGroups[0])).toBe('Epóxi · 1º turno');
+    expect(importUnitLabel(preview.validGroups[1])).toBe('Bobinagem Epóxi · 1º turno');
+    expect(importUnitLabel(preview.validGroups[2])).toBe('Encapsulamento · 1º turno');
   });
 
   it('mantém EPO de Ferragem no próprio setor', () => {

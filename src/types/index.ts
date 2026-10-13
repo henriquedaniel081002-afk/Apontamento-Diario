@@ -15,7 +15,9 @@ export type Setor =
   | 'MPA'
   | 'PINTURA'
   | 'SOLDA'
-  | 'EPOXI';
+  | 'EPOXI'
+  | 'BOBINAGEM EPOXI'
+  | 'ENCAPSULAMENTO';
 
 export type Perfil = 'APONTADOR' | 'COORDENACAO';
 export type StatusAprovacao = 'PENDENTE' | 'APROVADO';

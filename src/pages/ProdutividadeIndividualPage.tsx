@@ -8,7 +8,7 @@ import { LateralAnalyticsPanel } from '../productivity/components/LateralAnalyti
 import { SettingsView } from '../productivity/components/SettingsView';
 import { EmployeeDetailView } from '../productivity/components/EmployeeDetailView';
 import { ConsolidatedEmployeeDay, Employee, FilterState, ProductionRecord, WorkdayConfig } from '../productivity/types';
-import { calculateKPIs, consolidateEmployeeDays } from '../productivity/utils/calculations';
+import { calculateKPIs, consolidateEmployeeDays, productionDateRange } from '../productivity/utils/calculations';
 import { isSupabaseConfigured } from '../productivity/lib/supabase';
 import { loadDashboardData, replaceOfficialWorkdays } from '../productivity/services/dashboardService';
 import '../productivity/productivity.css';
@@ -84,13 +84,13 @@ export function ProdutividadeIndividualPage() {
       }));
       setEmployeeControlReady(data.employeeControlReady);
 
-      const dates = data.records.map((record) => record.date).sort();
+      const range = productionDateRange(data.records);
       setFilters((prev) => ({
         ...prev,
-        startDate: resetDateRange ? (dates[0] || '') : (prev.startDate || dates[0] || ''),
+        startDate: resetDateRange ? range.startDate : (prev.startDate || range.startDate),
         endDate: resetDateRange
-          ? (dates[dates.length - 1] || '')
-          : (prev.endDate || dates[dates.length - 1] || ''),
+          ? range.endDate
+          : (prev.endDate || range.endDate),
       }));
       setSelectedEmployeeDay(null);
       setLastUpdated(new Date());
@@ -145,11 +145,11 @@ export function ProdutividadeIndividualPage() {
   );
 
   const resetFilters = () => {
-    const dates = records.map((record) => record.date).sort();
+    const range = productionDateRange(records);
     setFilters({
       ...defaultFilters,
-      startDate: dates[0] || '',
-      endDate: dates[dates.length - 1] || '',
+      startDate: range.startDate,
+      endDate: range.endDate,
     });
   };
 

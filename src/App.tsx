@@ -9,7 +9,6 @@ import {
   readLastActivity,
 } from './services/sessionStore';
 import { LoginPage } from './pages/LoginPage';
-import { ApontamentoPage } from './pages/ApontamentoPage';
 import { invalidateDashboardCache } from './services/dashboardService';
 import { controleFaltasService } from './services/controleFaltasService';
 import { Header } from './components/common/Header';
@@ -17,6 +16,10 @@ import { GlobalLoadingOverlay } from './components/common/GlobalLoadingOverlay';
 import { AppShell, LoadingState } from './components/common/ui';
 
 type AppTab = 'apontamento' | 'historico' | 'dashboard' | 'producao-diaria' | 'aderencia-anual' | 'controle-faltas' | 'produtividade-individual' | 'atraso' | 'nao-conformidades';
+
+const ApontamentoPage = React.lazy(() =>
+  import('./pages/ApontamentoPage').then((module) => ({ default: module.ApontamentoPage })),
+);
 
 const NaoConformidadesPage = React.lazy(() =>
   import('./pages/NaoConformidadesPage').then((module) => ({ default: module.NaoConformidadesPage })),
@@ -308,10 +311,12 @@ export default function App() {
             <CoordenacaoPage user={currentUser} />
           </React.Suspense>
         ) : activeTab === 'apontamento' ? (
-          <ApontamentoPage
-            user={currentUser}
-            onNavigateToHistory={() => setActiveTab('historico')}
-          />
+          <React.Suspense fallback={pageFallback}>
+            <ApontamentoPage
+              user={currentUser}
+              onNavigateToHistory={() => setActiveTab('historico')}
+            />
+          </React.Suspense>
         ) : (
           <React.Suspense fallback={pageFallback}>
             <HistoricoPage user={currentUser} />

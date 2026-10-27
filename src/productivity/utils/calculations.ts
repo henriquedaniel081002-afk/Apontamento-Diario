@@ -23,6 +23,24 @@ export function calculateConvertedQuantity(rawQuantity: number, partCode: string
   return rawQuantity;
 }
 
+/** Determina o intervalo sem ordenar nem copiar todos os registros. */
+export function productionDateRange(records: ProductionRecord[]): { startDate: string; endDate: string } {
+  if (!records.length) return { startDate: '', endDate: '' };
+  // Valores inesperados seguem a ordenação original, inclusive undefined e null.
+  if (records.some(record => typeof record.date !== 'string')) {
+    const dates = records.map(record => record.date).sort();
+    return { startDate: dates[0] || '', endDate: dates[dates.length - 1] || '' };
+  }
+  let startDate = records[0].date;
+  let endDate = records[0].date;
+  for (let i = 1; i < records.length; i += 1) {
+    const date = records[i].date;
+    if (date < startDate) startDate = date;
+    if (date > endDate) endDate = date;
+  }
+  return { startDate: startDate || '', endDate: endDate || '' };
+}
+
 /**
  * Returns base standard minutes for a given date:
  * - Monday: 424 min
@@ -292,10 +310,26 @@ export function calculateKPIs(
   // Faltas sem BASE DE FUNCIONÁRIOS:
   // - a matrícula passa a ser acompanhada a partir da primeira data em que aparece na produção;
   // - em cada dia oficial de trabalho dentro do filtro, ausência de qualquer produção = 1 falta.
-  const presenceKeys = new Set(consolidatedDays.map(day => `${day.employeeId}|${day.date}`));
   const workdaysInRange = officialWorkdays.filter(date =>
     (!startDate || date >= startDate) && (!endDate || date <= endDate)
-  );
+  ).sort();
+
+  // Indexa as presenças uma vez para evitar percorrer todos os dias para cada colaborador.
+  const datesByEmployee = new Map<string, Set<string>>();
+  for (const day of consolidatedDays) {
+    let dates = datesByEmployee.get(day.employeeId);
+    if (!dates) datesByEmployee.set(day.employeeId, dates = new Set());
+    dates.add(day.date);
+  }
+  const lowerBound = (date: string, inclusive: boolean) => {
+    let lo = 0, hi = workdaysInRange.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (workdaysInRange[mid] < date || (!inclusive && workdaysInRange[mid] === date)) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  };
 
   let totalAbsences = 0;
   for (const employee of employeesInScope) {
@@ -306,13 +340,14 @@ export function calculateKPIs(
       ? startDate
       : firstProductionDate;
 
-    for (const workday of workdaysInRange) {
-      if (workday < employeeStart) continue;
-      // Colaboradores desligados deixam de ser esperados a partir do dia seguinte ao desligamento.
-      // O próprio dia do desligamento ainda pode ser um dia normal de trabalho.
-      if (employee.terminationDate && workday > employee.terminationDate) continue;
-      if (!presenceKeys.has(`${employee.id}|${workday}`)) totalAbsences += 1;
+    const first = lowerBound(employeeStart, true);
+    const last = employee.terminationDate ? lowerBound(employee.terminationDate, false) : workdaysInRange.length;
+    let absences = Math.max(0, last - first);
+    for (const date of datesByEmployee.get(employee.id) || []) {
+      if (date < employeeStart || (employee.terminationDate && date > employee.terminationDate)) continue;
+      absences -= lowerBound(date, false) - lowerBound(date, true);
     }
+    totalAbsences += absences;
   }
 
   // Build daily trend list sorted by date ascending

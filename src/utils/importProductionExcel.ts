@@ -74,9 +74,7 @@ function normalizeProductionTurno(value: unknown): ProductionTurno | null {
   return null;
 }
 
-function sectorRule(rawSector: string): SectorRule | null {
-  const sector = normalizeText(rawSector);
-  const rules: Record<string, SectorRule> = {
+const sectorRules: Record<string, SectorRule> = {
     'BOBINA AT': { setor: 'BOBINA AT/BT', tipoBobina: 'AT', allowedLines: ['MON', 'TRI', 'EPO'] },
     'BOBINA BT': { setor: 'BOBINA AT/BT', tipoBobina: 'BT', allowedLines: ['MON', 'TRI', 'EPO'] },
     // Os dois setores Epóxi possuem IDs próprios no Neon e apontam separadamente.
@@ -97,8 +95,10 @@ function sectorRule(rawSector: string): SectorRule | null {
     'MPA': { setor: 'MPA', allowedLines: ['MON', 'TRI', 'EPO'] },
     'PINTURA': { setor: 'PINTURA', allowedLines: ['MON', 'TRI', 'EPO'] },
     'SOLDA': { setor: 'SOLDA', allowedLines: ['MON', 'TRI', 'EPO'] },
-  };
-  return rules[sector] || null;
+};
+
+function sectorRule(rawSector: string): SectorRule | null {
+  return sectorRules[normalizeText(rawSector)] || null;
 }
 
 export function productionImportSectorForRawGroup(rawSector: string, rawLine: string): Setor | null {
@@ -317,7 +317,7 @@ function decodeXmlText(value: string): string {
   return textarea.value;
 }
 
-function parseRowCells(rowXml: string, sharedStrings: string[]): Map<string, string> {
+function parseRowCells(rowXml: string, sharedStrings: string[], wantedColumns?: Set<string>): Map<string, string> {
   const cells = new Map<string, string>();
   // Trata células normais e autocontidas (<c .../>). Sem isso, uma célula vazia
   // poderia capturar o conteúdo da célula seguinte e deslocar os valores da linha.
@@ -328,6 +328,7 @@ function parseRowCells(rowXml: string, sharedStrings: string[]): Map<string, str
     const body = match[2] || '';
     const ref = /\br="([A-Z]+)\d+"/.exec(attrs)?.[1];
     if (!ref) continue;
+    if (wantedColumns && !wantedColumns.has(ref)) continue;
     const type = /\bt="([^"]+)"/.exec(attrs)?.[1] || '';
     const value = /<v[^>]*>([\s\S]*?)<\/v>/.exec(body)?.[1];
 
@@ -407,6 +408,7 @@ async function readProductionImportExcelPeriod(
   let rowsMatched = 0;
   let ignoredWithoutPower = 0;
   let headerColumns: Record<'date' | 'power' | 'line' | 'sector' | 'turno', string> | null = null;
+  let wantedColumns: Set<string> | undefined;
 
   const stream = await entryByteStream(buffer, sheetEntry);
   const reader = stream.pipeThrough(new TextDecoderStream('utf-8')).getReader();
@@ -414,7 +416,7 @@ async function readProductionImportExcelPeriod(
 
   const processRow = (rowXml: string) => {
     rowsProcessed += 1;
-    const cells = parseRowCells(rowXml, sharedStrings);
+    const cells = parseRowCells(rowXml, sharedStrings, wantedColumns);
     if (!headerColumns) {
       const byHeader = new Map<string, string>();
       for (const [column, value] of cells) byHeader.set(normalizeText(value), column);
@@ -427,6 +429,7 @@ async function readProductionImportExcelPeriod(
         throw new Error('A aba “Apontamento Final” precisa conter as colunas DATA PRODUZIDA, POTÊNCIA, LINHA, SETOR e TURNO.');
       }
       headerColumns = { date: dateColumn, power: powerColumn, line: lineColumn, sector: sectorColumn, turno: turnoColumn };
+      wantedColumns = new Set(Object.values(headerColumns));
       return;
     }
 

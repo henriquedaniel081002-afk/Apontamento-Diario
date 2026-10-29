@@ -94,7 +94,7 @@ export function GestaoAtrasosPage({user}:{user:User}) {
     catch(e){setError(e instanceof Error?e.message:'Falha ao ler justificativas.');}
   };
   const save=async()=>{
-    if(!chosen||!allowed(user,chosen.setor)||motivo.trim().length<5)return;
+    if(!chosen||!(user.perfil==='COORDENACAO'||authorizedSectors.includes(sector(chosen.setor)))||motivo.trim().length<5)return;
     setSaving(true);
     try{
       await apiRequest('/api/gestao-atrasos/justificativas',{

@@ -262,7 +262,7 @@ export function registerGestaoAtrasosRoutes(
         AND p.data_programada >= $3::date AND p.data_programada < $4::date LIMIT 1`,[op,setor,start,end]);
       if(!opExists.rowCount)return res.status(404).json({error:'OP e setor não encontrados na programação ativa do período.'});
       const result=await pool.query(`INSERT INTO public.atrasos_justificativas(op,setor,motivo,previsao_regularizacao,usuario_id,usuario_login)
-        VALUES($1,$2,$3,$4,$5,$6) RETURNING id,criado_em`,[op,setor,motivo,previs,Number(req.auth.userId),String(req.auth.login || 'USUARIO')]);
+        VALUES($1,$2,$3,$4,$5,$6) RETURNING id,criado_em`,[op,setor,motivo,previsao,Number(req.auth.userId),String(req.auth.login || 'USUARIO')]);
       invalidateSummary();
       res.json({ok:true,...result.rows[0]});
     } catch(e:any){res.status(500).json({error:'Falha ao salvar justificativa.'});}

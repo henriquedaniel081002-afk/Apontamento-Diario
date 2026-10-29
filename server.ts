@@ -2,7 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import pg from 'pg';
 import jwt from 'jsonwebtoken';
-import { registerGestaoAtrasosRoutes } from './server.gestaoAtrasos';
+import { registerGestaoAtrasosRoutes } from './server.gestaoAtrasos.js';
 
 dotenv.config();
 const { Pool } = pg;

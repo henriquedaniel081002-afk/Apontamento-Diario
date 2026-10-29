@@ -21,7 +21,7 @@ import { User } from '../../types';
 import logoItam from '../../assets/logo-itam.png';
 import { cx } from './ui';
 
-export type HeaderTab = 'apontamento' | 'historico' | 'dashboard' | 'producao-diaria' | 'aderencia-anual' | 'controle-faltas' | 'produtividade-individual' | 'atraso' | 'nao-conformidades';
+export type HeaderTab = 'apontamento' | 'historico' | 'dashboard' | 'producao-diaria' | 'aderencia-anual' | 'controle-faltas' | 'produtividade-individual' | 'atraso' | 'gestao-atrasos' | 'nao-conformidades';
 
 export interface HeaderProps {
   user: User;
@@ -55,6 +55,7 @@ const navigationByProfile: Record<User['perfil'], NavigationConfig> = {
       { id: 'historico', label: 'Histórico', icon: History },
       { id: 'nao-conformidades', label: 'Não Conformidades', icon: ClipboardCheck },
       { id: 'dashboard', label: 'Aderência Mensal', icon: BarChart3 },
+      { id: 'gestao-atrasos', label: 'Gestão por OP', icon: AlertTriangle },
     ],
   },
   COORDENACAO: {
@@ -68,6 +69,7 @@ const navigationByProfile: Record<User['perfil'], NavigationConfig> = {
       { id: 'controle-faltas', label: 'Controle Faltas', icon: UserRoundX },
       { id: 'produtividade-individual', label: 'Produtividade', icon: Gauge },
       { id: 'atraso', label: 'Atraso', icon: AlertTriangle },
+      { id: 'gestao-atrasos', label: 'Gestão por OP', icon: AlertTriangle },
     ],
   },
 };
@@ -113,6 +115,7 @@ function Navigation({
 }
 
 function getPageTitle(isCoordination: boolean, activeTab: HeaderTab): string {
+  if (activeTab === 'gestao-atrasos') return 'Gestão de Atrasos por OP';
   if (activeTab === 'nao-conformidades') return 'Não Conformidades';
   if (activeTab === 'produtividade-individual') return 'Produtividade Individual';
   if (isCoordination) {

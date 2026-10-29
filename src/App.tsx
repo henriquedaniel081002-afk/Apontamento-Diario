@@ -15,7 +15,7 @@ import { Header } from './components/common/Header';
 import { GlobalLoadingOverlay } from './components/common/GlobalLoadingOverlay';
 import { AppShell, LoadingState } from './components/common/ui';
 
-type AppTab = 'apontamento' | 'historico' | 'dashboard' | 'producao-diaria' | 'aderencia-anual' | 'controle-faltas' | 'produtividade-individual' | 'atraso' | 'nao-conformidades';
+type AppTab = 'apontamento' | 'historico' | 'dashboard' | 'producao-diaria' | 'aderencia-anual' | 'controle-faltas' | 'produtividade-individual' | 'atraso' | 'gestao-atrasos' | 'nao-conformidades';
 
 const ApontamentoPage = React.lazy(() =>
   import('./pages/ApontamentoPage').then((module) => ({ default: module.ApontamentoPage })),
@@ -51,6 +51,10 @@ const ProdutividadeIndividualPage = React.lazy(() =>
 
 const AtrasoPage = React.lazy(() =>
   import('./pages/AtrasoPage').then((module) => ({ default: module.AtrasoPage })),
+);
+
+const GestaoAtrasosPage = React.lazy(() =>
+  import('./pages/GestaoAtrasosPage').then((module) => ({ default: module.GestaoAtrasosPage })),
 );
 
 const AderenciaAnualPage = React.lazy(() =>
@@ -292,6 +296,10 @@ export default function App() {
             )}
           >
             <ProdutividadeIndividualPage />
+          </React.Suspense>
+        ) : activeTab === 'gestao-atrasos' ? (
+          <React.Suspense fallback={pageFallback}>
+            <GestaoAtrasosPage user={currentUser} />
           </React.Suspense>
         ) : activeTab === 'atraso' && isCoordenacao ? (
           <React.Suspense

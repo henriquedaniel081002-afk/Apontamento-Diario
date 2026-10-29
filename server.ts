@@ -2,6 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import pg from 'pg';
 import jwt from 'jsonwebtoken';
+import { registerGestaoAtrasosRoutes } from './server.gestaoAtrasos';
 
 dotenv.config();
 const { Pool } = pg;
@@ -63,7 +64,8 @@ app.use('/api', (_req, res, next) => {
 app.use('/api', (req, _res, next) => {
   // Login não altera dados operacionais. As demais mutações invalidam os caches
   // curtos de leitura para manter as telas coerentes sem repetir consultas caras.
-  if (req.method !== 'GET' && !(req.method === 'POST' && req.path === '/auth/login')) {
+  if (req.method !== 'GET' && !(req.method === 'POST' && req.path === '/auth/login')
+    && !req.path.startsWith('/gestao-atrasos/')) {
     invalidateNeonReadCaches();
   }
   next();
@@ -3178,6 +3180,9 @@ app.delete('/api/coordenacao/apontamentos/:id', auth, requireCoordenacao, async 
 
 // No Vercel, o Express é executado como uma Function e não deve abrir uma porta própria.
 // Localmente, o servidor continua funcionando em http://localhost:3001.
+// Novo módulo isolado: utiliza a conexão de Atrasos já existente, sem alterar pools ou endpoints antigos.
+registerGestaoAtrasosRoutes(app, atrasoPool, auth, requireCoordenacao, getUserAccess);
+
 if (!process.env.VERCEL) {
   app.listen(PORT, () => console.log(`ITAM API em http://localhost:${PORT}`));
 }

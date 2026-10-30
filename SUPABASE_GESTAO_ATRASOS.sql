@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS public.atrasos_importacoes (
   id UUID PRIMARY KEY,
   tipo TEXT NOT NULL CHECK (tipo IN ('PROGRAMACAO','APONTAMENTO')),
   status TEXT NOT NULL CHECK (status IN ('PENDENTE','ATIVA')),
-  esperado INTEGER NOT NULL CHECK (esperado > 0 AND esperado <= 200000),
+  esperado INTEGER NOT NULL CHECK (esperado > 0),
   criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
   atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );

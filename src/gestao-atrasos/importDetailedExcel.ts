@@ -199,7 +199,11 @@ export async function readDetailedExcel(file:File,tipo:DetailedTipo,onProgress?:
       const end=pending.indexOf('</row>',start);
       if(end<0){if(start>0)pending=pending.slice(start);break;}
       processRow(pending.slice(start,end+6));pending=pending.slice(end+6);
-      if(onProgress&&processed%10000===0)onProgress(processed);
+      if(processed%10000===0) {
+        onProgress?.(processed);
+        // Entrega um quadro ao navegador entre blocos grandes de linhas.
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+      }
     }
     if(done)break;
   }

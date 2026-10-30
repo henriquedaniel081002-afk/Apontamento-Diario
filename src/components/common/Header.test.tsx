@@ -120,3 +120,11 @@ describe('Header compartilhado', () => {
     expect(screen.getByRole('button', { name: 'Recolher barra lateral' })).toHaveAttribute('aria-expanded', 'true');
   });
 });
+
+describe('Atraso unificado na navegação', () => {
+  it.each([apontador, coordenacao])('exibe apenas uma aba Atraso para $perfil', (profile) => {
+    render(<Header user={profile} activeTab="atraso" onTabChange={() => undefined} onLogout={() => undefined} />);
+    expect(screen.getAllByRole('button', { name: 'Atraso' }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: 'Gestão por OP' })).not.toBeInTheDocument();
+  });
+});

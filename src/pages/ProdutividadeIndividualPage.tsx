@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Gauge, LayoutDashboard, RefreshCw, Settings2 } from 'lucide-react';
 import { Button, PageContainer, PageHeader } from '../components/common/ui';
 import { FilterBar } from '../productivity/components/FilterBar';
@@ -54,6 +54,8 @@ function formatUpdatedAt(date: Date) {
 }
 
 export function ProdutividadeIndividualPage() {
+  const requestRef=useRef<AbortController|null>(null);
+  useEffect(()=>()=>requestRef.current?.abort(),[]);
   const [view, setView] = useState<ProductivityView>('dashboard');
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [records, setRecords] = useState<ProductionRecord[]>([]);
@@ -71,10 +73,13 @@ export function ProdutividadeIndividualPage() {
       return;
     }
 
+    requestRef.current?.abort();
+    const request=new AbortController();requestRef.current=request;
     setLoading(true);
     setLoadError('');
     try {
-      const data = await loadDashboardData();
+      const data = await loadDashboardData(request.signal);
+      if(request.signal.aborted)return;
       setEmployees(data.employees);
       setRecords(data.records);
       setWorkdayConfig((prev) => ({
@@ -95,9 +100,9 @@ export function ProdutividadeIndividualPage() {
       setSelectedEmployeeDay(null);
       setLastUpdated(new Date());
     } catch (error: any) {
-      setLoadError(error?.message || 'Não foi possível carregar os dados do Supabase.');
+      if(!request.signal.aborted)setLoadError(error?.message || 'Não foi possível carregar os dados do Supabase.');
     } finally {
-      setLoading(false);
+      if(!request.signal.aborted)setLoading(false);
     }
   };
 

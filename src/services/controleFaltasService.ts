@@ -18,6 +18,7 @@ export interface ControleFaltasResponse {
   registros: ControleFaltasRegistro[];
 }
 
+let generation=0;
 const CACHE_TTL_MS = 30_000;
 const cache = new Map<string, { at: number; data: ControleFaltasResponse }>();
 const pending = new Map<string, Promise<ControleFaltasResponse>>();
@@ -28,6 +29,8 @@ function cacheKey(dataInicio: string, dataFim: string) {
 
 export const controleFaltasService = {
   async getData(dataInicio: string, dataFim: string, forceRefresh = false): Promise<ControleFaltasResponse> {
+    if(forceRefresh)this.invalidate();
+    const currentGeneration=generation;
     const key = cacheKey(dataInicio, dataFim);
     const cached = cache.get(key);
     if (!forceRefresh && cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.data;
@@ -40,16 +43,17 @@ export const controleFaltasService = {
       cache: 'no-store',
     })
       .then((data) => {
-        cache.set(key, { at: Date.now(), data });
+        if(currentGeneration===generation)cache.set(key, { at: Date.now(), data });
         return data;
       })
-      .finally(() => pending.delete(key));
+      .finally(() => {if(pending.get(key)===request)pending.delete(key);});
 
     pending.set(key, request);
     return request;
   },
 
   invalidate() {
+    generation++;
     cache.clear();
     pending.clear();
   },

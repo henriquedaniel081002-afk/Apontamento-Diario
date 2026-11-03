@@ -1,3 +1,4 @@
+import { installPerformanceMetrics } from './server.performance.js';
 import express from 'express';
 import dotenv from 'dotenv';
 import pg from 'pg';
@@ -25,13 +26,13 @@ const atrasoPool = ATRASO_DATABASE_URL === String(DATABASE_URL).trim()
   : new Pool({ connectionString: ATRASO_DATABASE_URL, ssl: { rejectUnauthorized: false } });
 
 type ReadCacheEntry<T> = { expiresAt: number; value: T };
+let neonCacheGeneration = 0;
 const neonReadCache = new Map<string, ReadCacheEntry<unknown>>();
 const userAccessCache = new Map<number, ReadCacheEntry<any[]>>();
 const DASHBOARD_CACHE_TTL_MS = 45_000;
 const COORDINATION_CACHE_TTL_MS = 20_000;
 const USER_ACCESS_CACHE_TTL_MS = 60_000;
-const TURN_REPAIR_INTERVAL_MS = 5 * 60_000;
-let lastTurnDuplicateRepairAt = 0;
+
 
 function readCache<T>(key: string): T | null {
   const entry = neonReadCache.get(key);
@@ -43,17 +44,19 @@ function readCache<T>(key: string): T | null {
   return entry.value as T;
 }
 
-function writeCache<T>(key: string, value: T, ttlMs: number): T {
+function writeCache<T>(key: string, value: T, ttlMs: number, generation = neonCacheGeneration): T {
+  if(generation !== neonCacheGeneration)return value;
   neonReadCache.set(key, { expiresAt: Date.now() + ttlMs, value });
   return value;
 }
 
 function invalidateNeonReadCaches() {
+  neonCacheGeneration++;
   neonReadCache.clear();
   userAccessCache.clear();
-  lastTurnDuplicateRepairAt = 0;
 }
 
+installPerformanceMetrics(app,[pool,atrasoPool]);
 app.use(express.json({ limit: '5mb' }));
 app.use('/api', (_req, res, next) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -67,6 +70,7 @@ app.use('/api', (req, _res, next) => {
   if (req.method !== 'GET' && !(req.method === 'POST' && req.path === '/auth/login')
     && !req.path.startsWith('/gestao-atrasos/')) {
     invalidateNeonReadCaches();
+    _res.once('finish',invalidateNeonReadCaches);
   }
   next();
 });
@@ -177,6 +181,7 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 async function getUserAccess(userId: number) {
+  const generation=neonCacheGeneration;
   const cached = userAccessCache.get(userId);
   if (cached && cached.expiresAt > Date.now()) return cached.value;
   if (cached) userAccessCache.delete(userId);
@@ -188,7 +193,7 @@ async function getUserAccess(userId: number) {
       WHERE ua.usuario_id = $1`,
     [userId],
   );
-  userAccessCache.set(userId, { expiresAt: Date.now() + USER_ACCESS_CACHE_TTL_MS, value: r.rows });
+  if(generation===neonCacheGeneration)userAccessCache.set(userId, { expiresAt: Date.now() + USER_ACCESS_CACHE_TTL_MS, value: r.rows });
   return r.rows;
 }
 
@@ -950,12 +955,11 @@ async function mergeTurnSectorDuplicateGroup(
 }
 
 async function repairAllTurnSectorDuplicates() {
-  // A consolidação continua existindo como proteção para bases antigas, mas não
-  // precisa varrer o Neon em toda abertura de tela. Mutações zeram este relógio.
-  if (Date.now() - lastTurnDuplicateRepairAt < TURN_REPAIR_INTERVAL_MS) return;
-  lastTurnDuplicateRepairAt = Date.now();
   const client = await pool.connect();
   try {
+    await client.query('BEGIN');
+    // Explicit maintenance only: serialize against writes while canonical records are merged.
+    await client.query('LOCK TABLE apontamentos IN SHARE ROW EXCLUSIVE MODE');
     const groups = await client.query(
       `SELECT a.data, a.setor_id, a.tipo_bobina
          FROM apontamentos a
@@ -965,9 +969,7 @@ async function repairAllTurnSectorDuplicates() {
        HAVING COUNT(*) > 1`,
       [[...TURN_OCCURRENCE_SECTORS]],
     );
-    if (!groups.rows.length) return;
-
-    await client.query('BEGIN');
+    if (!groups.rows.length) { await client.query('COMMIT'); return; }
     for (const group of groups.rows) {
       await mergeTurnSectorDuplicateGroup(
         client,
@@ -978,13 +980,18 @@ async function repairAllTurnSectorDuplicates() {
     }
     await client.query('COMMIT');
   } catch (error) {
-    lastTurnDuplicateRepairAt = 0;
-    await client.query('ROLLBACK').catch(() => undefined);
-    console.error('Falha ao consolidar cartões duplicados por turno:', error);
+      await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
   } finally {
     client.release();
   }
 }
+
+// Never run repair as a side effect of opening dashboards. No scheduler or polling.
+app.post('/api/coordenacao/manutencao/consolidar-turnos', auth, requireCoordenacao, async (_req,res)=>{
+  try { await repairAllTurnSectorDuplicates(); invalidateNeonReadCaches(); res.json({ok:true}); }
+  catch { res.status(500).json({error:'Falha na consolidação. Nenhuma consolidação parcial foi confirmada.'}); }
+});
 
 type LoadApontamentosBatchOptions = {
   userId?: number;
@@ -1024,56 +1031,41 @@ async function loadApontamentosBatch(options: LoadApontamentosBatchOptions = {})
   if (!headers.rows.length) return [];
   const ids = headers.rows.map((row: any) => Number(row.id));
 
-  const [p, material, maquina, nc, f, o, acessos] = await Promise.all([
-    pool.query(
-      `SELECT p.apontamento_id, p.id, l.nome linha, p.potencia, p.quantidade, p.turno
+  const children = await pool.query(`SELECT COALESCE((SELECT jsonb_agg(to_jsonb(part) || jsonb_build_object('apontamento_id',part.apontamento_id::text) || CASE WHEN to_jsonb(part)?'id' THEN jsonb_build_object('id',to_jsonb(part)->>'id') ELSE '{}'::jsonb END || CASE WHEN to_jsonb(part)?'potencia' THEN jsonb_build_object('potencia',to_jsonb(part)->>'potencia') ELSE '{}'::jsonb END) FROM (SELECT p.apontamento_id, p.id, l.nome linha, p.potencia, p.quantidade, p.turno
          FROM producao p
          JOIN linhas l ON l.id = p.linha_id
         WHERE p.apontamento_id = ANY($1::bigint[])
-        ORDER BY p.apontamento_id, p.id`, [ids],
-    ),
-    pool.query(
-      `SELECT apontamento_id, id, causa_motivo, material, hora_inicio, hora_fim, turno
+        ORDER BY p.apontamento_id, p.id) part),'[]'::jsonb) AS p,
+COALESCE((SELECT jsonb_agg(to_jsonb(part) || jsonb_build_object('apontamento_id',part.apontamento_id::text) || CASE WHEN to_jsonb(part)?'id' THEN jsonb_build_object('id',to_jsonb(part)->>'id') ELSE '{}'::jsonb END || CASE WHEN to_jsonb(part)?'potencia' THEN jsonb_build_object('potencia',to_jsonb(part)->>'potencia') ELSE '{}'::jsonb END) FROM (SELECT apontamento_id, id, causa_motivo, material, hora_inicio, hora_fim, turno
          FROM paradas_falta_material
         WHERE apontamento_id = ANY($1::bigint[])
-        ORDER BY apontamento_id, id`, [ids],
-    ),
-    pool.query(
-      `SELECT apontamento_id, id, maquina_equipamento, hora_inicio, hora_fim, observacao, turno
+        ORDER BY apontamento_id, id) part),'[]'::jsonb) AS material,
+COALESCE((SELECT jsonb_agg(to_jsonb(part) || jsonb_build_object('apontamento_id',part.apontamento_id::text) || CASE WHEN to_jsonb(part)?'id' THEN jsonb_build_object('id',to_jsonb(part)->>'id') ELSE '{}'::jsonb END || CASE WHEN to_jsonb(part)?'potencia' THEN jsonb_build_object('potencia',to_jsonb(part)->>'potencia') ELSE '{}'::jsonb END) FROM (SELECT apontamento_id, id, maquina_equipamento, hora_inicio, hora_fim, observacao, turno
          FROM paradas_maquina
         WHERE apontamento_id = ANY($1::bigint[])
-        ORDER BY apontamento_id, id`, [ids],
-    ),
-    pool.query(
-      `SELECT apontamento_id, id, causa_nao_conformidade, op, numero_serie, turno
+        ORDER BY apontamento_id, id) part),'[]'::jsonb) AS maquina,
+COALESCE((SELECT jsonb_agg(to_jsonb(part) || jsonb_build_object('apontamento_id',part.apontamento_id::text) || CASE WHEN to_jsonb(part)?'id' THEN jsonb_build_object('id',to_jsonb(part)->>'id') ELSE '{}'::jsonb END || CASE WHEN to_jsonb(part)?'potencia' THEN jsonb_build_object('potencia',to_jsonb(part)->>'potencia') ELSE '{}'::jsonb END) FROM (SELECT apontamento_id, id, causa_nao_conformidade, op, numero_serie, turno
          FROM nao_conformidades
         WHERE apontamento_id = ANY($1::bigint[])
-        ORDER BY apontamento_id, id`, [ids],
-    ),
-    pool.query(
-      `SELECT f.apontamento_id, f.id, l.nome linha, f.turno, f.quantidade, f.justificativa,
+        ORDER BY apontamento_id, id) part),'[]'::jsonb) AS nc,
+COALESCE((SELECT jsonb_agg(to_jsonb(part) || jsonb_build_object('apontamento_id',part.apontamento_id::text) || CASE WHEN to_jsonb(part)?'id' THEN jsonb_build_object('id',to_jsonb(part)->>'id') ELSE '{}'::jsonb END || CASE WHEN to_jsonb(part)?'potencia' THEN jsonb_build_object('potencia',to_jsonb(part)->>'potencia') ELSE '{}'::jsonb END) FROM (SELECT f.apontamento_id, f.id, l.nome linha, f.turno, f.quantidade, f.justificativa,
               f.nome, f.motivo_justificativa, f.atestado
          FROM faltas f
          LEFT JOIN linhas l ON l.id = f.linha_id
         WHERE f.apontamento_id = ANY($1::bigint[])
-        ORDER BY f.apontamento_id, f.id`, [ids],
-    ),
-    pool.query(
-      `SELECT o.apontamento_id, o.id, l.nome linha, o.turno, o.observacao, o.justificativa_meta
+        ORDER BY f.apontamento_id, f.id) part),'[]'::jsonb) AS f,
+COALESCE((SELECT jsonb_agg(to_jsonb(part) || jsonb_build_object('apontamento_id',part.apontamento_id::text) || CASE WHEN to_jsonb(part)?'id' THEN jsonb_build_object('id',to_jsonb(part)->>'id') ELSE '{}'::jsonb END || CASE WHEN to_jsonb(part)?'potencia' THEN jsonb_build_object('potencia',to_jsonb(part)->>'potencia') ELSE '{}'::jsonb END) FROM (SELECT o.apontamento_id, o.id, l.nome linha, o.turno, o.observacao, o.justificativa_meta
          FROM observacoes o
          LEFT JOIN linhas l ON l.id = o.linha_id
         WHERE o.apontamento_id = ANY($1::bigint[])
-        ORDER BY o.apontamento_id, o.id`, [ids],
-    ),
-    pool.query(
-      `SELECT DISTINCT h.id apontamento_id, l.nome linha
+        ORDER BY o.apontamento_id, o.id) part),'[]'::jsonb) AS o,
+COALESCE((SELECT jsonb_agg(to_jsonb(part) || jsonb_build_object('apontamento_id',part.apontamento_id::text) || CASE WHEN to_jsonb(part)?'id' THEN jsonb_build_object('id',to_jsonb(part)->>'id') ELSE '{}'::jsonb END || CASE WHEN to_jsonb(part)?'potencia' THEN jsonb_build_object('potencia',to_jsonb(part)->>'potencia') ELSE '{}'::jsonb END) FROM (SELECT DISTINCT h.id apontamento_id, l.nome linha
          FROM apontamentos h
          JOIN usuario_acessos ua ON ua.usuario_id = h.usuario_id AND ua.setor_id = h.setor_id
          JOIN linhas l ON l.id = ua.linha_id
         WHERE h.id = ANY($1::bigint[])
-        ORDER BY h.id, l.nome`, [ids],
-    ),
-  ]);
+        ORDER BY h.id, l.nome) part),'[]'::jsonb) AS acessos`,[ids]);
+  const [p, material, maquina, nc, f, o, acessos] = ["p", "material", "maquina", "nc", "f", "o", "acessos"].map(key=>({rows:children.rows[0]?.[key]||[]}));
 
   const group = (rows: any[]) => {
     const map = new Map<number, any[]>();
@@ -2241,13 +2233,13 @@ app.get('/api/coordenacao/controle-faltas', auth, requireCoordenacao, async (req
 
 app.get('/api/coordenacao/dashboard', auth, async (req: any, res) => {
   try {
+    const cacheGeneration = neonCacheGeneration;
     const forceRefresh = req.query.refresh === '1';
     const dashboardCacheKey = `dashboard:${req.auth?.perfil || 'APONTADOR'}:${req.auth?.userId || 'anon'}`;
     if (!forceRefresh) {
       const cached = readCache<any>(dashboardCacheKey);
       if (cached) return res.json(cached);
     }
-    await repairAllTurnSectorDuplicates();
     const isCoordination = req.auth?.perfil === 'COORDENACAO';
     const accessRows = isCoordination ? [] : await getUserAccess(req.auth.userId);
     const allowedDashboardSectors = new Set<string>(
@@ -2463,7 +2455,7 @@ app.get('/api/coordenacao/dashboard', auth, async (req: any, res) => {
       maquinasQuebradas,
       naoConformidades,
     };
-    writeCache(dashboardCacheKey, payload, DASHBOARD_CACHE_TTL_MS);
+    writeCache(dashboardCacheKey, payload, DASHBOARD_CACHE_TTL_MS, cacheGeneration);
     res.json(payload);
   } catch (e) {
     console.error(e);
@@ -2676,15 +2668,15 @@ app.get('/api/coordenacao/pendencias-aprovacao', auth, requireCoordenacao, async
 
 app.get('/api/coordenacao/apontamentos', auth, requireCoordenacao, async (req: any, res) => {
   try {
+    const cacheGeneration = neonCacheGeneration;
     const forceRefresh = req.query.refresh === '1';
     const cacheKey = 'coordenacao:apontamentos';
     if (!forceRefresh) {
       const cached = readCache<any[]>(cacheKey);
       if (cached) return res.json(cached);
     }
-    await repairAllTurnSectorDuplicates();
     const registros = await loadApontamentosBatch();
-    writeCache(cacheKey, registros, COORDINATION_CACHE_TTL_MS);
+    writeCache(cacheKey, registros, COORDINATION_CACHE_TTL_MS, cacheGeneration);
     res.json(registros);
   } catch (e) {
     console.error(e);

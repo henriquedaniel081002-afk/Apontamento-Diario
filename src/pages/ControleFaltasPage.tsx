@@ -1,3 +1,4 @@
+import {useLatestRead} from '../hooks/useLatestRead';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   CalendarDays,
@@ -275,26 +276,31 @@ export function ControleFaltasPage() {
 
   const validRange = Boolean(dataInicio && dataFim && dataInicio <= dataFim);
 
+  const beginRead=useLatestRead();
   const load = useCallback(async (forceRefresh = false) => {
+    const current=beginRead();
     if (!validRange) return;
     setLoading(true);
     setError(null);
     startProgress();
     try {
       const response = await controleFaltasService.getData(dataInicio, dataFim, forceRefresh);
+      if(!current())return;
       setRecords(response.registros);
       setGeradoEm(response.geradoEm);
     } catch (e) {
+      if(!current())return;
       setError(e instanceof Error ? e.message : 'Falha ao carregar o Controle de Faltas.');
     } finally {
-      await completeProgress();
-      setLoading(false);
+      if(current())await completeProgress();
+      if(current())setLoading(false);
     }
-  }, [completeProgress, dataFim, dataInicio, startProgress, validRange]);
+  }, [beginRead,completeProgress, dataFim, dataInicio, startProgress, validRange]);
 
   useEffect(() => {
     if (validRange) void load();
-  }, [load, validRange]);
+    else {beginRead();setLoading(false);}
+  }, [load, validRange, beginRead]);
 
   const setorOptions = useMemo(() => [
     { value: 'ALL', label: 'Todos os setores' },

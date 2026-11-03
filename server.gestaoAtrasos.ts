@@ -35,6 +35,13 @@ function period() {
   const today = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
   return { start, end, today };
 }
+function selectedPeriod(input: any) {
+  const defaults=period();
+  const start=String(input?.inicio||defaults.start);
+  const last=String(input?.fim||new Date(Date.parse(defaults.end)-86400000).toISOString().slice(0,10));
+  if(!validDate(start)||!validDate(last)||start>last||last==='9999-12-31') throw new RangeError('Período inválido.');
+  return {start,end:new Date(Date.parse(last)+86400000).toISOString().slice(0,10),today:defaults.today};
+}
 function requireType(input: unknown): Tipo {
   if (!TIPOS.has(String(input))) throw new Error('Tipo de importação inválido.');
   return input as Tipo;
@@ -87,7 +94,7 @@ export function registerGestaoAtrasosRoutes(
     try {
       const tipo = requireType(req.body?.tipo);
       const esperado = Number(req.body?.esperado);
-      if (!Number.isInteger(esperado) || esperado < 1 || esperado > 2000000000) return res.status(400).json({error:'Quantidade inválida (limite técnico de registros excedido).'});
+      if (!Number.isInteger(esperado) || esperado < 1 || esperado > 200000) return res.status(400).json({error:'Quantidade inválida: envie entre 1 e 200.000 registros.'});
       const id = randomUUID();
       const client = await pool.connect();
       try {
@@ -109,20 +116,30 @@ export function registerGestaoAtrasosRoutes(
       const id = String(req.body?.id || '');
       if (!UUID.test(id)) throw new Error('ID de importação inválido.');
       const linhas = validateLines(req.body?.linhas, tipo);
+      if(new Set(linhas.map(r=>JSON.stringify([r.serie,r.setor,r.op]))).size!==linhas.length) throw new Error('Série, setor e OP repetidos no lote.');
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
-        const session = await client.query('SELECT id FROM public.atrasos_importacoes WHERE id=$1 AND tipo=$2 AND status=$3 FOR SHARE',[id,tipo,'PENDENTE']);
+        const session = await client.query('SELECT id FROM public.atrasos_importacoes WHERE id=$1 AND tipo=$2 AND status=$3 FOR UPDATE',[id,tipo,'PENDENTE']);
         if (!session.rowCount) throw new Error('Importação não está mais pendente. Recomece o envio.');
         const values:any[]=[];
         const tuples=linhas.map((row) => {
           const props=tipo==='PROGRAMACAO' ? [row.serie,row.setor,row.op,row.data,row.linha,row.cliente,row.potencia,row.referencia] : [row.serie,row.setor,row.op,row.data,row.linha,row.potencia,row.turno,row.codigo_produto];
           const start=values.length+1; values.push(id,...props);
-          return `(${Array.from({length:9},(_,j)=>`$${start+j}`).join(',')})`;
+          return `(${Array.from({length:9},(_,j)=>`$${start+j}::${j===0?'uuid':j===4?'date':'text'}`).join(',')})`;
         });
         const columns=tipo==='PROGRAMACAO' ? 'importacao_id,serie,setor,op,data_programada,linha,cliente,potencia,referencia' : 'importacao_id,serie,setor,op,data_produzida,linha,potencia,turno,codigo_produto';
         const table=tipo==='PROGRAMACAO' ? 'atrasos_programacao_detalhada' : 'atrasos_apontamentos_detalhados';
-        await client.query(`INSERT INTO public.${table}(${columns}) VALUES ${tuples.join(',')}`,values);
+        const fields = columns.split(',').slice(4);
+        const matches = fields.map(field => `target.${field} IS NOT DISTINCT FROM incoming.${field}`).join(' AND ');
+        // Existing identical rows count as accepted without another write. The row lock
+        // above serializes batches/finalization for this import; conflicting replay rolls back.
+        const inserted = await client.query(`WITH incoming(${columns}) AS (VALUES ${tuples.join(',')}),
+          inserted AS (INSERT INTO public.${table}(${columns}) SELECT * FROM incoming
+            ON CONFLICT (importacao_id,serie,setor,op) DO NOTHING RETURNING 1)
+          SELECT (SELECT COUNT(*) FROM inserted) + (SELECT COUNT(*) FROM incoming
+            JOIN public.${table} target USING(importacao_id,serie,setor,op) WHERE ${matches}) AS accepted`,values);
+        if (Number(inserted.rows[0]?.accepted) !== linhas.length) throw new Error('Lote repetido com conteúdo diferente. Recomece a importação.');
         await client.query('COMMIT');
       } catch(e) { await client.query('ROLLBACK').catch(()=>{}); throw e; }
       finally { client.release(); }
@@ -139,8 +156,12 @@ export function registerGestaoAtrasosRoutes(
       client=await pool.connect();
       await client.query('BEGIN');
       await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`itam_atrasos_import_${tipo}`]);
-      const session=await client.query('SELECT esperado FROM public.atrasos_importacoes WHERE id=$1 AND tipo=$2 AND status=$3 FOR UPDATE',[id,tipo,'PENDENTE']);
+      const session=await client.query("SELECT esperado,status FROM public.atrasos_importacoes WHERE id=$1 AND tipo=$2 AND (status=$3 OR status='ATIVA') FOR UPDATE",[id,tipo,'PENDENTE']);
       if (!session.rowCount) throw new Error('Importação pendente não encontrada.');
+      if(session.rows[0].status==='ATIVA') {
+        await client.query('COMMIT');client.release();client=null;
+        return res.json({importados:Number(session.rows[0].esperado),divergencias:[],totalDivergencias:0,avisoConferencia:'Importação já estava ativa. Repetição confirmada; conferência não repetida.',repetida:true});
+      }
       const table=tipo==='PROGRAMACAO'?'atrasos_programacao_detalhada':'atrasos_apontamentos_detalhados';
       const count=await client.query(`SELECT count(*)::int AS total FROM public.${table} WHERE importacao_id=$1`,[id]);
       const total=Number(count.rows[0]?.total);
@@ -194,12 +215,13 @@ export function registerGestaoAtrasosRoutes(
 
   // A mesma série pode percorrer vários setores. Conflitos dentro de um setor
   // são resolvidos deterministamente para que não multipliquem quantidades.
-  const activeRows = `WITH prog AS (
+  const activeRows = (scope = 'TRUE', bulkDone = false) => `WITH prog AS (
     SELECT DISTINCT ON (p.serie,p.setor) p.serie,p.setor,p.op,p.data_programada,p.linha,p.cliente,p.potencia
     FROM public.atrasos_programacao_detalhada p
     JOIN public.atrasos_importacoes i ON i.id=p.importacao_id AND i.status='ATIVA' AND i.tipo='PROGRAMACAO'
+    WHERE ${scope}
     ORDER BY p.serie,p.setor,p.data_programada,p.op
-  ), done AS (
+  ), done AS ${bulkDone?'MATERIALIZED':'NOT MATERIALIZED'} (
     SELECT a.serie,a.setor,a.op,a.data_produzida
     FROM public.atrasos_apontamentos_detalhados a
     JOIN public.atrasos_importacoes i ON i.id=a.importacao_id AND i.status='ATIVA' AND i.tipo='APONTAMENTO'
@@ -217,28 +239,30 @@ export function registerGestaoAtrasosRoutes(
       const situacao=String(req.query.situacao||'ATRASADOS');
       const justificativa=String(req.query.justificativa||'');
       const multiplos=req.query.multiplos==='true';
-      const dateFrom=String(req.query.inicio||start),dateTo=String(req.query.fim||end);
-      const page=Math.max(1,Math.min(100000,Number(req.query.page)||1));
+      const dateFrom=String(req.query.inicio||start),dateTo=String(req.query.fim||new Date(Date.parse(end)-86400000).toISOString().slice(0,10));
+      const page=Number(req.query.page||1);
+      if (!Number.isInteger(page)||page<1||page>100000) return res.status(400).json({error:'Página inválida.'});
       if ((op&&!/^\d{1,20}$/.test(op))||(serie&&!/^\d{1,20}$/.test(serie))||
         !['ATRASADOS','TODOS','PENDENTES','CONCLUIDOS','PRAZO_VENCIDO'].includes(situacao)||
         (justificativa&&!['COM','SEM'].includes(justificativa))||!validDate(dateFrom)||!validDate(dateTo)||dateFrom>dateTo)
         return res.status(400).json({error:'Filtros inválidos.'});
       if (allowed !== null && setor && !allowed.includes(setor)) return res.status(403).json({error:'Setor não autorizado.'});
-      const values:any[]=[start,end,today,allowed,setor||null,op||null,serie||null,linha||null,cliente||null,dateFrom,dateTo,situacao,justificativa,multiplos];
-      const result=await pool.query(`${activeRows}, scoped AS (
+      const values:any[]=[dateFrom,dateTo,today,allowed,setor||null,op||null,serie||null,linha||null,cliente||null,dateFrom,dateTo,situacao,justificativa,multiplos];
+      const result=await pool.query(`${activeRows('($4::text[] IS NULL OR p.setor=ANY($4::text[])) AND ($5::text IS NULL OR p.setor=$5) AND ($7::text IS NULL OR p.serie=$7) AND p.data_programada <= $11::date',!op&&!serie&&!setor&&!linha&&!cliente&&allowed===null)}, scoped AS (
         SELECT p.*,a.data_produzida
         FROM prog p LEFT JOIN done a ON a.serie=p.serie AND a.setor=p.setor AND a.op=p.op
-        WHERE p.data_programada >= $1::date AND p.data_programada < $2::date
-          AND ($4::text[] IS NULL OR p.setor=ANY($4::text[]))
+        WHERE ($4::text[] IS NULL OR p.setor=ANY($4::text[]))
           AND ($5::text IS NULL OR p.setor=$5)
           AND ($6::text IS NULL OR p.op=$6)
           AND ($7::text IS NULL OR p.serie=$7)
           AND ($8::text IS NULL OR p.linha=$8)
           AND ($9::text IS NULL OR p.cliente ILIKE '%'||$9||'%')
+          AND p.data_programada BETWEEN $1::date AND $2::date
           AND p.data_programada BETWEEN $10::date AND $11::date
       ), grouped AS (
         SELECT op,setor,MAX(linha) linha,MAX(cliente) cliente,MAX(potencia) potencia,
           COUNT(*)::int programados,COUNT(data_produzida)::int produzidos,
+          array_agg(serie) FILTER(WHERE data_programada<$3::date AND data_produzida IS NULL) series_vencidas,
           COUNT(*) FILTER(WHERE data_programada<$3::date AND data_produzida IS NULL)::int pendentes_vencidos,
           COUNT(*) FILTER(WHERE data_produzida>data_programada)::int produzidos_em_atraso,
           COUNT(DISTINCT data_programada)::int dias_programados,
@@ -259,18 +283,30 @@ export function registerGestaoAtrasosRoutes(
           FROM public.atrasos_justificativas WHERE op=g.op AND setor=g.setor
           ORDER BY criado_em DESC,id DESC LIMIT 1
         ) j ON true
-      )
-      SELECT *,COUNT(*) OVER()::int total FROM ready
+      ), filtered AS MATERIALIZED (
+      SELECT * FROM ready
       WHERE ($12='TODOS' OR ($12='ATRASADOS' AND (pendentes_vencidos>0 OR produzidos_em_atraso>0))
         OR ($12='PENDENTES' AND pendentes_vencidos>0)
         OR ($12='CONCLUIDOS' AND programados=produzidos)
         OR ($12='PRAZO_VENCIDO' AND situacao='PRAZO_VENCIDO'))
         AND ($13='' OR ($13='COM' AND motivo IS NOT NULL) OR ($13='SEM' AND motivo IS NULL))
         AND (NOT $14::boolean OR dias_programados>1)
-      ORDER BY pendentes_vencidos DESC,ultima_data_programada DESC,op DESC,setor
-      LIMIT 50 OFFSET $15`,[...values,(page-1)*50]);
-      const imports=await pool.query("SELECT tipo,esperado,atualizado_em FROM public.atrasos_importacoes WHERE status='ATIVA'");
-      res.json({periodo:{inicio:start,fimExclusivo:end,hoje:today},rows:result.rows,total:Number(result.rows[0]?.total||0),page,importacoes:imports.rows});
+      ), page_rows AS (
+        SELECT * FROM filtered ORDER BY pendentes_vencidos DESC,ultima_data_programada DESC,op DESC,setor
+        LIMIT 50 OFFSET $15
+      )
+      SELECT (SELECT COUNT(*)::int FROM filtered) total,
+        COALESCE((SELECT jsonb_agg(to_jsonb(r)-'series_vencidas') FROM page_rows r),'[]'::jsonb) rows,
+        jsonb_build_object(
+          'ops_atrasadas',(SELECT COUNT(DISTINCT op)::int FROM filtered WHERE pendentes_vencidos>0 OR produzidos_em_atraso>0),
+          'transformadores_vencidos',(SELECT COUNT(DISTINCT serie)::int FROM filtered f CROSS JOIN LATERAL unnest(f.series_vencidas) serie),
+          'produzidos_fora_prazo',COALESCE((SELECT SUM(produzidos_em_atraso)::int FROM filtered),0),
+          'sem_justificativa',(SELECT COUNT(*)::int FROM filtered WHERE situacao='SEM_JUSTIFICATIVA'),
+          'prazo_vencido',(SELECT COUNT(*)::int FROM filtered WHERE situacao='PRAZO_VENCIDO'),
+          'regularizados',(SELECT COUNT(*)::int FROM filtered WHERE programados=produzidos)
+        ) kpis,
+        COALESCE((SELECT jsonb_agg(i) FROM (SELECT tipo,esperado,atualizado_em FROM public.atrasos_importacoes WHERE status='ATIVA') i),'[]'::jsonb) importacoes`,[...values,(page-1)*50]);
+      res.json({periodo:{inicio:dateFrom,fim:dateTo,hoje:today},...result.rows[0],page});
     } catch(e:any) { res.status(500).json({error:e?.code==='42P01'?'Execute SUPABASE_GESTAO_ATRASOS.sql no banco de atrasos.':'Falha ao carregar a Visão OP.'}); }
   });
 
@@ -280,28 +316,31 @@ export function registerGestaoAtrasosRoutes(
       const allowed=await getAuthorizedSectors(req.auth);
       if(!/^\d{1,20}$/.test(op)||!setor) return res.status(400).json({error:'OP e setor obrigatórios.'});
       if(allowed!==null&&!allowed.includes(setor)) return res.status(403).json({error:'Setor não autorizado.'});
-      const {start,end,today}=period();
-      const visible=await pool.query(`${activeRows} SELECT EXISTS(SELECT 1 FROM public.atrasos_importacoes WHERE tipo='APONTAMENTO' AND status='ATIVA') AS apontamento_importado FROM prog WHERE op=$1 AND setor=$2 AND data_programada >= $3::date AND data_programada<$4::date LIMIT 1`,[op,setor,start,end]);
-      if(!visible.rowCount) return res.status(404).json({error:'OP não encontrada no setor autorizado.'});
-      const detail=await pool.query(`${activeRows}
-        SELECT p.serie,p.setor,p.op,p.data_programada::text,p.linha,p.cliente,p.potencia,
-          a.data_produzida::text,
-          CASE WHEN a.data_produzida>p.data_programada THEN 'PRODUZIDO_ATRASADO'
-            WHEN a.data_produzida IS NOT NULL THEN 'PRODUZIDO_NO_PRAZO'
-            WHEN p.data_programada<$3::date THEN 'PENDENTE_VENCIDO' ELSE 'PENDENTE_NO_PRAZO' END situacao
-        FROM prog p LEFT JOIN done a ON a.serie=p.serie AND a.setor=p.setor AND a.op=p.op
-        WHERE p.op=$1 AND p.setor=$2 AND p.data_programada >= $4::date AND p.data_programada<$5::date
-        ORDER BY p.data_programada,p.serie`,[op,setor,today,start,end]);
-      // Outros setores: apenas totais agregados, sem séries, datas ou justificativas.
-      const progress=await pool.query(`${activeRows}
-        SELECT p.setor,COUNT(*)::int programados,COUNT(a.serie)::int produzidos,
-          (SELECT COUNT(DISTINCT serie)::int FROM prog WHERE op=$1 AND data_programada >= $3::date AND data_programada<$4::date) quantidade_op,
-          COUNT(*) FILTER(WHERE p.data_programada<$2::date AND a.serie IS NULL)::int pendentes_vencidos
-        FROM prog p LEFT JOIN done a ON a.serie=p.serie AND a.setor=p.setor AND a.op=p.op
+      const {start,end,today}=selectedPeriod(req.query);
+      const result=await pool.query(`${activeRows('p.data_programada < $4::date')}, scoped AS MATERIALIZED (
+        SELECT p.*,a.data_produzida FROM prog p
+        LEFT JOIN done a ON a.serie=p.serie AND a.setor=p.setor AND a.op=p.op
         WHERE p.op=$1 AND p.data_programada >= $3::date AND p.data_programada<$4::date
-        GROUP BY p.setor ORDER BY p.setor`,[op,today,start,end]);
-      res.json({series:detail.rows,progresso:progress.rows,apontamentoImportado:Boolean(visible.rows[0].apontamento_importado)});
-    }catch {res.status(500).json({error:'Falha ao carregar detalhes da OP.'});}
+      ), series AS (
+        SELECT serie,setor,op,data_programada::text,linha,cliente,potencia,data_produzida::text,
+          CASE WHEN data_produzida>data_programada THEN 'PRODUZIDO_ATRASADO'
+            WHEN data_produzida IS NOT NULL THEN 'PRODUZIDO_NO_PRAZO'
+            WHEN data_programada<$5::date THEN 'PENDENTE_VENCIDO' ELSE 'PENDENTE_NO_PRAZO' END situacao
+        FROM scoped WHERE setor=$2 ORDER BY data_programada,serie
+      ), progress AS (
+        SELECT setor,COUNT(*)::int programados,COUNT(data_produzida)::int produzidos,
+          (SELECT COUNT(DISTINCT serie)::int FROM scoped) quantidade_op,
+          COUNT(*) FILTER(WHERE data_programada<$5::date AND data_produzida IS NULL)::int pendentes_vencidos
+        FROM scoped GROUP BY setor ORDER BY setor
+      ) SELECT EXISTS(SELECT 1 FROM series) visible,
+        COALESCE((SELECT jsonb_agg(s) FROM series s),'[]'::jsonb) series,
+        COALESCE((SELECT jsonb_agg(p) FROM progress p),'[]'::jsonb) progresso,
+        EXISTS(SELECT 1 FROM public.atrasos_importacoes WHERE tipo='APONTAMENTO' AND status='ATIVA') AS "apontamentoImportado"`,[op,setor,start,end,today]);
+      const resultRow=result.rows[0];
+      if(!resultRow?.visible) return res.status(404).json({error:'OP não encontrada no setor autorizado.'});
+      const {visible,...detail}=resultRow;
+      res.json(detail);
+    }catch(e) {res.status(e instanceof RangeError?400:500).json({error:e instanceof RangeError?e.message:'Falha ao carregar detalhes da OP.'});}
   });
 
   app.get(`${base}/justificativas`,auth,async(req:any,res)=>{
@@ -326,7 +365,7 @@ export function registerGestaoAtrasosRoutes(
       }
       const allowed=await getAuthorizedSectors(req.auth);
       if (allowed !== null && !allowed.includes(setor)) return res.status(403).json({error:'Setor não autorizado.'});
-      const {start,end}=period();
+      const {start,end}=selectedPeriod(req.body);
       const opExists=await pool.query(`SELECT 1 FROM public.atrasos_programacao_detalhada p JOIN public.atrasos_importacoes i
         ON i.id=p.importacao_id AND i.status='ATIVA' WHERE p.op=$1 AND p.setor=$2
         AND p.data_programada >= $3::date AND p.data_programada < $4::date LIMIT 1`,[op,setor,start,end]);
@@ -335,6 +374,6 @@ export function registerGestaoAtrasosRoutes(
         VALUES($1,$2,$3,$4,$5,$6) RETURNING id,criado_em`,[op,setor,motivo,previsao,Number(req.auth.userId),String(req.auth.login || 'USUARIO')]);
       invalidateSummary();
       res.json({ok:true,...result.rows[0]});
-    } catch {res.status(500).json({error:'Falha ao salvar justificativa.'});}
+    } catch(e) {res.status(e instanceof RangeError?400:500).json({error:e instanceof RangeError?e.message:'Falha ao salvar justificativa.'});}
   });
 }

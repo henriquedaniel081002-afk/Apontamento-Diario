@@ -1,14 +1,20 @@
+import { startLoadingProgress, finishLoadingProgress } from './loadingProgressService';
 import { Apontamento, ApontamentoEditPayload, ProductionImportMonthRequest, ProductionImportMonthResult, ProductionImportRequest, ProductionImportResult, ProgramacaoImportRequest, ProgramacaoImportResult, StatusAprovacao } from '../types';
 import { apiRequest } from './apiClient';
 import { invalidateDashboardCache } from './dashboardService';
 import { controleFaltasService } from './controleFaltasService';
 
+import { readStoredToken } from './sessionStore';
+
+let generation=0;
+let identity:string|null=null;
 const CACHE_TTL_MS = 20_000;
 let cachedRecords: Apontamento[] | null = null;
 let cachedAt = 0;
 let pendingRequest: Promise<Apontamento[]> | null = null;
 
-function invalidateRecordsCache() {
+export function invalidateRecordsCache() {
+  generation++;
   cachedRecords = null;
   cachedAt = 0;
   pendingRequest = null;
@@ -22,21 +28,25 @@ function invalidateAfterMutation() {
 
 export const coordenacaoService = {
   async getAll(forceRefresh = false): Promise<Apontamento[]> {
+    const token=readStoredToken();
+    if(token!==identity){invalidateRecordsCache();identity=token;}
+    if(forceRefresh)invalidateRecordsCache();
+    const requestGeneration=generation;
     const now = Date.now();
     if (!forceRefresh && cachedRecords && now - cachedAt < CACHE_TTL_MS) return cachedRecords;
     if (!forceRefresh && pendingRequest) return pendingRequest;
 
     const endpoint = forceRefresh ? '/api/coordenacao/apontamentos?refresh=1' : '/api/coordenacao/apontamentos';
-    pendingRequest = apiRequest<Apontamento[]>(endpoint, { cache: 'no-store' })
+    const request = apiRequest<Apontamento[]>(endpoint, { cache: 'no-store' })
       .then((data) => {
-        cachedRecords = data;
-        cachedAt = Date.now();
+        if(requestGeneration===generation){cachedRecords = data;cachedAt = Date.now();}
         return data;
       })
       .finally(() => {
-        pendingRequest = null;
+        if(pendingRequest===request)pendingRequest = null;
       });
-    return pendingRequest;
+    pendingRequest=request;
+    return request;
   },
 
   async importProduction(payload: ProductionImportRequest): Promise<ProductionImportResult> {
@@ -53,6 +63,8 @@ export const coordenacaoService = {
     // o tempo máximo e resultar em "Falha ao conectar com servidor".
     // Cada dia é substituído de forma idempotente e, ao final, o servidor remove
     // produções antigas de dias que não aparecem no novo arquivo.
+    const progress=startLoadingProgress('Importando produção mensal','Enviando dias em sequência e confirmando a atualização.');
+    try {
     let totalQuantidade = 0;
     let totalUnidades = 0;
     const datasImportadas: string[] = [];
@@ -66,7 +78,7 @@ export const coordenacaoService = {
           setorFiltro: payload.setorFiltro,
           compacto: true,
         }),
-      });
+      },{globalLoading:false});
       datasImportadas.push(day.data);
       totalQuantidade += result.totalQuantidade;
       totalUnidades += result.totalUnidades;
@@ -79,7 +91,7 @@ export const coordenacaoService = {
         datasImportadas,
         setorFiltro: payload.setorFiltro,
       }),
-    });
+    },{globalLoading:false});
 
     const result: ProductionImportMonthResult = {
       mesReferencia: payload.mesReferencia,
@@ -90,6 +102,7 @@ export const coordenacaoService = {
     };
     invalidateAfterMutation();
     return result;
+    } finally {invalidateAfterMutation();finishLoadingProgress(progress);}
   },
 
   async importProgramacao(payload: ProgramacaoImportRequest): Promise<ProgramacaoImportResult> {

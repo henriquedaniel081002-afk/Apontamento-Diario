@@ -1,3 +1,4 @@
+import {useLatestRead} from '../hooks/useLatestRead';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   BarChart3,
@@ -89,14 +90,18 @@ export function AtrasoPage({ user }: { user: User }) {
   const [printOpen, setPrintOpen] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
 
+  const beginRead=useLatestRead();
   const load = useCallback(async () => {
+    const current=beginRead();
     setLoading(true);
     setError('');
     try {
       const data = await atrasoService.getAll();
+      if(!current())return;
       setRecords(data);
       setUpdatedAt(new Date());
     } catch (e: any) {
+      if(!current())return;
       const message = e?.message || 'Não foi possível carregar a tabela controle_atrasos.';
       if (/relation .*controle_atrasos.* does not exist|Could not find the table/i.test(message)) {
         setError('A tabela controle_atrasos não foi encontrada no Supabase. Execute o script SQL combinado antes de usar esta aba.');
@@ -104,9 +109,9 @@ export function AtrasoPage({ user }: { user: User }) {
         setError(message);
       }
     } finally {
-      setLoading(false);
+      if(current())setLoading(false);
     }
-  }, []);
+  }, [beginRead]);
 
   useEffect(() => {
     if (user.perfil === 'COORDENACAO') void load();

@@ -1,3 +1,4 @@
+import { measureAsync } from '../../services/performanceService';
 import * as XLSX from 'xlsx';
 import type { AderenciaAnualImportPreview, AderenciaAnualUpsertRow } from '../types';
 
@@ -168,7 +169,7 @@ function assertCellHasNoFormulaError(
   }
 }
 
-export async function parseAderenciaAnualWorkbook(file: File): Promise<AderenciaAnualImportPreview> {
+async function parseAderenciaAnualWorkbookMeasured(file: File): Promise<AderenciaAnualImportPreview> {
   const extension = file.name.split('.').pop()?.toLocaleLowerCase('pt-BR');
   if (!extension || !['xlsx', 'xlsm', 'xls'].includes(extension)) {
     throw new Error('Selecione um arquivo Excel nos formatos .xlsx, .xlsm ou .xls.');
@@ -234,4 +235,8 @@ export async function parseAderenciaAnualWorkbook(file: File): Promise<Aderencia
     firstMonth: payload[0].mes,
     lastMonth: payload[payload.length - 1].mes,
   };
+}
+
+export function parseAderenciaAnualWorkbook(...args:Parameters<typeof parseAderenciaAnualWorkbookMeasured>):ReturnType<typeof parseAderenciaAnualWorkbookMeasured> {
+  return measureAsync('import:parseAderenciaAnualWorkbook',()=>parseAderenciaAnualWorkbookMeasured(...args));
 }

@@ -9,6 +9,7 @@ import {
   readLastActivity,
 } from './services/sessionStore';
 import { LoginPage } from './pages/LoginPage';
+import { invalidateRecordsCache } from './services/coordenacaoService';
 import { invalidateDashboardCache } from './services/dashboardService';
 import { controleFaltasService } from './services/controleFaltasService';
 import { Header } from './components/common/Header';
@@ -67,7 +68,8 @@ export default function App() {
 
   useEffect(() => {
     const unsubscribe = authService.onSessionExpired(({ message }) => {
-      invalidateDashboardCache();
+      invalidateRecordsCache();
+    invalidateDashboardCache();
       controleFaltasService.invalidate();
       setCurrentUser(null);
       setActiveTab('apontamento');
@@ -172,6 +174,7 @@ export default function App() {
   }, [currentUser]);
 
   const handleLoginSuccess = (user: User) => {
+    invalidateRecordsCache();
     invalidateDashboardCache();
     controleFaltasService.invalidate();
     setCurrentUser(user);
@@ -180,6 +183,7 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    invalidateRecordsCache();
     invalidateDashboardCache();
     controleFaltasService.invalidate();
     authService.logout();

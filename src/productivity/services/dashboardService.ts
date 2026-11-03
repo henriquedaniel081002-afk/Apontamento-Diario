@@ -10,13 +10,16 @@ export interface DashboardData {
 }
 
 const PAGE_SIZE = 1000;
+// The ZIP does not define this remote view. Enable the narrower projection only
+// after validating its columns in staging; the default preserves legacy variants.
+const projectedColumns = 'id,matricula,colaborador_id,nome,setor,turno,data,quantidade_produzida,desenho,linha,potencia,op,classe,maquina,tempo_produzido_min,tempo_parado_min,hora_extra_min,observacao';
 
 const isMissingTable = (error: any, tableName: string) => {
   const text = `${error?.code || ''} ${error?.message || ''}`;
   return new RegExp(`42P01|PGRST205|${tableName}|relation .* does not exist`, 'i').test(text);
 };
 
-async function loadAllProductionRows(): Promise<any[]> {
+async function loadAllProductionRows(signal?:AbortSignal): Promise<any[]> {
   if (!supabase) return [];
   const allRows: any[] = [];
   let from = 0;
@@ -25,8 +28,10 @@ async function loadAllProductionRows(): Promise<any[]> {
     const to = from + PAGE_SIZE - 1;
     const { data, error } = await supabase
       .from('vw_producao_detalhada')
-      .select('*')
+      .select(import.meta.env.VITE_PRODUTIVIDADE_PROJECAO_VALIDADA === '1' ? projectedColumns : '*')
       .order('data', { ascending: true })
+      .order('id', { ascending: true })
+      .abortSignal(signal)
       .range(from, to);
 
     if (error) throw error;
@@ -39,12 +44,12 @@ async function loadAllProductionRows(): Promise<any[]> {
   return allRows;
 }
 
-async function loadEmployeeControls(): Promise<{ rows: any[]; ready: boolean }> {
+async function loadEmployeeControls(signal?:AbortSignal): Promise<{ rows: any[]; ready: boolean }> {
   if (!supabase) return { rows: [], ready: false };
   const { data, error } = await supabase
     .from('colaboradores_controle')
     .select('matricula,nome,setor,turno,primeira_producao,status,data_desligamento')
-    .order('nome');
+    .order('nome').abortSignal(signal);
 
   if (error) {
     if (isMissingTable(error, 'colaboradores_controle')) return { rows: [], ready: false };
@@ -54,12 +59,12 @@ async function loadEmployeeControls(): Promise<{ rows: any[]; ready: boolean }> 
 }
 
 
-async function loadEmployeeArchives(): Promise<{ rows: any[]; ready: boolean }> {
+async function loadEmployeeArchives(signal?:AbortSignal): Promise<{ rows: any[]; ready: boolean }> {
   if (!supabase) return { rows: [], ready: false };
   const { data, error } = await supabase
     .from('colaboradores_desligados')
     .select('matricula,nome,setor,turno,primeira_producao,data_desligamento')
-    .order('nome');
+    .order('nome').abortSignal(signal);
 
   if (error) {
     if (isMissingTable(error, 'colaboradores_desligados')) return { rows: [], ready: false };
@@ -73,20 +78,20 @@ const shiftLabel = (turno: unknown): Employee['shift'] => {
   return value === 2 ? '2º Turno' : value === 1 ? '1º Turno' : 'Não informado';
 };
 
-export async function loadDashboardData(): Promise<DashboardData> {
+export async function loadDashboardData(signal?:AbortSignal): Promise<DashboardData> {
   if (!supabase || !isSupabaseConfigured) {
     throw new Error('Supabase não configurado. Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY.');
   }
 
   const [productionRows, workdaysRes, controls, archives] = await Promise.all([
-    loadAllProductionRows(),
+    loadAllProductionRows(signal),
     supabase
       .from('dias_trabalho')
       .select('data,dia_trabalho')
       .eq('dia_trabalho', true)
-      .order('data'),
-    loadEmployeeControls(),
-    loadEmployeeArchives(),
+      .order('data').abortSignal(signal),
+    loadEmployeeControls(signal),
+    loadEmployeeArchives(signal),
   ]);
 
   if (workdaysRes.error) throw workdaysRes.error;
@@ -298,7 +303,7 @@ export async function deleteRecordsByMonth(month: string): Promise<DeleteMonthRe
       throw new Error('A função de exclusão mensal ainda não existe no Supabase. Execute o arquivo supabase-exclusao-mensal-v15.sql incluído no projeto.');
     }
     if (/permission|42501|not authorized|execute/i.test(text)) {
-      throw new Error('O Supabase bloqueou a exclusão mensal. Execute novamente o arquivo supabase-exclusao-mensal-v15.sql para liberar a função ao perfil público.');
+      throw new Error('O Supabase bloqueou a exclusão mensal. Solicite ao administrador a revisão de autorização da função, sem liberar execução pública automaticamente.');
     }
     throw error;
   }

@@ -31,6 +31,28 @@ afterAll(async () => {
 });
 
 describe('API de pendências — acesso e preservação do fluxo', () => {
+  it('GET da coordenação não dispara reparo nem escrita', async () => {
+    query.mockResolvedValue({rows:[]});
+    expect((await request('/api/coordenacao/apontamentos?refresh=1')).status).toBe(200);
+    const sql=query.mock.calls.map(([text])=>text).join(' ');
+    expect(sql).not.toMatch(/\b(INSERT|UPDATE|DELETE|LOCK|BEGIN|COMMIT)\b/);
+    expect(sql).not.toContain('HAVING COUNT(*) > 1');
+  });
+  it.each([['',401],['APONTADOR',403]])('manutenção rejeita perfil %s sem SQL',async(perfil,status)=>{
+    expect((await request('/api/coordenacao/manutencao/consolidar-turnos',perfil as string,{method:'POST'})).status).toBe(status);
+    expect(query).not.toHaveBeenCalled();
+  });
+  it('manutenção explícita sem duplicidades confirma uma única transação',async()=>{
+    query.mockResolvedValue({rows:[]});
+    expect((await request('/api/coordenacao/manutencao/consolidar-turnos','COORDENACAO',{method:'POST'})).status).toBe(200);
+    expect(query.mock.calls.map(([text])=>text)).toEqual(['BEGIN','LOCK TABLE apontamentos IN SHARE ROW EXCLUSIVE MODE',expect.stringContaining('HAVING COUNT(*) > 1'),'COMMIT']);
+  });
+  it('manutenção reverte falha sem confirmar alterações parciais',async()=>{
+    query.mockImplementation(async(sql)=>{if(sql.includes('HAVING COUNT(*)'))throw Error('falha local');return {rows:[]};});
+    expect((await request('/api/coordenacao/manutencao/consolidar-turnos','COORDENACAO',{method:'POST'})).status).toBe(500);
+    expect(query.mock.calls.map(([text])=>text)).toContain('ROLLBACK');
+    expect(query.mock.calls.map(([text])=>text)).not.toContain('COMMIT');
+  });
   it.each([['', 401], ['APONTADOR', 403]])('bloqueia perfil %s antes de consultar o banco', async (perfil, status) => {
     const r = await request('/api/coordenacao/pendencias-aprovacao', perfil as string);
     expect(r.status).toBe(status); expect(query).not.toHaveBeenCalled();

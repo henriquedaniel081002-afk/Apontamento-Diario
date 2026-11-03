@@ -1,3 +1,4 @@
+import { measureAsync } from '../services/performanceService';
 import type { Setor } from '../types';
 export interface ProgramacaoImportGroup {
   dataProgramada: string;
@@ -180,7 +181,7 @@ function groupKey(data: string, setor: string, linha: string, potencia: string):
   return `${data}|${setor}|${linha}|${potencia}`;
 }
 
-export async function readProgramacaoExcel(
+async function readProgramacaoExcelMeasured(
   file: File,
   mesReferencia: string,
   onProgress?: (rowsProcessed: number) => void,
@@ -264,4 +265,8 @@ export async function readProgramacaoExcel(
     rowsMatched,
     grupos: [...groups.values()].sort((a,b) => a.dataProgramada.localeCompare(b.dataProgramada) || a.setor.localeCompare(b.setor,'pt-BR') || a.linha.localeCompare(b.linha,'pt-BR') || a.potencia.localeCompare(b.potencia,'pt-BR',{numeric:true})),
   };
+}
+
+export function readProgramacaoExcel(...args:Parameters<typeof readProgramacaoExcelMeasured>):ReturnType<typeof readProgramacaoExcelMeasured> {
+  return measureAsync('import:readProgramacaoExcel',()=>readProgramacaoExcelMeasured(...args));
 }

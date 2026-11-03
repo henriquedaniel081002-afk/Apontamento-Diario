@@ -1,3 +1,4 @@
+import {useLatestRead} from '../hooks/useLatestRead';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   CalendarRange,
@@ -40,11 +41,14 @@ export function AderenciaAnualPage() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  const beginRead=useLatestRead();
   const loadData = useCallback(async () => {
+    const current=beginRead();
     setLoading(true);
     setError(null);
     try {
       const loadedRecords = await aderenciaAnualService.getAll();
+      if(!current())return;
       setRecords(loadedRecords);
       const loadedYears = deriveAvailableYears(loadedRecords);
       setSelectedYear((current) => {
@@ -53,11 +57,12 @@ export function AderenciaAnualPage() {
         return loadedYears.includes(currentYear) ? currentYear : loadedYears.at(-1) ?? null;
       });
     } catch (loadError) {
+      if(!current())return;
       setError(loadError instanceof Error ? loadError.message : 'Não foi possível carregar a Aderência Anual.');
     } finally {
-      setLoading(false);
+      if(current())setLoading(false);
     }
-  }, []);
+  }, [beginRead]);
 
   useEffect(() => {
     void loadData();

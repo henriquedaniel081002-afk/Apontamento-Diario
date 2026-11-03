@@ -1,3 +1,4 @@
+import {useLatestRead} from '../hooks/useLatestRead';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   CalendarRange,
@@ -52,19 +53,23 @@ export const HistoricoPage: React.FC<HistoricoPageProps> = ({ user }) => {
   const [deleting, setDeleting] = useState(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
 
+  const beginRead=useLatestRead();
   const loadData = useCallback(async () => {
+    const current=beginRead();
     setLoading(true);
     setLoadError(null);
     try {
       const data = await apontamentoService.getByUserSector(user.id, String(user.setor || ''));
+      if(!current())return;
       setApontamentos(data);
     } catch (error) {
+      if(!current())return;
       const message = error instanceof Error ? error.message : 'Falha ao carregar o histórico.';
       setLoadError(message);
     } finally {
-      setLoading(false);
+      if(current())setLoading(false);
     }
-  }, [user.id, user.setor]);
+  }, [beginRead,user.id, user.setor]);
 
   useEffect(() => {
     void loadData();

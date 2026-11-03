@@ -7,8 +7,8 @@ import { registerGestaoAtrasosRoutes } from './server.gestaoAtrasos';
 async function setup(perfil:'APONTADOR'|'COORDENACAO'='APONTADOR') {
   const app=express();app.use(express.json());
   const query=vi.fn(async (sql:string, _values?:any[]): Promise<any> => {
-    if(sql.includes('FROM prog WHERE op=$1 AND setor=$2'))return {rowCount:1,rows:[{exists:1}]};
-    if(sql.includes('COUNT(*) OVER()'))return {rows:[{op:'12580',setor:'BOBINAGEM',programados:3,produzidos:1,pendentes_vencidos:1,total:1}]};
+    if(sql.includes('AS "apontamentoImportado"'))return {rowCount:1,rows:[{visible:true,series:[],progresso:[],apontamentoImportado:true}]};
+    if(sql.includes('page_rows'))return {rows:[{rows:[{op:'12580',setor:'BOBINAGEM',programados:3,produzidos:1,pendentes_vencidos:1}],total:1,kpis:{},importacoes:[]}]};
     if(sql.includes('SELECT tipo,esperado'))return {rows:[]};
     return {rows:[],rowCount:1};
   });
@@ -27,7 +27,7 @@ describe('Gestão de atrasos — segurança das rotas',()=>{
   it('aplica setores autorizados no SQL do resumo e pagina no banco',async()=>{
     const t=await setup();try{
       const r=await t.request('/resumo?op=12580&situacao=TODOS');expect(r.status).toBe(200);
-      const call=t.query.mock.calls.find(([sql])=>sql.includes('COUNT(*) OVER()'))!;
+      const call=t.query.mock.calls.find(([sql])=>sql.includes('page_rows'))!;
       expect(call[0]).toContain('p.setor=ANY($4::text[])');
       expect(call[0]).toContain('LIMIT 50 OFFSET');expect(call[1][3]).toEqual(['BOBINAGEM']);
       expect((await r.json()).rows).toHaveLength(1);
@@ -55,8 +55,10 @@ describe('Gestão de atrasos — segurança das rotas',()=>{
     const t=await setup();try{
       const r=await t.request('/op/12580?setor=BOBINAGEM');expect(r.status).toBe(200);
       const sql=t.query.mock.calls.map(([text])=>text);
-      expect(sql.some(x=>x.includes('FROM prog WHERE op=$1 AND setor=$2'))).toBe(true);
-      expect(sql.some(x=>x.includes('GROUP BY p.setor')&&!x.includes('p.setor=$2'))).toBe(true);
+      expect(sql).toHaveLength(1);
+      expect(sql[0]).toContain('FROM scoped WHERE setor=$2');
+      expect(sql[0]).toContain('FROM scoped GROUP BY setor');
+      expect(sql[0]).toContain('EXISTS(SELECT 1 FROM series) visible');
     }finally{await t.close();}
   });
   it('registra motivo e prazo por OP e setor criando histórico sem sobrescrever',async()=>{
@@ -91,7 +93,7 @@ describe('Gestão de atrasos — segurança das rotas',()=>{
   it('coordenação não recebe filtro por setor na consulta',async()=>{
     const t=await setup('COORDENACAO');try{
       expect((await t.request('/resumo?setor=SOLDA')).status).toBe(200);
-      const call=t.query.mock.calls.find(([sql])=>sql.includes('COUNT(*) OVER()'))!;
+      const call=t.query.mock.calls.find(([sql])=>sql.includes('page_rows'))!;
       expect(call[1][3]).toBeNull();
     }finally{await t.close();}
   });

@@ -16,11 +16,11 @@ describe('EpoxiDashboard', () => {
         mes="2024-02"
         turno="Primeiro"
         detalhes={[
-          { data: '2024-02-01', setor: 'EPOXI', linha: 'EPO', potencia: 15, quantidade: 10 },
-          { data: '2024-02-01', setor: 'EPOXI', linha: 'EPO', potencia: 25, quantidade: 5 },
-          { data: '2024-02-02', setor: 'EPOXI', linha: 'EPO', potencia: 30, quantidade: 20 },
-          { data: '2024-02-01', setor: 'EPOXI', linha: 'MON', potencia: 99, quantidade: 900 },
-          { data: '2024-02-01', setor: 'MONTAGEM FINAL', linha: 'EPO', potencia: 88, quantidade: 800 },
+          { data: '2024-02-01', setor: 'EPOXI', linha: 'EPO', potencia: 15, quantidade: 10, turno: 'Primeiro' },
+          { data: '2024-02-01', setor: 'EPOXI', linha: 'EPO', potencia: 25, quantidade: 5, turno: 'Primeiro' },
+          { data: '2024-02-02', setor: 'EPOXI', linha: 'EPO', potencia: 30, quantidade: 20, turno: 'Primeiro' },
+          { data: '2024-02-01', setor: 'EPOXI', linha: 'MON', potencia: 99, quantidade: 900, turno: 'Primeiro' },
+          { data: '2024-02-01', setor: 'MONTAGEM FINAL', linha: 'EPO', potencia: 88, quantidade: 800, turno: 'Primeiro' },
         ]}
         faltas={[
           { data: '2024-02-01', setor: 'EPOXI', linha: 'EPO', turno: 'Primeiro', quantidade: 2 },
@@ -64,7 +64,7 @@ describe('EpoxiDashboard', () => {
     expect(dialog).toHaveAttribute('aria-modal', 'true');
     expect(dialog.parentElement).toHaveAttribute('data-presentation', 'drawer');
     expect(dialog).toHaveTextContent('EPOXI • Linha EPO • Primeiro turno');
-    expect(within(dialog).getByText('15 un.')).toBeInTheDocument();
+    expect(within(dialog).getAllByText('15 un.')).toHaveLength(2);
     expect(within(dialog).getByText('15 kVA')).toBeInTheDocument();
     expect(within(dialog).getByText('25 kVA')).toBeInTheDocument();
     expect(within(dialog).queryByText('30 kVA')).not.toBeInTheDocument();
@@ -73,7 +73,7 @@ describe('EpoxiDashboard', () => {
     expect(within(dailyAbsences!).getAllByText('2')).toHaveLength(2);
     expect(within(dialog).getByText('Ajuste da mistura')).toBeInTheDocument();
 
-    await user.click(within(dialog).getByRole('button', { name: 'Fechar' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Fechar detalhes do EPOXI' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 

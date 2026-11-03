@@ -20,15 +20,9 @@ Uma nova importação da mesma data **substitui a produção importada anteriorm
 
 A leitura do XLSX acontece no navegador; o arquivo completo não é enviado para a API. O servidor recebe apenas os grupos já agregados.
 
-## Migração obrigatória do Neon
+## Banco existente
 
-Antes de publicar esta versão, execute uma vez no SQL Editor do Neon:
-
-`NEON_IMPORTACAO_PRODUCAO.sql`
-
-O script adiciona os campos usados para diferenciar produção manual/importada e controlar se o apontador já complementou o registro. Ele não registra quem realizou a importação nem cria histórico específico da importação.
-
-As colunas e estruturas de aprovação já utilizadas pelo sistema precisam continuar existentes no banco.
+Esta atualização não requer migração automática. O README original mencionava `NEON_IMPORTACAO_PRODUCAO.sql`, que não está no ZIP fornecido. Não execute scripts de instalação para atualizar um banco existente sem revisão e autorização. Veja `docs/EXECUCAO_E_ROLLBACK.md`.
 
 ## Exportação Excel
 
@@ -42,7 +36,7 @@ As três incluem a coluna `status`, com `APROVADO` ou `PENDENTE`.
 
 ## Execução local
 
-Requisitos: Node.js 20.19 ou mais recente e npm.
+Requisitos: Node.js 22.x e npm.
 
 1. `npm ci`
 2. Copie `.env.example` para `.env` e configure `DATABASE_URL` e `SESSION_SECRET`.
@@ -59,3 +53,7 @@ Requisitos: Node.js 20.19 ou mais recente e npm.
 ## Deploy
 
 `vercel.json` mantém o front-end como build estático e encaminha `/api/*` para `server.ts`. Configure `DATABASE_URL` e um `SESSION_SECRET` forte no ambiente de deploy.
+
+## Entrega de otimização — 03/11/2026
+
+Leia `docs/RELATORIO_ALTERACOES.md` e `docs/EXECUCAO_E_ROLLBACK.md`. Pronto para homologação local; consumo em nuvem não aprovado. Nenhum deploy ou banco real foi alterado.

@@ -147,9 +147,10 @@ export function currentTwoMonths() {
   const fim=new Date(Date.UTC(y,m,1)).toISOString().slice(0,10);
   return {inicio,fim};
 }
-export async function readDetailedExcel(file:File,tipo:DetailedTipo,onProgress?:(n:number)=>void):Promise<DetailedPreview> {
+export async function readDetailedExcel(file:File,tipo:DetailedTipo,onProgress?:(n:number)=>void, dateWindow?:{inicio:string;fim:string}):Promise<DetailedPreview> {
   if(!/\.xlsx$/i.test(file.name)) throw new Error('Arquivo .xlsx obrigatório.');
-  const {inicio,fim}=currentTwoMonths();
+  const {inicio,fim}=dateWindow||currentTwoMonths();
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(inicio)||!/^\d{4}-\d{2}-\d{2}$/.test(fim)||inicio>=fim)throw new Error('Período de importação inválido.');
   const buffer=await file.arrayBuffer();const entries=parseZipEntries(buffer);
   const wb=entries.get('xl/workbook.xml');const rels=entries.get('xl/_rels/workbook.xml.rels');
   if(!wb||!rels) throw new Error('Estrutura XLSX inválida.');
@@ -174,7 +175,9 @@ export async function readDetailedExcel(file:File,tipo:DetailedTipo,onProgress?:
     const cell=(name:string)=>String(cells.get(columns![name])||'').trim();
     const date=excelSerialToYmd(cell(tipo==='PROGRAMACAO'?'DATA PROG.':'DATA PRODUZIDA'));
     if(!date||date<inicio||date>=fim)return;
-    const serie=cell('SERIE'),op=cell('OP'),setor=normalizeText(cell('SETOR'));
+    const serie=cell('SERIE'),op=cell('OP');
+    const rawSector=normalizeText(cell('SETOR'));
+    const setor=({'CORTE LASER':'CORTE DO LASER','MONTAGEM NUCLEO':'MONTAGEM DO NUCLEO'} as Record<string,string>)[rawSector]||rawSector;
     if(!/^\d+$/.test(serie)||!/^\d+$/.test(op)||!setor) {ignored++;return;}
     // OPs divergentes para a mesma série e setor são permitidas e sinalizadas após importar.
     const key=`${serie}|${setor}|${op}`;
@@ -187,6 +190,7 @@ export async function readDetailedExcel(file:File,tipo:DetailedTipo,onProgress?:
       row.data_produzida=date;row.turno=cell('TURNO');row.codigo_produto=cell('COD. PRODUTO');
     }
     rows.push(row);
+    if(rows.length>200000)throw new Error('Limite de 200.000 registros por importação excedido.');
   };
   const stream=await entryByteStream(buffer,sheet);
   const reader=stream.pipeThrough(new TextDecoderStream('utf-8')).getReader();

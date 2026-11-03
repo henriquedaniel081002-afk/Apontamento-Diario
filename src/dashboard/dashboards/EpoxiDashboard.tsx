@@ -44,9 +44,11 @@ export function EpoxiDashboard({
     const obs = observacoes.filter(r => r.data.startsWith(mes) && r.setor === 'EPOXI' && (!r.linha || r.linha === 'EPO'));
     const [ano, numeroMes] = mes.split('-').map(Number);
     const diasMes = new Date(ano, numeroMes, 0).getDate();
+    const totalsByDay=new Map<string,number>();
+    for(const row of producao)totalsByDay.set(row.data,(totalsByDay.get(row.data)||0)+Number(row.quantidade||0));
     const porDia = Array.from({length:diasMes},(_,i)=>{
       const data = `${mes}-${String(i+1).padStart(2,'0')}`;
-      const produzido = producao.filter(r=>r.data===data).reduce((acc,r)=>acc+Number(r.quantidade||0),0);
+      const produzido = totalsByDay.get(data)||0;
       return {dia:String(i+1).padStart(2,'0'), data, produzido};
     });
     const totalProduzido = producao.reduce((acc,r)=>acc+Number(r.quantidade||0),0);
@@ -55,6 +57,7 @@ export function EpoxiDashboard({
     return { producao, faltasFiltradas, obs, porDia, totalProduzido, diasComProducao, totalFaltas };
   },[mes,turno,detalhes,faltas,observacoes]);
 
+  const maxDaily=Math.max(1,...calculado.porDia.map(r=>r.produzido));
   const periodo = (() => {
     const [ano, numeroMes] = mes.split('-').map(Number);
     const diasMes = new Date(ano, numeroMes, 0).getDate();
@@ -87,7 +90,7 @@ export function EpoxiDashboard({
           <div className="epoxi-chart-wrap overflow-x-auto">
             <div className="epoxi-bars" style={{ minWidth: `clamp(42rem, ${calculado.porDia.length * 2.75}rem, 92rem)` }}>
               {calculado.porDia.map(item=>{
-                const max=Math.max(1,...calculado.porDia.map(r=>r.produzido));
+                const max=maxDaily;
                 const height=Math.max(item.produzido?6:0,(item.produzido/max)*155);
                 return <button key={item.data} type="button" disabled={!item.produzido} onClick={()=>item.produzido>0&&setDiaSelecionado(item.data)} className="epoxi-day-bar" aria-label={`${item.data}: ${fmt(item.produzido)} unidades produzidas${item.produzido>0?'. Abrir detalhes.':''}`}>
                   <div className="epoxi-day-bar__column" style={{height,opacity:item.produzido>0?1:0}} aria-hidden="true">{item.produzido>0&&<span>{item.produzido}</span>}</div>

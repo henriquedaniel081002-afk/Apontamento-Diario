@@ -44,7 +44,7 @@ describe('ApontamentoPage', () => {
     await user.click(registerButton);
 
     const dateInput = await screen.findByLabelText('Data');
-    expect(dateInput).toHaveValue(expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/));
+    expect((dateInput as HTMLInputElement).value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(await screen.findByText('Produção aguardando importação')).toBeVisible();
 
     const stepper = screen.getByRole('navigation', { name: 'Etapas do registro de ocorrências' });

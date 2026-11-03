@@ -1,3 +1,4 @@
+import { measureAsync } from '../../services/performanceService';
 import * as XLSX from 'xlsx';
 import type { AtrasoImportPreview, AtrasoRecord, AtrasoStatus } from '../types';
 
@@ -77,7 +78,7 @@ function findSheet(workbook: XLSX.WorkBook): XLSX.WorkSheet {
   return workbook.Sheets[workbook.SheetNames[0]];
 }
 
-export async function parseAtrasoWorkbook(file: File): Promise<AtrasoImportPreview> {
+async function parseAtrasoWorkbookMeasured(file: File): Promise<AtrasoImportPreview> {
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, { type: 'array', cellDates: false });
   if (!workbook.SheetNames.length) throw new Error('O Excel não possui nenhuma planilha legível.');
@@ -152,4 +153,8 @@ export async function parseAtrasoWorkbook(file: File): Promise<AtrasoImportPrevi
     ignoredRows: rows.length - payload.length,
     payload,
   };
+}
+
+export function parseAtrasoWorkbook(...args:Parameters<typeof parseAtrasoWorkbookMeasured>):ReturnType<typeof parseAtrasoWorkbookMeasured> {
+  return measureAsync('import:parseAtrasoWorkbook',()=>parseAtrasoWorkbookMeasured(...args));
 }

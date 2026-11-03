@@ -1,0 +1,34 @@
+import {PGlite} from '@electric-sql/pglite';
+import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
+import assert from 'node:assert/strict';
+const db=new PGlite({parsers:{20:value=>value}});
+// Minimal synthetic schema derived from the SELECTs, not a dump of Neon.
+await db.exec(`CREATE TABLE linhas(id bigint,nome text);INSERT INTO linhas VALUES(1,'MON'),(2,'TRI');
+ CREATE TABLE apontamentos(id bigint,usuario_id bigint,setor_id bigint);INSERT INTO apontamentos VALUES(1,1,1),(2,2,2);
+ CREATE TABLE usuario_acessos(usuario_id bigint,setor_id bigint,linha_id bigint);INSERT INTO usuario_acessos VALUES(1,1,1),(1,1,2),(2,2,2);
+ CREATE TABLE producao(apontamento_id bigint,id bigint,linha_id bigint,potencia numeric(10,2),quantidade integer,turno text);
+ INSERT INTO producao SELECT 1,9007199254740993+n,1,30.50,n,'Primeiro' FROM generate_series(1,100) n;
+ CREATE TABLE paradas_falta_material(apontamento_id bigint,id bigint,causa_motivo text,material text,hora_inicio time,hora_fim time,turno text);
+ INSERT INTO paradas_falta_material VALUES(1,2,'Teste','Resina','08:00','09:00','Primeiro');
+ CREATE TABLE paradas_maquina(apontamento_id bigint,id bigint,maquina_equipamento text,hora_inicio time,hora_fim time,observacao text,turno text);
+ INSERT INTO paradas_maquina VALUES(1,3,'Máquina sintética','23:00','01:00',NULL,'Segundo');
+ CREATE TABLE nao_conformidades(apontamento_id bigint,id bigint,causa_nao_conformidade text,op text,numero_serie text,turno text);
+ INSERT INTO nao_conformidades VALUES(2,4,'Teste','123','456','Segundo');
+ CREATE TABLE faltas(apontamento_id bigint,id bigint,linha_id bigint,turno text,quantidade integer,justificativa text,nome text,motivo_justificativa text,atestado boolean);
+ INSERT INTO faltas VALUES(1,5,NULL,'Primeiro',1,NULL,'Pessoa sintética','Teste',false);
+ CREATE TABLE observacoes(apontamento_id bigint,id bigint,linha_id bigint,turno text,observacao text,justificativa_meta text);
+ INSERT INTO observacoes VALUES(1,6,1,'Primeiro','Teste',NULL);`);
+const original=JSON.parse(readFileSync('tests/fixtures/original-neon-batch.json','utf8')) as string[];
+const source=readFileSync('server.ts','utf8');
+const optimized=source.match(/const children = await pool.query\(`([\s\S]*?)`,\[ids\]\);/)?.[1];
+assert(optimized);
+const names=['p','material','maquina','nc','f','o','acessos'];
+const baseline:any={};for(let i=0;i<original.length;i++)baseline[names[i]]=(await db.query(original[i],[[1,2]])).rows;
+const candidate=(await db.query<any>(optimized,[[1,2]])).rows[0];
+assert.deepEqual(candidate,baseline);
+assert.equal(candidate.p[0].id,'9007199254740994');assert.equal(candidate.p[0].potencia,'30.50');
+assert.deepEqual((await db.query<any>(optimized,[[]])).rows[0],Object.fromEntries(names.map(n=>[n,[]])));
+mkdirSync('homologacao-local',{recursive:true});
+const result={equivalent:true,tests:['seven ordered child collections','empty selection','bigint IDs above 2^53','numeric power scale','null line','shift and overnight time','absence and occurrence fields'],originalCalls:7,optimizedCalls:1,originalMainReads:8,optimizedMainReads:2,note:'Same seven SELECTs in one SQL round trip; cloud CPU, connections and CU not measured.'};
+writeFileSync('homologacao-local/neon-equivalence.json',JSON.stringify(result,null,2));console.log(result);await db.close();
+

@@ -1,0 +1,9 @@
+[
+  "SELECT p.apontamento_id, p.id, l.nome linha, p.potencia, p.quantidade, p.turno\n         FROM producao p\n         JOIN linhas l ON l.id = p.linha_id\n        WHERE p.apontamento_id = ANY($1::bigint[])\n        ORDER BY p.apontamento_id, p.id",
+  "SELECT apontamento_id, id, causa_motivo, material, hora_inicio, hora_fim, turno\n         FROM paradas_falta_material\n        WHERE apontamento_id = ANY($1::bigint[])\n        ORDER BY apontamento_id, id",
+  "SELECT apontamento_id, id, maquina_equipamento, hora_inicio, hora_fim, observacao, turno\n         FROM paradas_maquina\n        WHERE apontamento_id = ANY($1::bigint[])\n        ORDER BY apontamento_id, id",
+  "SELECT apontamento_id, id, causa_nao_conformidade, op, numero_serie, turno\n         FROM nao_conformidades\n        WHERE apontamento_id = ANY($1::bigint[])\n        ORDER BY apontamento_id, id",
+  "SELECT f.apontamento_id, f.id, l.nome linha, f.turno, f.quantidade, f.justificativa,\n              f.nome, f.motivo_justificativa, f.atestado\n         FROM faltas f\n         LEFT JOIN linhas l ON l.id = f.linha_id\n        WHERE f.apontamento_id = ANY($1::bigint[])\n        ORDER BY f.apontamento_id, f.id",
+  "SELECT o.apontamento_id, o.id, l.nome linha, o.turno, o.observacao, o.justificativa_meta\n         FROM observacoes o\n         LEFT JOIN linhas l ON l.id = o.linha_id\n        WHERE o.apontamento_id = ANY($1::bigint[])\n        ORDER BY o.apontamento_id, o.id",
+  "SELECT DISTINCT h.id apontamento_id, l.nome linha\n         FROM apontamentos h\n         JOIN usuario_acessos ua ON ua.usuario_id = h.usuario_id AND ua.setor_id = h.setor_id\n         JOIN linhas l ON l.id = ua.linha_id\n        WHERE h.id = ANY($1::bigint[])\n        ORDER BY h.id, l.nome"
+]

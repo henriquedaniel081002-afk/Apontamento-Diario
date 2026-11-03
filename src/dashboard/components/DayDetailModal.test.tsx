@@ -19,9 +19,9 @@ describe('DayDetailModal', () => {
         linha="Todas"
         turno="Primeiro"
         detalhes={[
-          { data: '2024-02-05', setor: 'MONTAGEM FINAL', linha: 'MON', potencia: 30, quantidade: 10 },
-          { data: '2024-02-05', setor: 'MONTAGEM FINAL', linha: 'TRI', potencia: 30, quantidade: 20 },
-          { data: '2024-02-06', setor: 'MONTAGEM FINAL', linha: 'MON', potencia: 99, quantidade: 999 },
+          { data: '2024-02-05', setor: 'MONTAGEM FINAL', linha: 'MON', potencia: 30, quantidade: 10, turno: 'Primeiro' },
+          { data: '2024-02-05', setor: 'MONTAGEM FINAL', linha: 'TRI', potencia: 30, quantidade: 20, turno: 'Primeiro' },
+          { data: '2024-02-06', setor: 'MONTAGEM FINAL', linha: 'MON', potencia: 99, quantidade: 999, turno: 'Primeiro' },
         ]}
         faltas={[
           { data: '2024-02-05', setor: 'MONTAGEM FINAL', linha: 'MON', turno: 'Primeiro', quantidade: 2 },

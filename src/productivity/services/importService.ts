@@ -1,3 +1,4 @@
+import { measureAsync } from '../../services/performanceService';
 import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabase';
 
@@ -60,7 +61,7 @@ const textOrNull = (value: any) => {
   return text === '' ? null : text;
 };
 
-export async function parseProductivityWorkbook(file: File): Promise<ImportPreview> {
+async function parseProductivityWorkbookMeasured(file: File): Promise<ImportPreview> {
   const buffer = await file.arrayBuffer();
   const wb = XLSX.read(buffer, { type: 'array', cellDates: false });
 
@@ -202,14 +203,14 @@ async function syncEmployeeControls(productionPayload: any[]) {
   return rows.length;
 }
 
-export async function importProductivity(preview: ImportPreview) {
+async function importProductivityMeasured(preview: ImportPreview) {
   if (!supabase) throw new Error('Supabase não configurado.');
   const { data, error } = await supabase.rpc('importar_produtividade', {
     p_producao: preview.productionPayload,
   });
   if (error) {
     if (/permission denied|not authorized|JWT|401|403/i.test(`${error.code || ''} ${error.message || ''}`)) {
-      throw new Error('O Supabase bloqueou a função de importação para acesso público. Este dashboard não usa login; libere EXECUTE da função importar_produtividade(jsonb) para o perfil anon.');
+      throw new Error('O Supabase bloqueou a função de importação para acesso público. Solicite ao administrador a revisão de autorização da função; não libere execução pública automaticamente.');
     }
     if (/DELETE requires a WHERE clause/i.test(`${error.message || ''}`)) {
       throw new Error('A função de importação do Supabase ainda usa DELETE sem WHERE. Execute o arquivo supabase-fix-importacao-v10.sql incluído no projeto.');
@@ -229,4 +230,12 @@ export async function importProductivity(preview: ImportPreview) {
       ? { ...data, controle_colaboradores_aviso: syncError?.message || 'Não foi possível sincronizar o gerenciamento de colaboradores.' }
       : { resultado: data, controle_colaboradores_aviso: syncError?.message || 'Não foi possível sincronizar o gerenciamento de colaboradores.' };
   }
+}
+
+export function parseProductivityWorkbook(...args:Parameters<typeof parseProductivityWorkbookMeasured>):ReturnType<typeof parseProductivityWorkbookMeasured> {
+  return measureAsync('import:parseProductivityWorkbook',()=>parseProductivityWorkbookMeasured(...args));
+}
+
+export function importProductivity(...args:Parameters<typeof importProductivityMeasured>):ReturnType<typeof importProductivityMeasured> {
+  return measureAsync('import:importProductivity',()=>importProductivityMeasured(...args));
 }

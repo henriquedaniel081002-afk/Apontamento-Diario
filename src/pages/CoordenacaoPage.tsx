@@ -1,3 +1,4 @@
+import {useLatestRead} from '../hooks/useLatestRead';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
@@ -94,12 +95,15 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const { progress, startProgress, completeProgress } = useLoadingProgress();
 
+  const beginRead=useLatestRead();
   const loadData = useCallback(async (showFeedback = false) => {
+    const current=beginRead();
     setLoading(true);
     setLoadError(null);
     startProgress();
     try {
       const data = await coordenacaoService.getAll(showFeedback);
+      if(!current())return;
       setApontamentos(data);
       if (showFeedback) {
         setToast({
@@ -109,16 +113,17 @@ export const CoordenacaoPage: React.FC<CoordenacaoPageProps> = ({ user }) => {
         });
       }
     } catch (error) {
+      if(!current())return;
       const message = error instanceof Error ? error.message : 'Falha ao carregar os apontamentos.';
       setLoadError(message);
       if (showFeedback) {
         setToast({ id: Date.now().toString(), type: 'error', message });
       }
     } finally {
-      await completeProgress();
-      setLoading(false);
+      if(current())await completeProgress();
+      if(current())setLoading(false);
     }
-  }, [completeProgress, startProgress]);
+  }, [beginRead,completeProgress, startProgress]);
 
   useEffect(() => {
     void loadData();

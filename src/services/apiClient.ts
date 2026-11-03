@@ -1,8 +1,11 @@
+import { recordPerformance } from './performanceService';
 import { notifySessionExpired, readStoredToken } from './sessionStore';
 import { finishLoadingProgress, startLoadingProgress } from './loadingProgressService';
 
 interface ApiRequestOptions {
   requiresAuth?: boolean;
+  /** Use false when the operation already owns local progress. GETs default to false. */
+  globalLoading?: boolean;
 }
 
 interface ErrorPayload {
@@ -81,27 +84,35 @@ async function readResponseBody(response: Response): Promise<unknown> {
   }
 }
 
-export async function apiRequest<T>(
+async function executeApiRequest<T>(
   path: string,
   init: RequestInit = {},
-  { requiresAuth = true }: ApiRequestOptions = {},
+  { requiresAuth = true, globalLoading = !['GET','HEAD'].includes((init.method || 'GET').toUpperCase()) }: ApiRequestOptions = {},
 ): Promise<T> {
   const headers = new Headers(init.headers);
   if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
 
-  if (requiresAuth) {
-    const token = readStoredToken();
-    if (token) headers.set('Authorization', `Bearer ${token}`);
-  }
+  const token=requiresAuth?readStoredToken():null;
+  if(token)headers.set('Authorization',`Bearer ${token}`);
 
   const copy = loadingCopy(path, init.method || 'GET');
-  const loadingId = startLoadingProgress(copy.label, copy.description);
+  const loadingId = globalLoading ? startLoadingProgress(copy.label, copy.description) : null;
+  const started = performance.now();
+  let bytes = 0;
+  if(typeof init.body==='string') {
+    bytes=new TextEncoder().encode(init.body).byteLength;
+    if(bytes>5*1024*1024) {
+      if(loadingId) finishLoadingProgress(loadingId);
+      throw new ApiError('Arquivo excede o limite de 5 MB por envio. Divida o arquivo em lotes menores.',413,null);
+    }
+  }
 
   try {
     const response = await fetch(path, { ...init, headers });
     const payload = await readResponseBody(response);
 
-    if (response.status === 401 && requiresAuth) {
+    if (init.signal?.aborted) throw new DOMException('Consulta cancelada.', 'AbortError');
+    if (response.status === 401 && requiresAuth && token===readStoredToken()) {
       const message = 'Sua sessão expirou. Entre novamente.';
       notifySessionExpired(message);
       throw new ApiError(message, response.status, payload);
@@ -115,8 +126,25 @@ export async function apiRequest<T>(
       );
     }
 
+    if (init.signal?.aborted) throw new DOMException('Consulta cancelada.', 'AbortError');
     return payload as T;
   } finally {
-    finishLoadingProgress(loadingId);
+    if(loadingId) finishLoadingProgress(loadingId);
+    recordPerformance(`http:${(init.method||'GET').toUpperCase()}:${path.split('?')[0].replace(/\/\d+(?=\/|$)/g,'/:id')}`,performance.now()-started,bytes);
   }
+}
+
+// Deduplicate only simultaneous identical GETs. No retained response cache, timer or polling.
+const inFlightGets=new Map<string,Promise<unknown>>();
+export function apiRequest<T>(path:string,init:RequestInit={},options:ApiRequestOptions={}):Promise<T> {
+ const method=(init.method||'GET').toUpperCase();
+ if(method!=='GET'&&method!=='HEAD') {
+   inFlightGets.clear();
+   return executeApiRequest<T>(path,init,options).finally(()=>inFlightGets.clear());
+ }
+ if(init.signal||init.cache==='reload')return executeApiRequest<T>(path,init,options);
+ const key=JSON.stringify([path,method,options,options.requiresAuth===false?null:readStoredToken(),Array.from(new Headers(init.headers).entries())]);
+ const current=inFlightGets.get(key);if(current)return current as Promise<T>;
+ const request=executeApiRequest<T>(path,init,options).finally(()=>{if(inFlightGets.get(key)===request)inFlightGets.delete(key);});
+ inFlightGets.set(key,request);return request;
 }

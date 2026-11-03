@@ -1,3 +1,4 @@
+import { measureAsync } from '../services/performanceService';
 import { Linha, ProductionImportGroup, ProductionTurno, Setor, TipoBobina } from '../types';
 
 export interface RawProductionGroup {
@@ -527,7 +528,7 @@ async function readProductionImportExcelPeriod(
   return { fileName: file.name, mesReferencia, rowsProcessed, rowsMatched, ignoredWithoutPower, dias };
 }
 
-export async function readProductionImportExcel(
+async function readProductionImportExcelMeasured(
   file: File,
   data: string,
   onProgress?: (rowsProcessed: number) => void,
@@ -538,7 +539,7 @@ export async function readProductionImportExcel(
   return day;
 }
 
-export async function readProductionImportExcelMonth(
+async function readProductionImportExcelMonthMeasured(
   file: File,
   mesReferencia: string,
   onProgress?: (rowsProcessed: number) => void,
@@ -563,4 +564,12 @@ export function importUnitLabel(group: Pick<ProductionImportGroup, 'setor' | 'li
     ENCAPSULAMENTO: 'Encapsulamento',
   };
   return `${labels[group.setor] || String(group.setor)}${turno}`;
+}
+
+export function readProductionImportExcel(...args:Parameters<typeof readProductionImportExcelMeasured>):ReturnType<typeof readProductionImportExcelMeasured> {
+  return measureAsync('import:readProductionImportExcel',()=>readProductionImportExcelMeasured(...args));
+}
+
+export function readProductionImportExcelMonth(...args:Parameters<typeof readProductionImportExcelMonthMeasured>):ReturnType<typeof readProductionImportExcelMonthMeasured> {
+  return measureAsync('import:readProductionImportExcelMonth',()=>readProductionImportExcelMonthMeasured(...args));
 }

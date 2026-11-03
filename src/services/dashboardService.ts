@@ -16,6 +16,7 @@ export function invalidateDashboardCache() {
 
 export const dashboardService = {
   async getData(forceRefresh = false): Promise<DashboardData> {
+    if(forceRefresh)invalidateDashboardCache();
     const now = Date.now();
     if (!forceRefresh && cachedData && now - cachedAt < CACHE_TTL_MS) return cachedData;
     if (!forceRefresh && pendingRequest) return pendingRequest;

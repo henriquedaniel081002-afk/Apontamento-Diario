@@ -1,19 +1,97 @@
 import { useMemo, useState } from 'react';
-import { X } from 'lucide-react';
+import { CalendarClock, CheckCircle2, ClipboardList, ClockAlert, History as HistoryIcon, Layers3, ListChecks, Save, Table2 } from 'lucide-react';
 import { ModalShell } from '../components/common/ModalShell';
-import {field,button,fmt,br,situation,type Row,type Series,type Progress,type History} from './presentation';
+import { Badge, Button, DataTable, DateInput, Field, MetricCard, Surface, type BadgeVariant, type DataTableColumn } from '../components/common/ui';
+import {fmt,br,situation,type Row,type Series,type Progress,type History} from './presentation';
+
 type Props={selected:Row;detail:{series:Series[];progresso:Progress[];apontamentoImportado:boolean}|null;history:History[];detailError:string;motivo:string;previsao:string;saving:boolean;close:()=>void;open:(row:Row)=>Promise<void>;save:()=>Promise<void>;setMotivo:(v:string)=>void;setPrevisao:(v:string)=>void};
+type Tab='resumo'|'setores'|'series'|'justificativa'|'historico';
+const tabs:{id:Tab;label:string;icon:typeof ClipboardList}[]=[
+  {id:'resumo',label:'Resumo',icon:ClipboardList},
+  {id:'setores',label:'Setores',icon:Layers3},
+  {id:'series',label:'Séries e datas',icon:Table2},
+  {id:'justificativa',label:'Justificativa',icon:ListChecks},
+  {id:'historico',label:'Histórico',icon:HistoryIcon},
+];
+const seriesTone=(s:Series):BadgeVariant=>{
+  if(s.situacao==='PENDENTE_VENCIDO'||s.situacao==='PRODUZIDO_ATRASADO')return 'danger';
+  if(s.situacao==='PENDENTE_NO_PRAZO')return 'warning';
+  if(s.situacao==='PRODUZIDO_NO_PRAZO')return 'success';
+  return 'neutral';
+};
+
 export function OpDetailModal({selected,detail,history,detailError,motivo,previsao,saving,close,open,save,setMotivo,setPrevisao}:Props){
- const [tab,setTab]=useState('resumo');
- const byDate=useMemo(()=> (detail?.series||[]).reduce<Record<string,{programados:number;produzidos:number;vencidos:number}>>((acc,s)=>{
-   const row=acc[s.data_programada]??{programados:0,produzidos:0,vencidos:0};row.programados++;if(s.data_produzida)row.produzidos++;if(s.situacao==='PENDENTE_VENCIDO')row.vencidos++;acc[s.data_programada]=row;return acc;
- },{}),[detail]);
-  return <ModalShell isOpen onClose={close} title={`Detalhamento da OP ${selected.op}`} size="xl" busy={saving}><div><nav aria-label="Seções da OP" className="mb-4 flex flex-wrap gap-2">{(['resumo','setores','series','justificativa','historico'] as const).map(id=><button type="button" key={id} aria-pressed={tab===id} className={button} onClick={()=>setTab(id)}>{({resumo:'Resumo',setores:'Setores',series:'Séries e datas',justificativa:'Justificativa',historico:'Histórico'})[id]}</button>)}</nav><div className="flex justify-between gap-3"><div><p className="text-xs text-emerald-300">{selected.setor} · {selected.linha} · {selected.cliente}</p><h2 className="text-xl font-bold text-white">OP {selected.op}</h2><p className="text-xs text-slate-400">Potência: {selected.potencia||'Não informada'} · Programação: {br(selected.primeira_data_programada)} a {br(selected.ultima_data_programada)}</p></div><button className={button} disabled={saving} onClick={close} aria-label="Fechar"><X size={17}/></button></div>
-      {detailError&&<p role="alert" className="mt-4 text-rose-300">{detailError}<button className={button} onClick={()=>void open(selected)}>Tentar novamente</button></p>}
-      {!detail?(detailError?null:<p className="mt-5 text-slate-400">Carregando detalhamento...</p>):<><section hidden={tab!=='resumo'&&tab!=='setores'}><h3 className="mt-6 font-bold text-white">Progresso dos setores · {fmt(detail.progresso[0]?.quantidade_op||0)} séries distintas na OP</h3><div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{detail.progresso.map(p=><div key={p.setor} className="rounded-xl border border-white/10 p-3 text-sm"><p className="font-semibold text-white">{p.setor}</p><p className="text-xs text-slate-400">{detail.apontamentoImportado?`${fmt(p.produzidos)} / ${fmt(p.programados)} · ${fmt(p.pendentes_vencidos)} vencidos · ${Math.round(100*p.produzidos/Math.max(1,p.programados))}%`:`Produção indisponível · ${fmt(p.programados)} programados`}</p><div className="mt-2 h-1.5 rounded bg-white/10"><div className="h-full rounded bg-emerald-400" style={{width:`${Math.min(100,100*p.produzidos/Math.max(1,p.programados))}%`}}/></div></div>)}</div>
-      </section><section hidden={tab!=='series'}><h3 className="mt-6 font-bold text-white">Programações por data · {selected.setor}</h3>
-      <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{Object.entries(byDate).map(([date,v])=><div key={date} className="rounded-xl border border-white/10 p-3 text-sm"><strong className="text-white">{br(date)}</strong><p className="text-xs text-slate-400">{fmt(v.programados)} programados · {fmt(v.produzidos)} produzidos · {fmt(v.vencidos)} pendentes vencidos</p></div>)}</div>
-      <h3 className="mt-6 font-bold text-white">Programação e séries do seu setor</h3><p className="text-xs text-slate-400">{detail.apontamentoImportado?'Produção sem registro no arquivo importado aparece como pendente.':'Arquivo de apontamentos ainda não importado; produção indisponível.'}</p><div className="mt-2 max-h-72 overflow-auto rounded-xl border border-white/10"><table className="w-full min-w-[600px] text-left text-xs"><thead className="sticky top-0 bg-[#14251a] text-slate-300"><tr>{['Data programada','Série','Produzida em','Situação'].map(x=><th key={x} className="p-2">{x}</th>)}</tr></thead><tbody>{detail.series.map(s=><tr key={`${s.serie}|${s.data_programada}`} className="border-t border-white/10 text-slate-200"><td className="p-2">{br(s.data_programada)}</td><td className="p-2 font-mono">{s.serie}</td><td className="p-2">{br(s.data_produzida)}</td><td className="p-2">{detail.apontamentoImportado?(situation[s.situacao]||s.situacao):'Produção sem dados'}</td></tr>)}</tbody></table></div></section></>}
-      <section hidden={tab!=='justificativa'}><h3 className="mt-6 font-bold text-white">Justificativa e prazo · {selected.setor}</h3><p className="text-xs text-slate-400">A atualização cria um novo registro e preserva o histórico.</p><label className="mt-3 block text-sm text-slate-300">Motivo<textarea className={`${field} mt-1 min-h-24`} maxLength={3000} value={motivo} onChange={e=>setMotivo(e.target.value)}/></label><label className="mt-3 block text-sm text-slate-300">Previsão de regularização<input type="date" className={`${field} mt-1`} value={previsao} onChange={e=>setPrevisao(e.target.value)}/></label><button className={`${button} mt-3`} disabled={!detail||saving||motivo.trim().length<5||!previsao} onClick={()=>void save()}>{saving?'Salvando...':'Registrar justificativa e prazo'}</button>
-      </section><section hidden={tab!=='historico'}><h3 className="mt-6 font-bold text-white">Histórico ({history.length})</h3><div className="mt-2 max-h-52 space-y-2 overflow-auto">{history.map(h=><div key={h.id} className="rounded-xl border border-white/10 p-3 text-sm text-slate-200"><p className="whitespace-pre-wrap">{h.motivo}</p><p className="mt-2 text-xs text-slate-400">{h.responsavel} · {new Date(h.criado_em).toLocaleString('pt-BR')} · Prazo: {br(h.previsao_regularizacao)}</p></div>)}{!history.length&&<p className="text-xs text-slate-400">Nenhum registro anterior.</p>}</div></section></div></ModalShell>;
+  const [tab,setTab]=useState<Tab>('resumo');
+  const byDate=useMemo(()=> (detail?.series||[]).reduce<Record<string,{programados:number;produzidos:number;vencidos:number}>>((acc,s)=>{
+    const row=acc[s.data_programada]??{programados:0,produzidos:0,vencidos:0};row.programados++;if(s.data_produzida)row.produzidos++;if(s.situacao==='PENDENTE_VENCIDO')row.vencidos++;acc[s.data_programada]=row;return acc;
+  },{}),[detail]);
+  const percent=Math.round(100*selected.produzidos/Math.max(1,selected.programados));
+  const progressColumns:DataTableColumn<Progress>[]=[
+    {id:'setor',header:'Setor',cell:p=><span className={`font-bold ${p.setor===selected.setor?'text-emerald-300':'text-slate-100'}`}>{p.setor}</span>},
+    {id:'programados',header:'Programado',align:'right',cell:p=><span className="tabular-nums">{fmt(p.programados)}</span>},
+    {id:'produzidos',header:'Produzido',align:'right',cell:p=><span className="font-semibold tabular-nums text-emerald-300">{detail?.apontamentoImportado?fmt(p.produzidos):'—'}</span>},
+    {id:'vencidos',header:'Vencidos',align:'right',cell:p=><span className={`font-bold tabular-nums ${p.pendentes_vencidos?'text-rose-300':'text-slate-300'}`}>{detail?.apontamentoImportado?fmt(p.pendentes_vencidos):'—'}</span>},
+    {id:'progresso',header:'Progresso',cell:p=>{const value=Math.round(100*p.produzidos/Math.max(1,p.programados));return <div className="flex min-w-28 items-center gap-3"><span className="w-10 font-bold tabular-nums text-white">{detail?.apontamentoImportado?`${value}%`:'—'}</span><div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-emerald-400" style={{width:`${Math.min(100,value)}%`}}/></div></div>;}},
+  ];
+  const seriesColumns:DataTableColumn<Series>[]=[
+    {id:'programada',header:'Data programada',cell:s=><span className="tabular-nums">{br(s.data_programada)}</span>},
+    {id:'serie',header:'Série',cell:s=><span className="font-mono font-bold tabular-nums text-white">{s.serie}</span>},
+    {id:'produzida',header:'Produzida em',cell:s=><span className="tabular-nums">{br(s.data_produzida)}</span>},
+    {id:'situacao',header:'Situação',cell:s=><Badge variant={detail?.apontamentoImportado?seriesTone(s):'neutral'}>{detail?.apontamentoImportado?(situation[s.situacao]||s.situacao):'Produção sem dados'}</Badge>},
+  ];
+  return <ModalShell isOpen onClose={close} title={`Detalhamento da OP ${selected.op}`} description="Acompanhamento integrado de produção, pendências, justificativas e prazos." size="2xl" busy={saving}>
+    <nav aria-label="Seções da OP" className="mb-5 flex flex-wrap gap-2 border-b border-white/[0.08] pb-4">
+      {tabs.map(({id,label,icon:Icon})=><button type="button" key={id} aria-pressed={tab===id} onClick={()=>setTab(id)} className={`inline-flex min-h-10 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition-colors sm:text-sm ${tab===id?'border-emerald-400/50 bg-emerald-400/15 text-emerald-200':'border-white/10 bg-white/[0.035] text-slate-400 hover:border-white/20 hover:bg-white/[0.075] hover:text-white'}`}><Icon className="size-4" aria-hidden="true"/>{label}</button>)}
+    </nav>
+    <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+      <div><p className="text-xs font-extrabold uppercase tracking-wider text-emerald-300">{selected.setor} · {selected.linha} · {selected.cliente||'Cliente não informado'}</p>
+        <p className="mt-1 text-sm text-slate-300">Potência: <strong className="text-white">{selected.potencia||'Não informada'}</strong> · Programação: <span className="tabular-nums">{br(selected.primeira_data_programada)} a {br(selected.ultima_data_programada)}</span></p>
+      </div>
+      <Badge variant={selected.pendentes_vencidos?'danger':'success'}>{selected.pendentes_vencidos?'Pendências vencidas':'Sem pendências vencidas'}</Badge>
+    </div>
+    {detailError&&<div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-400/30 bg-rose-400/[0.06] p-3 text-sm text-rose-200"><span>{detailError}</span><Button variant="secondary" size="sm" onClick={()=>void open(selected)}>Tentar novamente</Button></div>}
+    {!detail?(detailError?null:<p className="rounded-xl border border-white/10 bg-white/[0.03] p-5 text-sm text-slate-400" role="status">Carregando detalhamento...</p>):<>
+      <section hidden={tab!=='resumo'}>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <MetricCard label="Programado" value={fmt(selected.programados)} icon={<CalendarClock className="size-5" aria-hidden="true"/>} tone="info"/>
+          <MetricCard label="Produzido" value={detail.apontamentoImportado?fmt(selected.produzidos):'—'} icon={<CheckCircle2 className="size-5" aria-hidden="true"/>} tone="success"/>
+          <MetricCard label="Vencidos" value={detail.apontamentoImportado?fmt(selected.pendentes_vencidos):'—'} icon={<ClockAlert className="size-5" aria-hidden="true"/>} tone="danger"/>
+          <MetricCard label="Progresso" value={detail.apontamentoImportado?`${percent}%`:'—'} icon={<Layers3 className="size-5" aria-hidden="true"/>} tone="info"/>
+        </div>
+        <h3 className="mt-6 text-base font-extrabold text-white">Progresso dos setores · {fmt(detail.progresso[0]?.quantidade_op||0)} séries distintas na OP</h3>
+        {!detail.apontamentoImportado&&<p className="mt-1 text-sm text-amber-200">Arquivo de apontamentos ainda não importado; produção indisponível.</p>}
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{detail.progresso.map(p=>{
+          const pPercent=Math.round(100*p.produzidos/Math.max(1,p.programados));
+          return <Surface key={p.setor} padding="sm" tone="muted" className={p.setor===selected.setor?'border-emerald-400/35':''}>
+            <div className="flex items-center justify-between gap-2"><p className="min-w-0 truncate text-xs font-extrabold uppercase tracking-wide text-slate-200" title={p.setor}>{p.setor}</p>{p.setor===selected.setor&&<Badge variant="success">Selecionado</Badge>}</div>
+            <div className="mt-2 flex items-end justify-between gap-2"><p className="text-xs text-slate-400">{detail.apontamentoImportado?`${fmt(p.produzidos)} / ${fmt(p.programados)} produzidos`:`${fmt(p.programados)} programados`}</p><span className="text-lg font-black tabular-nums text-white">{detail.apontamentoImportado?`${pPercent}%`:'—'}</span></div>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-emerald-400" style={{width:`${Math.min(100,pPercent)}%`}}/></div>
+            <p className={`mt-2 text-xs ${p.pendentes_vencidos?'text-rose-300':'text-slate-500'}`}>{detail.apontamentoImportado?`${fmt(p.pendentes_vencidos)} pendentes vencidos`:'Produção indisponível'}</p>
+          </Surface>;
+        })}</div>
+      </section>
+      <section hidden={tab!=='setores'}>
+        <h3 className="text-base font-extrabold text-white">Progresso de todos os setores</h3><p className="mb-3 mt-1 text-sm text-slate-400">Comparação entre programação e produção de cada setor desta OP.</p>
+        <DataTable columns={progressColumns} rows={detail.progresso} getRowKey={p=>p.setor} caption="Produção por setor" className="min-w-[40rem]"/>
+      </section>
+      <section hidden={tab!=='series'}>
+        <h3 className="text-base font-extrabold text-white">Programações por data · {selected.setor}</h3>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{Object.entries(byDate).map(([date,v])=><Surface key={date} padding="sm" tone="muted"><p className="text-sm font-extrabold tabular-nums text-white">{br(date)}</p><div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs"><span className="text-sky-300">{fmt(v.programados)} programados</span><span className="text-emerald-300">{fmt(v.produzidos)} produzidos</span><span className={v.vencidos?'text-rose-300':'text-slate-400'}>{fmt(v.vencidos)} pendentes vencidos</span></div></Surface>)}</div>
+        <h3 className="mt-6 text-base font-extrabold text-white">Programação e séries do seu setor</h3>
+        <p className="mb-3 mt-1 text-xs text-slate-400">{detail.apontamentoImportado?'Produção sem registro no arquivo importado aparece como pendente.':'Arquivo de apontamentos ainda não importado; produção indisponível.'}</p>
+        <div className="max-h-96 overflow-y-auto rounded-2xl border border-white/10"><DataTable columns={seriesColumns} rows={detail.series} getRowKey={s=>`${s.serie}|${s.data_programada}`} caption="Séries e datas programadas" className="min-w-[37rem] text-xs" containerClassName="rounded-none border-0"/></div>
+      </section>
+    </>}
+    <section hidden={tab!=='justificativa'}>
+      <Surface padding="md" tone="muted">
+        <h3 className="text-base font-extrabold text-white">Justificativa e prazo · {selected.setor}</h3><p className="mb-5 mt-1 text-sm text-slate-400">A atualização cria um novo registro e preserva o histórico.</p>
+        <div className="space-y-4"><Field label="Motivo" required hint="Informe ao menos cinco caracteres."><textarea className="field-control min-h-28 resize-y" maxLength={3000} value={motivo} onChange={e=>setMotivo(e.target.value)}/></Field><Field label="Previsão de regularização" required><DateInput value={previsao} onChange={e=>setPrevisao(e.target.value)}/></Field></div>
+        <div className="mt-5 flex justify-end"><Button variant="primary" leftIcon={<Save className="size-4" aria-hidden="true"/>} disabled={!detail||saving||motivo.trim().length<5||!previsao} isLoading={saving} loadingLabel="Salvando..." onClick={()=>void save()}>Registrar justificativa e prazo</Button></div>
+      </Surface>
+    </section>
+    <section hidden={tab!=='historico'}>
+      <h3 className="text-base font-extrabold text-white">Histórico ({history.length})</h3><p className="mb-3 mt-1 text-sm text-slate-400">Registros anteriores de justificativa e previsão de regularização.</p>
+      <div className="max-h-80 space-y-3 overflow-y-auto">{history.map(h=><Surface key={h.id} padding="sm" tone="muted"><p className="whitespace-pre-wrap text-sm leading-6 text-slate-100">{h.motivo}</p><p className="mt-2 text-xs text-slate-400">{h.responsavel} · {new Date(h.criado_em).toLocaleString('pt-BR')} · Prazo: <span className="font-semibold text-slate-200">{br(h.previsao_regularizacao)}</span></p></Surface>)}{!history.length&&<p className="rounded-xl border border-dashed border-white/10 p-5 text-sm text-slate-400">Nenhum registro anterior.</p>}</div>
+    </section>
+  </ModalShell>;
 }

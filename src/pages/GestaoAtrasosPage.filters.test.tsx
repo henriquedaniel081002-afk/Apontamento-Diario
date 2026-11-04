@@ -34,6 +34,17 @@ describe('Visão OP — filtros reais e importação',()=>{
   const query=new URL(summaries().at(-1)![0],'http://local').searchParams;
   expect(Object.fromEntries(query)).toMatchObject({op:'123',serie:'987',cliente:'Cliente',page:'1'});expect(optionsCalls()).toHaveLength(1);
  });
+
+ it('Situação e Justificativa usam lista escura padronizada e somente três situações',async()=>{
+  await ready();
+  fireEvent.click(screen.getByRole('combobox',{name:'Situação'}));
+  expect(screen.getAllByRole('option').filter(o=>['Com atraso','Concluída','Todas'].includes(o.textContent||''))).toHaveLength(3);
+  expect(screen.queryByRole('option',{name:'Prazo vencido'})).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('option',{name:'Concluída'}));
+  await waitFor(()=>expect(summaries().at(-1)?.[0]).toContain('situacao=CONCLUIDOS'));
+  fireEvent.click(screen.getByRole('combobox',{name:'Justificativa'}));
+  expect(screen.getByRole('option',{name:'Com justificativa'})).toBeVisible();
+ });
  it('valida OP antes da rede e mantém a tabela acessível por teclado',async()=>{
   await ready();fireEvent.change(screen.getByLabelText('OP'),{target:{value:'ABC'}});
   await screen.findByText('Informe apenas números em OP e Série (até 20 dígitos).');expect(summaries()).toHaveLength(1);

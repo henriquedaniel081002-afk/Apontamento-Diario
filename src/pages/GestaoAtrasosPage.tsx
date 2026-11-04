@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ClipboardList, Eye, FileUp, RefreshCw, Search } from 'lucide-react';
+import { AlertTriangle, ClipboardList, Download, Eye, FileUp, RefreshCw, Search } from 'lucide-react';
 import { OpDetailModal } from '../gestao-atrasos/OpDetailModal';
 import {fmt,br,situation,type Row,type Series,type Progress,type History,type Summary,type Mismatch} from '../gestao-atrasos/presentation';
 import { FilterBar, FilterSelect } from '../dashboard/components/FilterBar';
 import '../dashboard/dashboard.css';
 import '../gestao-atrasos/gestao-atrasos.css';
 import { OpKpis } from '../gestao-atrasos/OpKpis';
-import { Badge, Button, DataTable, DateInput, Field, Input, PageContainer, PageHeader, SectionCard, SelectField, StatusBadge, type BadgeVariant, type DataTableColumn } from '../components/common/ui';
+import { Badge, Button, DataTable, DateInput, Field, Input, PageContainer, PageHeader, SectionCard, StatusBadge, type BadgeVariant, type DataTableColumn } from '../components/common/ui';
 import { recordPerformance } from '../services/performanceService';
 import type { User } from '../types';
 import { apiRequest } from '../services/apiClient';
 import { readDetailedExcel, type DetailedTipo, type DetailedRow } from '../gestao-atrasos/importDetailedExcel';
+import { gerarPdfPrioridades, type RelatorioPrioridades } from '../gestao-atrasos/prioridadesPdf';
 
 export function GestaoAtrasosPage({user,active}:{user:User;active:boolean}) {
   const emptyFilters={op:'',serie:'',setor:'',linha:'',cliente:'',inicio:'',fim:'',situacao:'ATRASADOS',justificativa:'',multiplos:false};
@@ -26,6 +27,7 @@ export function GestaoAtrasosPage({user,active}:{user:User;active:boolean}) {
   const [history,setHistory]=useState<History[]>([]);
   const [motivo,setMotivo]=useState('');const [previsao,setPrevisao]=useState('');
   const [saving,setSaving]=useState(false);const [importing,setImporting]=useState(false);
+  const [exporting,setExporting]=useState(false);
   const [importStatus,setImportStatus]=useState('');const [mismatch,setMismatch]=useState<Mismatch[]>([]);
   const [combinations,setCombinations]=useState<Array<{setor:string;linha:string}>>([]);
   const [optionsLoading,setOptionsLoading]=useState(false);
@@ -132,6 +134,26 @@ export function GestaoAtrasosPage({user,active}:{user:User;active:boolean}) {
     }catch(e){setError(e instanceof Error?e.message:'Falha na importação.');setImportStatus('Envio interrompido. Confira a base ativa em Atualizar antes de reenviar; lotes pendentes não substituem a base ativa.');}
     finally{setImporting(false);if(prog.current)prog.current.value='';if(apont.current)apont.current.value='';}
   };
+  const exportPdf=async()=>{
+    if(exporting||loading||importing||!data?.importacoes.some(i=>i.tipo==='APONTAMENTO'))return;
+    setExporting(true);setError('');
+    try {
+      if((filters.op.trim()&&!/^\d{1,20}$/.test(filters.op.trim()))||(filters.serie.trim()&&!/^\d{1,20}$/.test(filters.serie.trim())))
+        throw new Error('Informe apenas números em OP e Série (até 20 dígitos).');
+      const q=new URLSearchParams();
+      Object.entries(filters).forEach(([key,value])=>{if(value)q.set(key,String(value));});
+      const result=await apiRequest<RelatorioPrioridades>(`/api/gestao-atrasos/relatorio-prioridades?${q}`);
+      if(!result.rows.length)throw new Error('Não há programações até hoje para os filtros selecionados.');
+      const bytes=gerarPdfPrioridades(result,filters);
+      const blob=new Blob([bytes as BlobPart],{type:'application/pdf'});
+      const url=URL.createObjectURL(blob);
+      const anchor=document.createElement('a');
+      anchor.href=url;anchor.download=`ITAM_Checklist_Prioridades_${result.hoje}.pdf`;
+      document.body.append(anchor);anchor.click();anchor.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),60000);
+    }catch(e){setError(e instanceof Error?e.message:'Falha ao gerar PDF.');}
+    finally{setExporting(false);}
+  };
   const rows=data?.rows||[];
   const situationTone=(row:Row):BadgeVariant=>{
     if(row.situacao==='REGULARIZADO'||row.situacao==='NO_PRAZO')return 'success';
@@ -162,7 +184,7 @@ export function GestaoAtrasosPage({user,active}:{user:User;active:boolean}) {
       title="Atraso — Visão OP"
       description="Acompanhe pendências, produção, justificativas e prazos por OP e setor. Sem datas selecionadas: mês anterior e atual; os limites informados são inclusivos."
       icon={<ClipboardList className="size-5" aria-hidden="true"/>}
-      actions={<Button variant="ghost" size="sm" leftIcon={<RefreshCw className="size-4" aria-hidden="true"/>} isLoading={loading} loadingLabel="Atualizando" onClick={refresh}>Atualizar</Button>}
+      actions={<div className="flex flex-wrap items-center gap-2"><Button variant="secondary" size="sm" leftIcon={<Download className="size-4" aria-hidden="true"/>} disabled={loading||importing||exporting||!data?.importacoes.some(i=>i.tipo==='APONTAMENTO')} onClick={()=>void exportPdf()}>{exporting?'Gerando PDF...':'PDF · Checklist do líder'}</Button><Button variant="ghost" size="sm" leftIcon={<RefreshCw className="size-4" aria-hidden="true"/>} isLoading={loading} loadingLabel="Atualizando" onClick={refresh}>Atualizar</Button></div>}
     />
     <FilterBar onClear={clearFilters} clearDisabled={!filtersActive} note="Indicadores do conjunto filtrado">
       <FilterSelect id="op-setor" label="Setor" options={['',...sectors]} selected={filters.setor} onSelect={v=>update('setor',v)} formatOption={v=>v||'Todos os autorizados'} active={Boolean(filters.setor)} disabled={optionsLoading||Boolean(optionsError)}/>
@@ -170,8 +192,8 @@ export function GestaoAtrasosPage({user,active}:{user:User;active:boolean}) {
       <Field label="OP"><Input value={filters.op} onChange={e=>update('op',e.target.value)} placeholder="Número da OP" inputMode="numeric" maxLength={20}/></Field>
       <Field label="Série"><Input value={filters.serie} onChange={e=>update('serie',e.target.value)} placeholder="Série exata" inputMode="numeric" maxLength={20}/></Field>
       <Field label="Cliente"><Input value={filters.cliente} onChange={e=>update('cliente',e.target.value)} placeholder="Nome do cliente"/></Field>
-      <Field label="Situação"><SelectField value={filters.situacao} onChange={e=>update('situacao',e.target.value)}><option value="ATRASADOS">Com atraso</option><option value="PENDENTES">Pendência vencida</option><option value="PRAZO_VENCIDO">Prazo vencido</option><option value="CONCLUIDOS">Concluídas</option><option value="TODOS">Todas</option></SelectField></Field>
-      <Field label="Justificativa"><SelectField value={filters.justificativa} onChange={e=>update('justificativa',e.target.value)}><option value="">Todas</option><option value="SEM">Sem justificativa</option><option value="COM">Com justificativa</option></SelectField></Field>
+      <FilterSelect id="op-situacao" label="Situação" options={['ATRASADOS','CONCLUIDOS','TODOS']} selected={filters.situacao} onSelect={v=>update('situacao',v)} formatOption={v=>(({ATRASADOS:'Com atraso',CONCLUIDOS:'Concluída',TODOS:'Todas'} as Record<string,string>)[v]||v)} active={filters.situacao!=='ATRASADOS'}/>
+      <FilterSelect id="op-justificativa" label="Justificativa" options={['','SEM','COM']} selected={filters.justificativa} onSelect={v=>update('justificativa',v)} formatOption={v=>(({'':'Todas','SEM':'Sem justificativa','COM':'Com justificativa'} as Record<string,string>)[v]||v)} active={Boolean(filters.justificativa)}/>
       <Field label="Início"><DateInput value={filters.inicio} onChange={e=>update('inicio',e.target.value)}/></Field>
       <Field label="Fim"><DateInput value={filters.fim} onChange={e=>update('fim',e.target.value)}/></Field>
       <label className="flex min-h-11 cursor-pointer items-center gap-3 self-end rounded-xl border border-white/10 bg-white/[0.025] px-3 py-2 text-sm font-medium text-slate-300"><input type="checkbox" className="size-4 accent-emerald-400" checked={filters.multiplos} onChange={e=>update('multiplos',e.target.checked)}/>Programadas em vários dias</label>
@@ -179,6 +201,7 @@ export function GestaoAtrasosPage({user,active}:{user:User;active:boolean}) {
     {optionsLoading&&<p role="status" className="text-xs text-slate-400">Atualizando setores e linhas do período...</p>}
     {optionsError&&<p role="alert" className="text-sm text-rose-200">{optionsError} Use Atualizar para tentar novamente.</p>}
     {filtersActive&&<p className="text-xs text-slate-400" aria-live="polite">Filtros ativos · {filters.setor||'Todos os setores autorizados'} · {filters.linha||'Todas as linhas'}{filters.op?` · OP ${filters.op}`:''}{filters.serie?` · Série ${filters.serie}`:''}{filters.cliente?` · Cliente ${filters.cliente}`:''} · {filters.inicio||'Início padrão'} a {filters.fim||'Fim padrão'} · {filters.situacao}{filters.justificativa?` · Justificativa: ${filters.justificativa}`:''}{filters.multiplos?' · Vários dias':''}</p>}
+    <p className="text-xs text-slate-400">PDF de prioridades: usa os filtros ativos, inclui programações até hoje e separa cada OP por data. Para listar atrasos e hoje, selecione <strong>Todas</strong>; com <strong>Com atraso</strong>, exporta somente pendências vencidas.</p>
     <OpKpis values={data?.kpis} loading={loading}/>
     {user.perfil==='COORDENACAO'&&<details className="op-import"><summary>Importação detalhada · programação e apontamento</summary><SectionCard title="Importação detalhada" description="A base anterior permanece ativa até a validação e substituição completas." icon={<FileUp className="size-5" aria-hidden="true"/>}>
       <p className="mb-3 text-sm leading-5 text-slate-400">Importe programação e apontamento separadamente. Sem período definido, a importação considera o mês anterior e o atual; para outro período, preencha Início e Fim nos filtros.</p>

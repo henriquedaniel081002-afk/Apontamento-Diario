@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Express } from 'express';
 import type { Pool } from 'pg';
+import { registerGestaoAtrasosRelatorio } from './server.gestaoAtrasosRelatorio';
 
 type Tipo = 'PROGRAMACAO' | 'APONTAMENTO';
 const TIPOS = new Set(['PROGRAMACAO', 'APONTAMENTO']);
@@ -267,7 +268,7 @@ export function registerGestaoAtrasosRoutes(
       const page=Number(req.query.page||1);
       if (!Number.isInteger(page)||page<1||page>100000) return res.status(400).json({error:'Página inválida.'});
       if ((op&&!/^\d{1,20}$/.test(op))||(serie&&!/^\d{1,20}$/.test(serie))||
-        !['ATRASADOS','TODOS','PENDENTES','CONCLUIDOS','PRAZO_VENCIDO'].includes(situacao)||
+        !['ATRASADOS','TODOS','CONCLUIDOS'].includes(situacao)||
         (justificativa&&!['COM','SEM'].includes(justificativa))||!validDate(dateFrom)||!validDate(dateTo)||dateFrom>dateTo)
         return res.status(400).json({error:'Filtros inválidos.'});
       if (allowed !== null && setor && !allowed.includes(setor)) return res.status(403).json({error:'Setor não autorizado.'});
@@ -309,10 +310,20 @@ export function registerGestaoAtrasosRoutes(
         ) j ON true
       ), filtered AS MATERIALIZED (
       SELECT * FROM ready
-      WHERE ($12='TODOS' OR ($12='ATRASADOS' AND (pendentes_vencidos>0 OR produzidos_em_atraso>0))
-        OR ($12='PENDENTES' AND pendentes_vencidos>0)
-        OR ($12='CONCLUIDOS' AND programados=produzidos)
-        OR ($12='PRAZO_VENCIDO' AND situacao='PRAZO_VENCIDO'))
+      WHERE ($12='TODOS' OR ($12='ATRASADOS' AND pendentes_vencidos>0)
+        OR ($12='CONCLUIDOS' AND programados=produzidos AND NOT EXISTS (
+          -- Fechar a OP exige concluir todas as séries do setor, inclusive fora do período filtrado.
+          SELECT 1 FROM public.atrasos_programacao_detalhada all_p
+          JOIN public.atrasos_importacoes all_i ON all_i.id=all_p.importacao_id
+            AND all_i.status='ATIVA' AND all_i.tipo='PROGRAMACAO'
+          WHERE all_p.op=ready.op AND all_p.setor=ready.setor
+            AND NOT EXISTS (
+              SELECT 1 FROM public.atrasos_apontamentos_detalhados all_a
+              JOIN public.atrasos_importacoes done_i ON done_i.id=all_a.importacao_id
+                AND done_i.status='ATIVA' AND done_i.tipo='APONTAMENTO'
+              WHERE all_a.op=all_p.op AND all_a.setor=all_p.setor AND all_a.serie=all_p.serie
+            )
+        )))
         AND ($13='' OR ($13='COM' AND motivo IS NOT NULL) OR ($13='SEM' AND motivo IS NULL))
         AND (NOT $14::boolean OR dias_programados>1)
       ), page_rows AS (
@@ -342,6 +353,8 @@ export function registerGestaoAtrasosRoutes(
       res.json({periodo:{inicio:dateFrom,fim:dateTo,hoje:today},...result.rows[0],page});
     } catch(e:any) { res.status(500).json({error:e?.code==='42P01'?'Execute SUPABASE_GESTAO_ATRASOS.sql no banco de atrasos.':'Falha ao carregar a Visão OP.'}); }
   });
+
+  registerGestaoAtrasosRelatorio(app,pool,auth,getAuthorizedSectors,activeRows,selectedPeriod,period,sector);
 
   app.get(`${base}/op/:op`,auth,async(req:any,res)=>{
     try {

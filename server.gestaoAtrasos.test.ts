@@ -98,3 +98,33 @@ describe('Gestão de atrasos — segurança das rotas',()=>{
     }finally{await t.close();}
   });
 });
+
+describe('Exportação de prioridades — filtros e permissões',()=>{
+  it('aplica os filtros e limita as programações até o dia de Manaus, sem paginação',async()=>{
+    const t=await setup();try{
+      const r=await t.request('/relatorio-prioridades?setor=BOBINAGEM&linha=TRI&op=12580&situacao=TODOS&justificativa=SEM&multiplos=true&inicio=2026-10-01&fim=2026-12-31');
+      expect(r.status).toBe(200);
+      const [sql,params]=t.query.mock.calls.find(([query])=>query.includes('full_prog'))!;
+      expect(sql).toContain('p.data_programada < $3::date');
+      expect(sql).toContain('data_programada,op,linha LIMIT 5001');
+      expect(sql).toContain('COUNT(DISTINCT serie)::int qtde_total_op');
+      expect(params[0]).toEqual(['BOBINAGEM']);
+      expect(params.slice(3)).toEqual(['2026-10-01','12580',null,'TRI',null,expect.any(String),'TODOS','SEM',true]);
+    }finally{await t.close();}
+  });
+  it('nega exportação de outro setor e situação removida',async()=>{
+    const t=await setup();try{
+      expect((await t.request('/relatorio-prioridades?setor=SOLDA')).status).toBe(403);
+      expect((await t.request('/relatorio-prioridades?situacao=PRAZO_VENCIDO')).status).toBe(400);
+      expect(t.query).not.toHaveBeenCalled();
+    }finally{await t.close();}
+  });
+  it('não confunde produção tardia já encerrada com pendência em atraso',async()=>{
+    const t=await setup();try{
+      const r=await t.request('/resumo?situacao=ATRASADOS');expect(r.status).toBe(200);
+      const [sql]=t.query.mock.calls.find(([query])=>query.includes('page_rows'))!;
+      expect(sql).toContain("$12='ATRASADOS' AND pendentes_vencidos>0");
+      expect(sql).not.toContain("$12='ATRASADOS' AND (pendentes_vencidos>0 OR produzidos_em_atraso>0)");
+    }finally{await t.close();}
+  });
+});

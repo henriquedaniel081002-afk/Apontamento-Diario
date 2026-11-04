@@ -19,9 +19,8 @@ const isMissingTable = (error: any, tableName: string) => {
   return new RegExp(`42P01|PGRST205|${tableName}|relation .* does not exist`, 'i').test(text);
 };
 
-async function loadAllProductionRows(signal?:AbortSignal): Promise<any[]> {
-  if (!supabase) return [];
-  const allRows: any[] = [];
+async function consumeProductionRows(consume: (rows: any[]) => void, signal?:AbortSignal): Promise<void> {
+  if (!supabase) return;
   let from = 0;
 
   while (true) {
@@ -36,12 +35,13 @@ async function loadAllProductionRows(signal?:AbortSignal): Promise<any[]> {
 
     if (error) throw error;
     const rows = data || [];
-    allRows.push(...rows);
+    signal?.throwIfAborted();
+    consume(rows);
     if (rows.length < PAGE_SIZE) break;
     from += PAGE_SIZE;
   }
 
-  return allRows;
+  return;
 }
 
 async function loadEmployeeControls(signal?:AbortSignal): Promise<{ rows: any[]; ready: boolean }> {
@@ -83,23 +83,12 @@ export async function loadDashboardData(signal?:AbortSignal): Promise<DashboardD
     throw new Error('Supabase não configurado. Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY.');
   }
 
-  const [productionRows, workdaysRes, controls, archives] = await Promise.all([
-    loadAllProductionRows(signal),
-    supabase
-      .from('dias_trabalho')
-      .select('data,dia_trabalho')
-      .eq('dia_trabalho', true)
-      .order('data').abortSignal(signal),
-    loadEmployeeControls(signal),
-    loadEmployeeArchives(signal),
-  ]);
-
-  if (workdaysRes.error) throw workdaysRes.error;
-
+  const employeeMap = new Map<string, Employee>();
+  const records: ProductionRecord[] = [];
+  const consume = (productionRows: any[]) => {
   // A produção define automaticamente quem passou a fazer parte do acompanhamento.
   // A primeira linha (dados ordenados por data) fixa a primeira aparição; nome/setor/turno
   // são atualizados pelas linhas seguintes para refletir o cadastro mais recente da produção.
-  const employeeMap = new Map<string, Employee>();
   for (const row of productionRows) {
     const matricula = String(row.matricula ?? row.colaborador_id ?? '').trim();
     if (!matricula) continue;
@@ -124,6 +113,43 @@ export async function loadDashboardData(signal?:AbortSignal): Promise<DashboardD
       existing.shift = shiftLabel(row.turno);
     }
   }
+
+    const pageRecords: ProductionRecord[] = productionRows.map((row: any) => {
+    const rawQuantity = Number(row.quantidade_produzida || 0);
+    const drawing = String(row.desenho ?? '');
+    const matricula = String(row.matricula ?? row.colaborador_id ?? '').trim();
+
+    return {
+      id: row.id,
+      employeeId: matricula,
+      date: row.data,
+      partCode: drawing,
+      description: [row.linha, row.potencia].filter(Boolean).join(' • '),
+      op: row.op ?? undefined,
+      drawing: drawing || undefined,
+      className: row.classe ?? undefined,
+      power: row.potencia ?? undefined,
+      sector: row.setor ?? undefined,
+      machine: row.maquina ?? undefined,
+      rawQuantity,
+      convertedQuantity: calculateConvertedQuantity(rawQuantity, drawing),
+      producedMinutes: Number(row.tempo_produzido_min || 0),
+      stoppageMinutes: Number(row.tempo_parado_min || 0),
+      overtimeMinutes: Number(row.hora_extra_min || 0),
+      notes: row.observacao || undefined,
+    };
+  }).filter(record => record.employeeId);
+
+    records.push(...pageRecords);
+  };
+  const [, workdaysRes, controls, archives] = await Promise.all([
+    consumeProductionRows(consume, signal),
+    supabase.from('dias_trabalho').select('data,dia_trabalho').eq('dia_trabalho', true).order('data').abortSignal(signal),
+    loadEmployeeControls(signal),
+    loadEmployeeArchives(signal),
+  ]);
+  if (workdaysRes.error) throw workdaysRes.error;
+  signal?.throwIfAborted();
 
   // A tabela de controle representa somente o cadastro ativo.
   for (const row of controls.rows) {
@@ -165,32 +191,6 @@ export async function loadDashboardData(signal?:AbortSignal): Promise<DashboardD
   }
 
   const employees = Array.from(employeeMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-
-  const records: ProductionRecord[] = productionRows.map((row: any) => {
-    const rawQuantity = Number(row.quantidade_produzida || 0);
-    const drawing = String(row.desenho ?? '');
-    const matricula = String(row.matricula ?? row.colaborador_id ?? '').trim();
-
-    return {
-      id: row.id,
-      employeeId: matricula,
-      date: row.data,
-      partCode: drawing,
-      description: [row.linha, row.potencia].filter(Boolean).join(' • '),
-      op: row.op ?? undefined,
-      drawing: drawing || undefined,
-      className: row.classe ?? undefined,
-      power: row.potencia ?? undefined,
-      sector: row.setor ?? undefined,
-      machine: row.maquina ?? undefined,
-      rawQuantity,
-      convertedQuantity: calculateConvertedQuantity(rawQuantity, drawing),
-      producedMinutes: Number(row.tempo_produzido_min || 0),
-      stoppageMinutes: Number(row.tempo_parado_min || 0),
-      overtimeMinutes: Number(row.hora_extra_min || 0),
-      notes: row.observacao || undefined,
-    };
-  }).filter(record => record.employeeId);
 
   const officialWorkdays = (workdaysRes.data || []).map((row: any) => row.data);
   return { employees, records, officialWorkdays, employeeControlReady: controls.ready && archives.ready };

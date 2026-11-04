@@ -18,8 +18,7 @@ const normalizeHeader = (value: unknown) => String(value ?? '')
   .replace(/[\u0300-\u036f]/g, '')
   .toUpperCase();
 
-const pick = (row: Record<string, any>, aliases: string[]) => {
-  const map = new Map(Object.entries(row).map(([k, v]) => [normalizeHeader(k), v]));
+const pick = (map: Map<string, any>, aliases: string[]) => {
   for (const alias of aliases) {
     const value = map.get(normalizeHeader(alias));
     if (value !== undefined) return value;
@@ -73,7 +72,8 @@ async function parseProductivityWorkbookMeasured(file: File): Promise<ImportPrev
   const productionRowsRaw = XLSX.utils.sheet_to_json<Record<string, any>>(wb.Sheets[productionSheetName], { defval: null, raw: true });
   if (productionRowsRaw.length === 0) throw new Error('A aba BOBINAGEM (MÁQ) está vazia.');
 
-  const productionPayload = productionRowsRaw.map((r, index) => {
+  const productionPayload = productionRowsRaw.map((raw, index) => {
+    const r = new Map(Object.entries(raw).map(([key, value]) => [normalizeHeader(key), value]));
     const data = excelDateToISO(pick(r, ['DATA']));
     const matricula = textOrNull(pick(r, ['MATRÍCULA', 'MATRICULA']));
     if (!data || !matricula) throw new Error(`Aba BOBINAGEM (MÁQ): linha ${index + 2} está sem data ou matrícula válida.`);

@@ -1,0 +1,64 @@
+{
+  "method": "Single synthetic real XLSX upload each type; localhost PGlite, no production; 1001 rows -> sequential 1000 + 1 batches. 50000 rows parser only, unchanged parser, no before/after claim.",
+  "imports": [
+    {
+      "tipo": "PROGRAMACAO",
+      "xlsxBytes": 74347,
+      "ms": 455.5506999999998,
+      "imported": 1001,
+      "requests": [
+        {
+          "path": "/api/gestao-atrasos/importacoes/iniciar",
+          "bytes": 38
+        },
+        {
+          "path": "/api/gestao-atrasos/importacoes/lote",
+          "bytes": 163077,
+          "rows": 1000
+        },
+        {
+          "path": "/api/gestao-atrasos/importacoes/lote",
+          "bytes": 240,
+          "rows": 1
+        },
+        {
+          "path": "/api/gestao-atrasos/importacoes/finalizar",
+          "bytes": 66
+        }
+      ]
+    },
+    {
+      "tipo": "APONTAMENTO",
+      "xlsxBytes": 74350,
+      "ms": 624.8155000000002,
+      "imported": 1001,
+      "requests": [
+        {
+          "path": "/api/gestao-atrasos/importacoes/iniciar",
+          "bytes": 38
+        },
+        {
+          "path": "/api/gestao-atrasos/importacoes/lote",
+          "bytes": 149077,
+          "rows": 1000
+        },
+        {
+          "path": "/api/gestao-atrasos/importacoes/lote",
+          "bytes": 226,
+          "rows": 1
+        },
+        {
+          "path": "/api/gestao-atrasos/importacoes/finalizar",
+          "bytes": 66
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "largeParser": {
+    "rows": 50000,
+    "ignored": 0,
+    "ms": 511.30000001192093,
+    "xlsxBytes": 3391918
+  }
+}

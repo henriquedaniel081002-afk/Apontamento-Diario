@@ -1,0 +1,27 @@
+-- NÃO EXECUTAR — SOMENTE PROPOSTAS. Nenhuma migração exigida por esta entrega.
+-- Este arquivo contém apenas comentários; não contém DDL/DML executável.
+-- Destinos a confirmar por nomes de variáveis, sem expor valores:
+-- Neon Apontamento: quiet-dream-16310704; Supabase Prod_individual: bqqfrqmkemtfmracuyoi.
+-- Não usar ControleOP nem MATERIAL. Fallback legado não comprova destino real.
+--
+-- 1. Homologação autorizada: copiar dados mascarados e schema/índices/grants/triggers.
+-- Reproduzir scripts locais em PostgreSQL compatível; comparar resultado integral,
+-- planos, p50/p95, CPU, RAM, conexões, buffers, WAL, linhas gravadas e egress.
+-- EXPLAIN (ANALYZE, BUFFERS) apenas nessa cópia descartável autorizada.
+--
+-- 2. Índices: não há novo índice recomendado para executar agora. Comparar seletividade
+-- e índices existentes antes de propor DDL; seq scan em tabela pequena não é defeito.
+-- Novo predicado mensal já é intervalo indexável; validar plano com índices existentes.
+--
+-- 3. Produtividade: proposta não validada de staging por importação com finalização
+-- transacional, validação de contagem/replay e ponte autenticada no backend.
+-- Obter definição real de importar_produtividade antes de escrever a migração.
+-- Preservar substituição integral, jornada, horas extras e desligados.
+--
+-- 4. View/projeção: validar aliases matricula/colaborador_id e todas as 18 colunas;
+-- comparar KPIs e histórico. Só depois habilitar projeção opt-in em homologação.
+-- Não modificar view, grants ou RLS nesta entrega.
+--
+-- 5. Segurança: seguir PLANO_SEGURANCA_NAO_EXECUTADO.md. GRANT/REVOKE e políticas
+-- dependem de ponte validada, plano revisado e autorização separada.
+-- Não aplicar os SQLs de instalação herdados como migração desta otimização.

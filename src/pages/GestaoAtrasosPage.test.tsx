@@ -13,7 +13,7 @@ describe('Visão OP — concorrência e contexto',()=>{
  it('ignora resposta antiga mesmo quando o transporte ignora AbortSignal',async()=>{
    let oldResolve:any,newResolve:any;const signals:AbortSignal[]=[];
    api.mockImplementation(async(path,init)=>{
-     if(path.includes('permissoes'))return {setores:[]};
+     if(path.includes('/filtros'))return {combinacoes:[{setor:'SOLDA',linha:'TRI'}]};
      signals.push(init!.signal as AbortSignal);
      return new Promise(resolve=>{if(path.includes('op=222'))newResolve=resolve;else oldResolve=resolve;});
    });
@@ -31,7 +31,7 @@ describe('Visão OP — concorrência e contexto',()=>{
  it('fecha modal cancelando GETs e mantém o período selecionado nos detalhes',async()=>{
    let detailSignal:AbortSignal|undefined;
    api.mockImplementation(async(path,init)=>{
-     if(path.includes('permissoes'))return {setores:[]};
+     if(path.includes('/filtros'))return {combinacoes:[{setor:'SOLDA',linha:'TRI'}]};
      if(path.includes('/resumo'))return summary();
      if(path.includes('/justificativas'))return {rows:[]};
      expect(path).toContain('inicio=2026-07-01&fim=2026-07-31');
@@ -48,7 +48,7 @@ describe('Visão OP — concorrência e contexto',()=>{
  });
  it('apresenta falha local do modal e permite tentar novamente',async()=>{
    api.mockImplementation(async(path)=>{
-     if(path.includes('permissoes'))return {setores:[]};
+     if(path.includes('/filtros'))return {combinacoes:[{setor:'SOLDA',linha:'TRI'}]};
      if(path.includes('/resumo'))return summary();
      if(path.includes('/justificativas'))return {rows:[]};
      throw new Error('Falha controlada');
@@ -69,7 +69,7 @@ describe('Visão OP — concorrência e contexto',()=>{
  it('salva justificativa com período, recarrega histórico e preserva a navegação do modal',async()=>{
    let saved=false;
    api.mockImplementation(async(path,init)=>{
-     if(path.includes('permissoes'))return {setores:[]};
+     if(path.includes('/filtros'))return {combinacoes:[{setor:'SOLDA',linha:'TRI'}]};
      if(path.includes('/resumo'))return summary();
      if(init?.method==='POST'){
        expect(JSON.parse(String(init.body))).toMatchObject({op:'111',setor:'SOLDA',motivo:'Teste local de justificativa',previsao_regularizacao:'2026-11-15',inicio:'2026-07-01',fim:'2026-07-31'});
@@ -83,8 +83,8 @@ describe('Visão OP — concorrência e contexto',()=>{
    const modal=screen.getByRole('dialog');
    await within(modal).findByText(/Progresso dos setores/);
    fireEvent.click(within(modal).getByRole('button',{name:'Justificativa'}));
-   fireEvent.change(within(modal).getByLabelText('Motivo'),{target:{value:'Teste local de justificativa'}});
-   fireEvent.change(within(modal).getByLabelText('Previsão de regularização'),{target:{value:'2026-11-15'}});
+   fireEvent.change(within(modal).getByLabelText(/^Motivo/),{target:{value:'Teste local de justificativa'}});
+   fireEvent.change(within(modal).getByLabelText(/^Previsão de regularização/),{target:{value:'2026-11-15'}});
    fireEvent.click(within(modal).getByRole('button',{name:'Registrar justificativa e prazo'}));
    await waitFor(()=>expect(saved).toBe(true));
    fireEvent.click(within(modal).getByRole('button',{name:'Histórico'}));

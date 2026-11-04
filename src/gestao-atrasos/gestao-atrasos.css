@@ -1,0 +1,24 @@
+.op-dashboard .dash-filter-panel{grid-template-columns:minmax(0,1fr) auto;align-items:start}
+.op-dashboard .dash-filter-panel__title{grid-column:1/-1}
+.op-dashboard .dash-filter-panel__fields{grid-template-columns:repeat(4,minmax(0,1fr))}
+.op-dashboard .dash-filter-panel__actions{align-self:end}
+.op-dashboard .field-label{font-size:.75rem}
+.op-metrics{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:.75rem}
+.op-metric{min-width:0;min-height:9rem}
+.op-metric h3{font-size:.72rem;letter-spacing:.035em;color:var(--text-secondary);text-transform:uppercase;font-weight:800}
+.op-metric .op-metric__value{display:block;margin:.65rem 0 .25rem;font-size:1.8rem;line-height:1.1;font-weight:900;font-variant-numeric:tabular-nums}
+.op-metric--primary{background:var(--surface-raised);border-top:3px solid var(--danger)}
+.op-metric--danger .op-metric__value{color:var(--danger)}
+.op-metric--success .op-metric__value{color:var(--accent)}
+.op-metric--info .op-metric__value{color:#60a5fa}
+.op-metric--warning .op-metric__value{color:var(--warning)}
+.op-import{border:1px solid var(--border-subtle);border-radius:var(--radius-lg);background:var(--surface-base)}
+.op-import>summary{padding:.85rem 1rem;cursor:pointer;font-size:.8rem;font-weight:700;color:var(--text-secondary)}
+.op-import>summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+@media(max-width:1280px){.op-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}.op-dashboard .dash-filter-panel{grid-template-columns:1fr}.op-dashboard .dash-filter-panel__actions{justify-content:flex-end}}
+@media(max-width:760px){.op-dashboard .dash-filter-panel__fields{grid-template-columns:repeat(2,minmax(0,1fr))}.op-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.op-metric{padding:.85rem;min-height:8rem}}
+@media(max-width:420px){.op-dashboard .dashboard-filter:first-child{grid-column:1/-1}}
+.op-table-viewport{max-height:min(65vh,42rem);overflow:auto;border-radius:var(--radius-lg)}
+.op-table-viewport>div{overflow:visible}
+.op-table-viewport thead{position:sticky;top:0;z-index:1;background:var(--surface-raised)}
+.op-table-viewport:focus-visible{outline:2px solid var(--accent);outline-offset:3px}

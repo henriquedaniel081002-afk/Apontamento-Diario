@@ -1,0 +1,156 @@
+{
+  "method": "Node22 Chrome headless; compiled builds; synthetic PGlite, same fixture; 13 alternating pairs; first navigation reported separately, 12 measured; reload outside measured interval; coord default period; localhost only; elapsed click Atraso -> OP rendered; not provider cold start",
+  "errors": [],
+  "samples": {
+    "original": [
+      {
+        "ms": 1233.4418000000005,
+        "httpRequests": 2,
+        "decodedApiBodyBytes": 20983
+      },
+      {
+        "ms": 1248.0099999999984,
+        "httpRequests": 2,
+        "decodedApiBodyBytes": 20983
+      },
+      {
+        "ms": 1251.0303000000004,
+        "httpRequests": 2,
+        "decodedApiBodyBytes": 20983
+      },
+      {
+        "ms": 1350.3955999999998,
+        "httpRequests": 2,
+        "decodedApiBodyBytes": 20983
+      },
+      {
+        "ms": 1381.027900000001,
+        "httpRequests": 2,
+        "decodedApiBodyBytes": 20983
+      },
+      {
+        "ms": 1315.7561000000023,
+        "httpRequests": 2,
+        "decodedApiBodyBytes": 20983
+      },
+      {
+        "ms": 1320.717700000001,
+        "httpRequests": 2,
+        "decodedApiBodyBytes": 20983
+      },
+      {
+        "ms": 1347.306199999999,
+        "httpRequests": 2,
+        "decodedApiBodyBytes": 20983
+      },
+      {
+        "ms": 1214.1391000000003,
+        "httpRequests": 2,
+        "decodedApiBodyBytes": 20983
+      },
+      {
+        "ms": 1165.5486999999994,
+        "httpRequests": 2,
+        "decodedApiBodyBytes": 20983
+      },
+      {
+        "ms": 1281.1380999999965,
+        "httpRequests": 2,
+        "decodedApiBodyBytes": 20983
+      },
+      {
+        "ms": 1278.6618000000017,
+        "httpRequests": 2,
+        "decodedApiBodyBytes": 20983
+      },
+      {
+        "ms": 1297.7502000000022,
+        "httpRequests": 2,
+        "decodedApiBodyBytes": 20983
+      }
+    ],
+    "optimized": [
+      {
+        "ms": 1317.3354,
+        "httpRequests": 2,
+        "decodedApiBodyBytes": 21186
+      },
+      {
+        "ms": 1408.4506000000001,
+        "httpRequests": 2,
+        "decodedApiBodyBytes": 21186
+      },
+      {
+        "ms": 1129.9927000000025,
+        "httpRequests": 2,
+        "decodedApiBodyBytes": 21186
+      },
+      {
+        "ms": 1243.1875,
+        "httpRequests": 2,
+        "decodedApiBodyBytes": 21186
+      },
+      {
+        "ms": 1280.4889000000003,
+        "httpRequests": 2,
+        "decodedApiBodyBytes": 21186
+      },
+      {
+        "ms": 1325.7723000000005,
+        "httpRequests": 2,
+        "decodedApiBodyBytes": 21186
+      },
+      {
+        "ms": 1281.4135999999999,
+        "httpRequests": 2,
+        "decodedApiBodyBytes": 21186
+      },
+      {
+        "ms": 1474.5429999999978,
+        "httpRequests": 2,
+        "decodedApiBodyBytes": 21186
+      },
+      {
+        "ms": 1395.4637000000002,
+        "httpRequests": 2,
+        "decodedApiBodyBytes": 21186
+      },
+      {
+        "ms": 1267.0801999999967,
+        "httpRequests": 2,
+        "decodedApiBodyBytes": 21186
+      },
+      {
+        "ms": 1205.9084000000003,
+        "httpRequests": 2,
+        "decodedApiBodyBytes": 21186
+      },
+      {
+        "ms": 1289.2975000000006,
+        "httpRequests": 2,
+        "decodedApiBodyBytes": 21186
+      },
+      {
+        "ms": 1518.13489999999,
+        "httpRequests": 2,
+        "decodedApiBodyBytes": 21186
+      }
+    ]
+  },
+  "summary": {
+    "original": {
+      "firstNavigationMs": 1233.4418000000005,
+      "p50Ms": 1281.1380999999965,
+      "p95Ms": 1381.027900000001,
+      "apiRequests": 2,
+      "decodedApiBodyBytes": 20983
+    },
+    "optimized": {
+      "firstNavigationMs": 1317.3354,
+      "p50Ms": 1281.4135999999999,
+      "p95Ms": 1518.13489999999,
+      "apiRequests": 2,
+      "decodedApiBodyBytes": 21186
+    }
+  }
+}

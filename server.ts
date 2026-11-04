@@ -1717,22 +1717,26 @@ async function cleanupUnusedImportedProduction(
     params,
   );
 
+  const remove: number[] = [];
+  const preserve: number[] = [];
   for (const row of previous.rows) {
     const id = Number(row.id);
     if (usedIds.has(id)) continue;
-
-    // Nunca apaga informações digitadas pelos apontadores. Se o registro não possui
-    // complemento manual, pode ser removido por completo; caso contrário, apenas a
-    // produção antiga é retirada e as ocorrências permanecem intactas.
     const possuiTurnoRegistrado = row.turno1_complementado === true || row.turno2_complementado === true;
-    if (row.complementado === false && !possuiTurnoRegistrado && row.possui_complementos !== true) {
-      await client.query('DELETE FROM apontamentos WHERE id = $1', [id]);
-      continue;
-    }
-
-    await client.query('DELETE FROM producao WHERE apontamento_id = $1', [id]);
-    await client.query('UPDATE apontamentos SET atualizado_em = NOW() WHERE id = $1', [id]);
+    if (row.complementado === false && !possuiTurnoRegistrado && row.possui_complementos !== true) remove.push(id);
+    else preserve.push(id);
   }
+  // Preserve the original classification and caller's transaction/date scope.
+  // Bound the payload instead of issuing one or two round trips per record.
+  for (let offset = 0; offset < remove.length; offset += 400) {
+    await client.query('DELETE FROM apontamentos WHERE id = ANY($1::bigint[])', [remove.slice(offset, offset + 400)]);
+  }
+  for (let offset = 0; offset < preserve.length; offset += 400) {
+    const ids = preserve.slice(offset, offset + 400);
+    await client.query('DELETE FROM producao WHERE apontamento_id = ANY($1::bigint[])', [ids]);
+    await client.query('UPDATE apontamentos SET atualizado_em = NOW() WHERE id = ANY($1::bigint[])', [ids]);
+  }
+
 }
 
 async function replaceImportedProductionForDate(
@@ -1811,10 +1815,16 @@ async function replaceImportedProductionForDate(
 
     usedIds.add(apontamentoId);
     await client.query('DELETE FROM producao WHERE apontamento_id = $1', [apontamentoId]);
-    for (const group of unit) {
+    for (let offset = 0; offset < unit.length; offset += 400) {
+      const values: any[] = [];
+      const placeholders = unit.slice(offset, offset + 400).map(group => {
+        const base = values.length;
+        values.push(apontamentoId, group.linhaId, group.potencia, group.quantidade, group.turno || null);
+        return `($${base+1},$${base+2},$${base+3},$${base+4},$${base+5})`;
+      });
       await client.query(
-        'INSERT INTO producao(apontamento_id, linha_id, potencia, quantidade, turno) VALUES($1, $2, $3, $4, $5)',
-        [apontamentoId, group.linhaId, group.potencia, group.quantidade, group.turno || null],
+        `INSERT INTO producao(apontamento_id, linha_id, potencia, quantidade, turno) VALUES ${placeholders.join(',')}`,
+        values,
       );
     }
   }
@@ -1920,6 +1930,13 @@ function validateProductionMonthFinalize(body: any): { mesReferencia: string; se
   return { mesReferencia, setorFiltro, datasImportadas: datasImportadas.sort() };
 }
 
+function importedMonthPredicate(month: string): string {
+  // Legacy validation accepts malformed month numbers; these matched no rows.
+  // Keep that behavior rather than throwing on a date cast or widening cleanup.
+  if (!/^[0-9]{4}-(0[1-9]|1[0-2])$/.test(month) || month.startsWith('0000')) return '($1::text IS NULL AND FALSE)';
+  return "a.data >= ($1::text || '-01')::date AND a.data < (($1::text || '-01')::date + INTERVAL '1 month')";
+}
+
 // Etapa final da importação mensal fracionada. Os dias presentes no arquivo já
 // foram substituídos individualmente; aqui são removidas apenas produções antigas
 // de dias do mês que deixaram de existir no novo arquivo. Ocorrências digitadas
@@ -1938,14 +1955,14 @@ app.post('/api/coordenacao/importar-producao-mes-finalizar', auth, requireCoorde
     if (payload.setorFiltro === 'ALL') {
       await cleanupUnusedImportedProduction(
         client,
-        "TO_CHAR(a.data, 'YYYY-MM') = $1 AND NOT (a.data = ANY($2::date[]))",
+        `${importedMonthPredicate(payload.mesReferencia)} AND NOT (a.data = ANY($2::date[]))`,
         [payload.mesReferencia, payload.datasImportadas],
         new Set<number>(),
       );
     } else {
       await cleanupUnusedImportedProduction(
         client,
-        "TO_CHAR(a.data, 'YYYY-MM') = $1 AND NOT (a.data = ANY($2::date[])) AND a.setor_id = (SELECT id FROM setores WHERE nome = $3 LIMIT 1)",
+        `${importedMonthPredicate(payload.mesReferencia)} AND NOT (a.data = ANY($2::date[])) AND a.setor_id = (SELECT id FROM setores WHERE nome = $3 LIMIT 1)`,
         [payload.mesReferencia, payload.datasImportadas, payload.setorFiltro],
         new Set<number>(),
       );
@@ -1989,14 +2006,14 @@ app.post('/api/coordenacao/importar-producao-mes', auth, requireCoordenacao, asy
     if (payload.setorFiltro === 'ALL') {
       await cleanupUnusedImportedProduction(
         client,
-        "TO_CHAR(a.data, 'YYYY-MM') = $1",
+        importedMonthPredicate(payload.mesReferencia),
         [payload.mesReferencia],
         allUsedIds,
       );
     } else {
       await cleanupUnusedImportedProduction(
         client,
-        "TO_CHAR(a.data, 'YYYY-MM') = $1 AND a.setor_id = (SELECT id FROM setores WHERE nome = $2 LIMIT 1)",
+        `${importedMonthPredicate(payload.mesReferencia)} AND a.setor_id = (SELECT id FROM setores WHERE nome = $2 LIMIT 1)`,
         [payload.mesReferencia, payload.setorFiltro],
         allUsedIds,
       );

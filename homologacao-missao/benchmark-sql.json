@@ -1,0 +1,611 @@
+{
+  "engine": "PGlite PostgreSQL local WASM; no cloud connections",
+  "version": {
+    "version": "PostgreSQL 18.6 (PGlite 0.5.13) on wasm32-unknown-emscripten, compiled by emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 6.0.5 (1db513782be24469589d7cb8a1f1834e9a33f271), 32-bit"
+  },
+  "equivalenceScenarios": 21,
+  "checks": [
+    "empty page preserves total/KPIs",
+    "custom historical/future dates",
+    "authorized sector",
+    "detail parity",
+    "identical replay no extra rows",
+    "transactional finalize",
+    "incomplete import preserves active",
+    "changed retry rolls back entire batch",
+    "repeated finalize is idempotent",
+    "API quantity limits before SQL"
+  ],
+  "scenarioResults": [
+    {
+      "query": {
+        "situacao": "TODOS"
+      },
+      "originalFirstMs": 583.4000999999989,
+      "optimizedFirstMs": 472.7679999999964,
+      "original": {
+        "p50": 812.8536999999997,
+        "p95": 1473.9795000000013,
+        "sqlCalls": 1,
+        "responseBytes": 20993,
+        "cpuMs": 10126,
+        "samplesMs": [
+          601.7978999999978,
+          618.8180999999968,
+          639.5074000000022,
+          667.6195999999982,
+          808.7843999999968,
+          812.8536999999997,
+          817.0953999999983,
+          896.7569999999978,
+          945.6442999999999,
+          988.5046999999977,
+          1364.8179999999993,
+          1473.9795000000013
+        ]
+      },
+      "optimized": {
+        "p50": 752.2883000000002,
+        "p95": 1043.5334999999977,
+        "sqlCalls": 1,
+        "responseBytes": 20993,
+        "cpuMs": 10124,
+        "samplesMs": [
+          637.2390000000014,
+          669.2546000000002,
+          680.6504999999961,
+          721.3757000000041,
+          729.8452000000034,
+          752.2883000000002,
+          860.7091,
+          861.8035000000018,
+          884.0455999999976,
+          891.4571999999971,
+          924.3306000000011,
+          1043.5334999999977
+        ]
+      }
+    },
+    {
+      "query": {
+        "setor": "BOBINAGEM",
+        "cliente": "Cliente 2",
+        "situacao": "TODOS"
+      },
+      "originalFirstMs": 153.39459999999963,
+      "optimizedFirstMs": 136.13790000000154,
+      "original": {
+        "p50": 177.4140999999945,
+        "p95": 355.3613000000041,
+        "sqlCalls": 1,
+        "responseBytes": 20738,
+        "cpuMs": 2375,
+        "samplesMs": [
+          110.30710000000545,
+          142.8093000000008,
+          149.51450000000477,
+          156.98189999999886,
+          168.94380000000092,
+          177.4140999999945,
+          205.22589999999764,
+          210.27240000000165,
+          238.59820000000036,
+          274.3322000000044,
+          321.70100000000093,
+          355.3613000000041
+        ]
+      },
+      "optimized": {
+        "p50": 178.11039999999775,
+        "p95": 325.85459999999875,
+        "sqlCalls": 1,
+        "responseBytes": 20738,
+        "cpuMs": 2329,
+        "samplesMs": [
+          150.68590000000404,
+          155.35399999999936,
+          159.76529999999912,
+          170.93479999999545,
+          175.43620000000374,
+          178.11039999999775,
+          181.8839999999982,
+          183.91500000000087,
+          205.72789999999804,
+          270.8159000000014,
+          299.1238000000012,
+          325.85459999999875
+        ]
+      }
+    },
+    {
+      "query": {
+        "serie": "2",
+        "situacao": "TODOS"
+      },
+      "originalFirstMs": 4.538400000004913,
+      "optimizedFirstMs": 8.018700000000536,
+      "original": {
+        "p50": 8.666199999999662,
+        "p95": 12.049900000005437,
+        "sqlCalls": 1,
+        "responseBytes": 1278,
+        "cpuMs": 126,
+        "samplesMs": [
+          4.354800000000978,
+          6.113100000002305,
+          6.723900000004505,
+          7.711199999997916,
+          8.512099999999919,
+          8.666199999999662,
+          8.784199999994598,
+          8.943299999998999,
+          9.083400000003166,
+          9.362600000000384,
+          9.681799999998475,
+          12.049900000005437
+        ]
+      },
+      "optimized": {
+        "p50": 7.60729999999603,
+        "p95": 10.537100000001374,
+        "sqlCalls": 1,
+        "responseBytes": 1278,
+        "cpuMs": 92,
+        "samplesMs": [
+          4.569700000000012,
+          4.76480000000447,
+          6.4755999999979394,
+          6.6318000000028405,
+          7.327900000003865,
+          7.60729999999603,
+          7.694100000000617,
+          8.05569999999716,
+          8.401600000004692,
+          9.06880000000092,
+          9.547200000000885,
+          10.537100000001374
+        ]
+      }
+    }
+  ],
+  "batchBenchmarks": [
+    {
+      "tipo": "PROGRAMACAO",
+      "original": {
+        "firstMs": 128.44890000000305,
+        "p50": 225.60789999998815,
+        "p95": 332.5246000000043,
+        "calls": 4,
+        "sqlBytes": 109853,
+        "parameterBytes": 128070,
+        "httpBodyBytes": 239077,
+        "cpuMs": 2732,
+        "samples": [
+          {
+            "ms": 182.0141999999978,
+            "calls": 4,
+            "sqlBytes": 109853,
+            "parameterBytes": 128070,
+            "httpBodyBytes": 239077,
+            "cpuMs": 171
+          },
+          {
+            "ms": 177.92629999999917,
+            "calls": 4,
+            "sqlBytes": 109853,
+            "parameterBytes": 128070,
+            "httpBodyBytes": 239077,
+            "cpuMs": 172
+          },
+          {
+            "ms": 110.30309999999008,
+            "calls": 4,
+            "sqlBytes": 109853,
+            "parameterBytes": 128070,
+            "httpBodyBytes": 239077,
+            "cpuMs": 109
+          },
+          {
+            "ms": 332.5246000000043,
+            "calls": 4,
+            "sqlBytes": 109853,
+            "parameterBytes": 128070,
+            "httpBodyBytes": 239077,
+            "cpuMs": 390
+          },
+          {
+            "ms": 225.60789999998815,
+            "calls": 4,
+            "sqlBytes": 109853,
+            "parameterBytes": 128070,
+            "httpBodyBytes": 239077,
+            "cpuMs": 203
+          },
+          {
+            "ms": 228.57910000000265,
+            "calls": 4,
+            "sqlBytes": 109853,
+            "parameterBytes": 128070,
+            "httpBodyBytes": 239077,
+            "cpuMs": 250
+          },
+          {
+            "ms": 180.08239999999932,
+            "calls": 4,
+            "sqlBytes": 109853,
+            "parameterBytes": 128070,
+            "httpBodyBytes": 239077,
+            "cpuMs": 203
+          },
+          {
+            "ms": 216.33480000001146,
+            "calls": 4,
+            "sqlBytes": 109853,
+            "parameterBytes": 128070,
+            "httpBodyBytes": 239077,
+            "cpuMs": 187
+          },
+          {
+            "ms": 241.8463999999949,
+            "calls": 4,
+            "sqlBytes": 109853,
+            "parameterBytes": 128070,
+            "httpBodyBytes": 239077,
+            "cpuMs": 265
+          },
+          {
+            "ms": 231.1866000000009,
+            "calls": 4,
+            "sqlBytes": 109853,
+            "parameterBytes": 128070,
+            "httpBodyBytes": 239077,
+            "cpuMs": 234
+          },
+          {
+            "ms": 267.35439999999653,
+            "calls": 4,
+            "sqlBytes": 109853,
+            "parameterBytes": 128070,
+            "httpBodyBytes": 239077,
+            "cpuMs": 329
+          },
+          {
+            "ms": 243.10740000000806,
+            "calls": 4,
+            "sqlBytes": 109853,
+            "parameterBytes": 128070,
+            "httpBodyBytes": 239077,
+            "cpuMs": 219
+          }
+        ]
+      },
+      "optimized": {
+        "firstMs": 163.03349999999773,
+        "p50": 151.75539999999455,
+        "p95": 220.40430000000924,
+        "calls": 4,
+        "sqlBytes": 1089,
+        "parameterBytes": 89125,
+        "httpBodyBytes": 239077,
+        "cpuMs": 1781,
+        "samples": [
+          {
+            "ms": 134.9789000000019,
+            "calls": 4,
+            "sqlBytes": 1089,
+            "parameterBytes": 89125,
+            "httpBodyBytes": 239077,
+            "cpuMs": 125
+          },
+          {
+            "ms": 153.2543999999907,
+            "calls": 4,
+            "sqlBytes": 1089,
+            "parameterBytes": 89125,
+            "httpBodyBytes": 239077,
+            "cpuMs": 172
+          },
+          {
+            "ms": 167.18540000000212,
+            "calls": 4,
+            "sqlBytes": 1089,
+            "parameterBytes": 89125,
+            "httpBodyBytes": 239077,
+            "cpuMs": 187
+          },
+          {
+            "ms": 134.47699999999895,
+            "calls": 4,
+            "sqlBytes": 1089,
+            "parameterBytes": 89125,
+            "httpBodyBytes": 239077,
+            "cpuMs": 156
+          },
+          {
+            "ms": 136.6600000000035,
+            "calls": 4,
+            "sqlBytes": 1089,
+            "parameterBytes": 89125,
+            "httpBodyBytes": 239077,
+            "cpuMs": 125
+          },
+          {
+            "ms": 101.56500000000233,
+            "calls": 4,
+            "sqlBytes": 1089,
+            "parameterBytes": 89125,
+            "httpBodyBytes": 239077,
+            "cpuMs": 95
+          },
+          {
+            "ms": 110.78089999999793,
+            "calls": 4,
+            "sqlBytes": 1089,
+            "parameterBytes": 89125,
+            "httpBodyBytes": 239077,
+            "cpuMs": 109
+          },
+          {
+            "ms": 220.40430000000924,
+            "calls": 4,
+            "sqlBytes": 1089,
+            "parameterBytes": 89125,
+            "httpBodyBytes": 239077,
+            "cpuMs": 141
+          },
+          {
+            "ms": 181.07480000000214,
+            "calls": 4,
+            "sqlBytes": 1089,
+            "parameterBytes": 89125,
+            "httpBodyBytes": 239077,
+            "cpuMs": 171
+          },
+          {
+            "ms": 151.75539999999455,
+            "calls": 4,
+            "sqlBytes": 1089,
+            "parameterBytes": 89125,
+            "httpBodyBytes": 239077,
+            "cpuMs": 157
+          },
+          {
+            "ms": 218.0066999999981,
+            "calls": 4,
+            "sqlBytes": 1089,
+            "parameterBytes": 89125,
+            "httpBodyBytes": 239077,
+            "cpuMs": 187
+          },
+          {
+            "ms": 161.0402999999933,
+            "calls": 4,
+            "sqlBytes": 1089,
+            "parameterBytes": 89125,
+            "httpBodyBytes": 239077,
+            "cpuMs": 156
+          }
+        ]
+      }
+    },
+    {
+      "tipo": "APONTAMENTO",
+      "original": {
+        "firstMs": 253.886599999998,
+        "p50": 128.0011999999988,
+        "p95": 248.51510000000417,
+        "calls": 4,
+        "sqlBytes": 109861,
+        "parameterBytes": 107070,
+        "httpBodyBytes": 239077,
+        "cpuMs": 1923,
+        "samples": [
+          {
+            "ms": 246.4548000000068,
+            "calls": 4,
+            "sqlBytes": 109861,
+            "parameterBytes": 107070,
+            "httpBodyBytes": 239077,
+            "cpuMs": 234
+          },
+          {
+            "ms": 220.5957999999955,
+            "calls": 4,
+            "sqlBytes": 109861,
+            "parameterBytes": 107070,
+            "httpBodyBytes": 239077,
+            "cpuMs": 219
+          },
+          {
+            "ms": 192.87450000000536,
+            "calls": 4,
+            "sqlBytes": 109861,
+            "parameterBytes": 107070,
+            "httpBodyBytes": 239077,
+            "cpuMs": 203
+          },
+          {
+            "ms": 248.51510000000417,
+            "calls": 4,
+            "sqlBytes": 109861,
+            "parameterBytes": 107070,
+            "httpBodyBytes": 239077,
+            "cpuMs": 281
+          },
+          {
+            "ms": 105.07519999999204,
+            "calls": 4,
+            "sqlBytes": 109861,
+            "parameterBytes": 107070,
+            "httpBodyBytes": 239077,
+            "cpuMs": 110
+          },
+          {
+            "ms": 106.75669999999809,
+            "calls": 4,
+            "sqlBytes": 109861,
+            "parameterBytes": 107070,
+            "httpBodyBytes": 239077,
+            "cpuMs": 172
+          },
+          {
+            "ms": 89.88790000000154,
+            "calls": 4,
+            "sqlBytes": 109861,
+            "parameterBytes": 107070,
+            "httpBodyBytes": 239077,
+            "cpuMs": 94
+          },
+          {
+            "ms": 96.78879999999481,
+            "calls": 4,
+            "sqlBytes": 109861,
+            "parameterBytes": 107070,
+            "httpBodyBytes": 239077,
+            "cpuMs": 78
+          },
+          {
+            "ms": 167.9890000000014,
+            "calls": 4,
+            "sqlBytes": 109861,
+            "parameterBytes": 107070,
+            "httpBodyBytes": 239077,
+            "cpuMs": 141
+          },
+          {
+            "ms": 128.0011999999988,
+            "calls": 4,
+            "sqlBytes": 109861,
+            "parameterBytes": 107070,
+            "httpBodyBytes": 239077,
+            "cpuMs": 125
+          },
+          {
+            "ms": 110.51480000000447,
+            "calls": 4,
+            "sqlBytes": 109861,
+            "parameterBytes": 107070,
+            "httpBodyBytes": 239077,
+            "cpuMs": 110
+          },
+          {
+            "ms": 182.95819999999367,
+            "calls": 4,
+            "sqlBytes": 109861,
+            "parameterBytes": 107070,
+            "httpBodyBytes": 239077,
+            "cpuMs": 156
+          }
+        ]
+      },
+      "optimized": {
+        "firstMs": 192.64830000000075,
+        "p50": 113.19559999999183,
+        "p95": 221.77330000000075,
+        "calls": 4,
+        "sqlBytes": 1097,
+        "parameterBytes": 68125,
+        "httpBodyBytes": 239077,
+        "cpuMs": 1623,
+        "samples": [
+          {
+            "ms": 119.37820000000647,
+            "calls": 4,
+            "sqlBytes": 1097,
+            "parameterBytes": 68125,
+            "httpBodyBytes": 239077,
+            "cpuMs": 124
+          },
+          {
+            "ms": 123.75530000000435,
+            "calls": 4,
+            "sqlBytes": 1097,
+            "parameterBytes": 68125,
+            "httpBodyBytes": 239077,
+            "cpuMs": 110
+          },
+          {
+            "ms": 221.77330000000075,
+            "calls": 4,
+            "sqlBytes": 1097,
+            "parameterBytes": 68125,
+            "httpBodyBytes": 239077,
+            "cpuMs": 437
+          },
+          {
+            "ms": 139.87020000000484,
+            "calls": 4,
+            "sqlBytes": 1097,
+            "parameterBytes": 68125,
+            "httpBodyBytes": 239077,
+            "cpuMs": 156
+          },
+          {
+            "ms": 113.19559999999183,
+            "calls": 4,
+            "sqlBytes": 1097,
+            "parameterBytes": 68125,
+            "httpBodyBytes": 239077,
+            "cpuMs": 125
+          },
+          {
+            "ms": 71.59960000000137,
+            "calls": 4,
+            "sqlBytes": 1097,
+            "parameterBytes": 68125,
+            "httpBodyBytes": 239077,
+            "cpuMs": 78
+          },
+          {
+            "ms": 76.26219999999739,
+            "calls": 4,
+            "sqlBytes": 1097,
+            "parameterBytes": 68125,
+            "httpBodyBytes": 239077,
+            "cpuMs": 78
+          },
+          {
+            "ms": 59.29170000000158,
+            "calls": 4,
+            "sqlBytes": 1097,
+            "parameterBytes": 68125,
+            "httpBodyBytes": 239077,
+            "cpuMs": 62
+          },
+          {
+            "ms": 87.89690000000701,
+            "calls": 4,
+            "sqlBytes": 1097,
+            "parameterBytes": 68125,
+            "httpBodyBytes": 239077,
+            "cpuMs": 94
+          },
+          {
+            "ms": 92.97410000000673,
+            "calls": 4,
+            "sqlBytes": 1097,
+            "parameterBytes": 68125,
+            "httpBodyBytes": 239077,
+            "cpuMs": 94
+          },
+          {
+            "ms": 120.98880000000645,
+            "calls": 4,
+            "sqlBytes": 1097,
+            "parameterBytes": 68125,
+            "httpBodyBytes": 239077,
+            "cpuMs": 94
+          },
+          {
+            "ms": 135.347299999994,
+            "calls": 4,
+            "sqlBytes": 1097,
+            "parameterBytes": 68125,
+            "httpBodyBytes": 239077,
+            "cpuMs": 171
+          }
+        ]
+      }
+    }
+  ]
+}

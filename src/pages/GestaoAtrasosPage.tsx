@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ClipboardList, Download, Eye, FileUp, RefreshCw, Search } from 'lucide-react';
 import { OpDetailModal } from '../gestao-atrasos/OpDetailModal';
+import { ModalShell } from '../components/common/ModalShell';
 import {fmt,br,situation,type Row,type Series,type Progress,type History,type Summary,type Mismatch} from '../gestao-atrasos/presentation';
 import { FilterBar, FilterSelect } from '../dashboard/components/FilterBar';
 import '../dashboard/dashboard.css';
@@ -28,6 +29,7 @@ export function GestaoAtrasosPage({user,active}:{user:User;active:boolean}) {
   const [motivo,setMotivo]=useState('');const [previsao,setPrevisao]=useState('');
   const [saving,setSaving]=useState(false);const [importing,setImporting]=useState(false);
   const [exporting,setExporting]=useState(false);
+  const [showExportOptions,setShowExportOptions]=useState(false);
   const [importStatus,setImportStatus]=useState('');const [mismatch,setMismatch]=useState<Mismatch[]>([]);
   const [combinations,setCombinations]=useState<Array<{setor:string;linha:string}>>([]);
   const [optionsLoading,setOptionsLoading]=useState(false);
@@ -134,16 +136,18 @@ export function GestaoAtrasosPage({user,active}:{user:User;active:boolean}) {
     }catch(e){setError(e instanceof Error?e.message:'Falha na importação.');setImportStatus('Envio interrompido. Confira a base ativa em Atualizar antes de reenviar; lotes pendentes não substituem a base ativa.');}
     finally{setImporting(false);if(prog.current)prog.current.value='';if(apont.current)apont.current.value='';}
   };
-  const exportPdf=async()=>{
+  const exportPdf=async(incluirHoje:boolean)=>{
     if(exporting||loading||importing||!data?.importacoes.some(i=>i.tipo==='APONTAMENTO'))return;
+    setShowExportOptions(false);
     setExporting(true);setError('');
     try {
       if((filters.op.trim()&&!/^\d{1,20}$/.test(filters.op.trim()))||(filters.serie.trim()&&!/^\d{1,20}$/.test(filters.serie.trim())))
         throw new Error('Informe apenas números em OP e Série (até 20 dígitos).');
       const q=new URLSearchParams();
       Object.entries(filters).forEach(([key,value])=>{if(value)q.set(key,String(value));});
+      q.set('incluirHoje',String(incluirHoje));
       const result=await apiRequest<RelatorioPrioridades>(`/api/gestao-atrasos/relatorio-prioridades?${q}`);
-      if(!result.rows.length)throw new Error('Não há programações até hoje para os filtros selecionados.');
+      if(!result.rows.length)throw new Error('Não há programações para o período e os filtros selecionados.');
       const bytes=gerarPdfPrioridades(result,filters);
       const blob=new Blob([bytes as BlobPart],{type:'application/pdf'});
       const url=URL.createObjectURL(blob);
@@ -184,7 +188,7 @@ export function GestaoAtrasosPage({user,active}:{user:User;active:boolean}) {
       title="Atraso — Visão OP"
       description="Acompanhe pendências, produção, justificativas e prazos por OP e setor. Sem datas selecionadas: mês anterior e atual; os limites informados são inclusivos."
       icon={<ClipboardList className="size-5" aria-hidden="true"/>}
-      actions={<div className="flex flex-wrap items-center gap-2"><Button variant="secondary" size="sm" leftIcon={<Download className="size-4" aria-hidden="true"/>} disabled={loading||importing||exporting||!data?.importacoes.some(i=>i.tipo==='APONTAMENTO')} onClick={()=>void exportPdf()}>{exporting?'Gerando PDF...':'PDF · Checklist do líder'}</Button><Button variant="ghost" size="sm" leftIcon={<RefreshCw className="size-4" aria-hidden="true"/>} isLoading={loading} loadingLabel="Atualizando" onClick={refresh}>Atualizar</Button></div>}
+      actions={<div className="flex flex-wrap items-center gap-2"><Button variant="secondary" size="sm" leftIcon={<Download className="size-4" aria-hidden="true"/>} disabled={loading||importing||exporting||!data?.importacoes.some(i=>i.tipo==='APONTAMENTO')} onClick={()=>setShowExportOptions(true)}>{exporting?'Gerando PDF...':'PDF · Checklist do líder'}</Button><Button variant="ghost" size="sm" leftIcon={<RefreshCw className="size-4" aria-hidden="true"/>} isLoading={loading} loadingLabel="Atualizando" onClick={refresh}>Atualizar</Button></div>}
     />
     <FilterBar onClear={clearFilters} clearDisabled={!filtersActive} note="Indicadores do conjunto filtrado">
       <FilterSelect id="op-setor" label="Setor" options={['',...sectors]} selected={filters.setor} onSelect={v=>update('setor',v)} formatOption={v=>v||'Todos os autorizados'} active={Boolean(filters.setor)} disabled={optionsLoading||Boolean(optionsError)}/>
@@ -201,7 +205,7 @@ export function GestaoAtrasosPage({user,active}:{user:User;active:boolean}) {
     {optionsLoading&&<p role="status" className="text-xs text-slate-400">Atualizando setores e linhas do período...</p>}
     {optionsError&&<p role="alert" className="text-sm text-rose-200">{optionsError} Use Atualizar para tentar novamente.</p>}
     {filtersActive&&<p className="text-xs text-slate-400" aria-live="polite">Filtros ativos · {filters.setor||'Todos os setores autorizados'} · {filters.linha||'Todas as linhas'}{filters.op?` · OP ${filters.op}`:''}{filters.serie?` · Série ${filters.serie}`:''}{filters.cliente?` · Cliente ${filters.cliente}`:''} · {filters.inicio||'Início padrão'} a {filters.fim||'Fim padrão'} · {filters.situacao}{filters.justificativa?` · Justificativa: ${filters.justificativa}`:''}{filters.multiplos?' · Vários dias':''}</p>}
-    <p className="text-xs text-slate-400">PDF de prioridades: usa os filtros ativos, inclui programações até hoje e separa cada OP por data. Para listar atrasos e hoje, selecione <strong>Todas</strong>; com <strong>Com atraso</strong>, exporta somente pendências vencidas.</p>
+    <p className="text-xs text-slate-400">PDF de prioridades: usa os filtros ativos e separa cada OP por data. Antes de exportar, escolha se deseja incluir a programação de hoje. Datas futuras nunca são incluídas.</p>
     <OpKpis values={data?.kpis} loading={loading}/>
     {user.perfil==='COORDENACAO'&&<details className="op-import"><summary>Importação detalhada · programação e apontamento</summary><SectionCard title="Importação detalhada" description="A base anterior permanece ativa até a validação e substituição completas." icon={<FileUp className="size-5" aria-hidden="true"/>}>
       <p className="mb-3 text-sm leading-5 text-slate-400">Importe programação e apontamento separadamente. Sem período definido, a importação considera o mês anterior e o atual; para outro período, preencha Início e Fim nos filtros.</p>
@@ -223,6 +227,19 @@ export function GestaoAtrasosPage({user,active}:{user:User;active:boolean}) {
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-slate-500">{fmt(data?.total||0)} resultados · 50 por página</p><div className="flex gap-2"><Button variant="secondary" size="sm" disabled={loading||page<=1} onClick={()=>setPage(p=>p-1)}>Anterior</Button><Button variant="secondary" size="sm" disabled={loading||page*50>=(data?.total||0)} onClick={()=>setPage(p=>p+1)}>Próxima</Button></div></div>
       </div>
     </SectionCard>
+    <ModalShell
+      isOpen={showExportOptions}
+      onClose={()=>setShowExportOptions(false)}
+      title="Adicionar programação de hoje?"
+      description="Defina se o checklist deve incluir a programação do dia atual."
+      size="sm"
+      footer={<div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <Button variant="secondary" onClick={()=>void exportPdf(false)}>Não, somente anteriores</Button>
+        <Button variant="primary" onClick={()=>void exportPdf(true)}>Sim, incluir hoje</Button>
+      </div>}
+    >
+      <p className="text-sm leading-6 text-slate-300">Ao incluir hoje, as programações atuais aparecem com suas quantidades produzidas e pendentes, sem serem classificadas como atrasadas. Todos os demais filtros continuam sendo aplicados; datas futuras ficam de fora.</p>
+    </ModalShell>
     {selected&&<OpDetailModal key={`${selected.op}|${selected.setor}`} {...{selected,detail,history,detailError,motivo,previsao,saving,close,open,save,setMotivo,setPrevisao}}/>}
   </PageContainer>;
 }

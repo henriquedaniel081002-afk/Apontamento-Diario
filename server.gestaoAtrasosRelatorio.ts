@@ -25,18 +25,21 @@ export function registerGestaoAtrasosRelatorio(
       const situacao=String(req.query.situacao||'ATRASADOS');
       const justificativa=String(req.query.justificativa||'');
       const multiplos=req.query.multiplos==='true';
+      const incluirHoje=req.query.incluirHoje==='true';
       if ((op&&!/^\d{1,20}$/.test(op)) || (serie&&!/^\d{1,20}$/.test(serie)) ||
         !['ATRASADOS','TODOS','CONCLUIDOS'].includes(situacao) ||
-        (justificativa&&!['COM','SEM'].includes(justificativa)))
+        (justificativa&&!['COM','SEM'].includes(justificativa)) ||
+        (req.query.incluirHoje!==undefined&&!['true','false'].includes(req.query.incluirHoje)))
         return res.status(400).json({error:'Filtros inválidos.'});
       if (allowed!==null && setor && !allowed.includes(setor))
         return res.status(403).json({error:'Setor não autorizado.'});
 
-      // O checklist diário não inclui programações futuras.
+      // Por padrão, apenas datas anteriores. Incluir hoje é opcional; nunca inclui futuras.
       const tomorrow=new Date(Date.parse(`${today}T00:00:00Z`)+86400000).toISOString().slice(0,10);
-      const exclusiveEnd=end<tomorrow?end:tomorrow;
+      const dayLimit=incluirHoje?tomorrow:today;
+      const exclusiveEnd=end<dayLimit?end:dayLimit;
       const values=[allowed,setor||null,exclusiveEnd,start,op||null,serie||null,
-        linha||null,cliente||null,today,situacao,justificativa,multiplos];
+        linha||null,cliente||null,today,situacao,justificativa,multiplos,incluirHoje];
 
       const result=await pool.query(`${activeRows('($1::text[] IS NULL OR p.setor=ANY($1::text[])) AND p.data_programada < $3::date')},
         scoped AS MATERIALIZED (
@@ -81,7 +84,9 @@ export function registerGestaoAtrasosRelatorio(
             SELECT motivo,previsao_regularizacao FROM public.atrasos_justificativas
             WHERE op=g.op AND setor=g.setor ORDER BY criado_em DESC,id DESC LIMIT 1
           ) j ON true
-          WHERE ($10='TODOS' OR ($10='ATRASADOS' AND g.data_programada<$9::text AND g.pendente>0)
+          WHERE ($10='TODOS' OR ($10='ATRASADOS' AND
+              ((g.data_programada<$9::text AND g.pendente>0)
+                OR ($13::boolean AND g.data_programada=$9::text)))
             OR ($10='CONCLUIDOS' AND fc.total_setor=fc.produzido_setor))
             AND ($11='' OR ($11='COM' AND j.motivo IS NOT NULL) OR ($11='SEM' AND j.motivo IS NULL))
             AND (NOT $12::boolean OR sc.dias_programados>1)

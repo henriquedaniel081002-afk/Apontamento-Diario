@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Express } from 'express';
 import type { Pool } from 'pg';
-import { registerGestaoAtrasosRelatorio } from './server.gestaoAtrasosRelatorio';
+import { registerGestaoAtrasosRelatorio } from './server.gestaoAtrasosRelatorio.js';
 
 type Tipo = 'PROGRAMACAO' | 'APONTAMENTO';
 const TIPOS = new Set(['PROGRAMACAO', 'APONTAMENTO']);

@@ -11,9 +11,8 @@ export function isValidDailyObservationDate(value: unknown): value is string {
 
 export function isValidDailyObservationScope(setor: unknown, linha: unknown): boolean {
   if (typeof setor !== 'string' || !setor.trim() || setor.length > 100 || setor !== setor.trim().toUpperCase()) return false;
-  if (typeof linha !== 'string') return false;
-  const split = setor === 'MONTAGEM FINAL' || setor === 'MPA';
-  return split ? linha === 'MON' || linha === 'TRI' : linha === 'GERAL';
+  // Uma observação geral por setor e data, sem diferenciação por linha.
+  return linha === 'GERAL';
 }
 
 /** Rotas isoladas: nenhum apontamento ou ocorrência operacional é alterado. */
@@ -33,7 +32,7 @@ export function registerProducaoDiariaObservacoesRoutes(
       const result = await pool.query(`
         SELECT data::text, setor, linha, observacao, atualizado_em, atualizado_por_login
           FROM producao_diaria_observacoes
-         WHERE data BETWEEN $1::date AND $2::date
+         WHERE data BETWEEN $1::date AND $2::date AND linha = 'GERAL'
          ORDER BY data DESC, setor, linha
       `, [dataInicio, dataFim]);
       res.json({ observacoes: result.rows });

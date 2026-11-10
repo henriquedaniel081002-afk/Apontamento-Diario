@@ -5,8 +5,7 @@ import {
   CheckCircle2,
   ClipboardList,
   Gauge,
-  MessageSquareText,
-  Save,
+  Eye,
   RefreshCw,
   RotateCcw,
 } from 'lucide-react';
@@ -22,7 +21,7 @@ import {
   YAxis,
 } from 'recharts';
 import { CustomSelect } from '../components/common/CustomSelect';
-import { ModalShell } from '../components/common/ModalShell';
+import { DailySectorDetailModal } from '../producao-diaria/DailySectorDetailModal';
 import {
   Button,
   EmptyState,
@@ -40,7 +39,7 @@ import { formatNum, formatPct } from '../dashboard/lib/formatters';
 import { buildDailyProductionMetrics } from '../producao-diaria/metrics';
 import type { DailyProductionSectorMetric } from '../producao-diaria/types';
 import { SectorMultiSelect } from '../producao-diaria/SectorMultiSelect';
-import { observationLinesForSector, previousLocalDate, type DailyProductionObservation, type DailyObservationLine } from '../producao-diaria/observacoes';
+import { previousLocalDate, type DailyProductionObservation } from '../producao-diaria/observacoes';
 import { producaoDiariaService } from '../services/producaoDiariaService';
 import '../producao-diaria/producao-diaria.css';
 
@@ -74,12 +73,10 @@ function SectorCard({
   row,
   observacoes,
   onOpen,
-  disabled,
 }: {
   row: DailyProductionSectorMetric;
   observacoes: DailyProductionObservation[];
-  onOpen: (setor: string, linha: DailyObservationLine) => void;
-  disabled: boolean;
+  onOpen: (setor: string) => void;
 }) {
   const presentation = adherencePresentation(row.aderencia);
   const gaugeStyle = {
@@ -114,23 +111,20 @@ function SectorCard({
           </div>
         </dl>
       </div>
-      <div className="daily-sector-card__observations">
-        {observationLinesForSector(row.setor).map((line) => {
-          const hasNote = observacoes.some((note) => note.setor === row.setor && note.linha === line);
-          return (
-            <button
-              key={line}
-              type="button"
-              className="daily-observation-button"
-              onClick={() => onOpen(row.setor, line)}
-              disabled={disabled}
-              title={disabled ? 'Escolha um único dia e carregue as observações para registrar.' : undefined}
-            >
-              <MessageSquareText className="size-4 shrink-0" aria-hidden="true" />
-              {line === 'GERAL' ? (hasNote ? 'Ver / editar observação' : 'Adicionar observação') : `${line} · ${hasNote ? 'Ver / editar' : 'Adicionar observação'}`}
-            </button>
-          );
-        })}
+      <div className="daily-sector-card__details">
+        <button
+          type="button"
+          className="daily-sector-details-button"
+          aria-label={`Ver detalhes de ${row.setor}`}
+          title={`Ver detalhes de ${row.setor}`}
+          onClick={() => onOpen(row.setor)}
+        >
+          <Eye className="size-4" aria-hidden="true" />
+          <span>Detalhes</span>
+          {observacoes.some((note) => note.setor === row.setor && note.linha === 'GERAL') && (
+            <span className="daily-sector-details-note" aria-label="Há observação registrada" title="Há observação registrada" />
+          )}
+        </button>
       </div>
     </article>
   );
@@ -144,7 +138,7 @@ export function ProducaoDiariaPage() {
   const [setoresSelecionados, setSetoresSelecionados] = useState<string[] | null>(null);
   const [observacoes, setObservacoes] = useState<DailyProductionObservation[]>([]);
   const [observacoesError, setObservacoesError] = useState('');
-  const [modal, setModal] = useState<{ setor: string; linha: DailyObservationLine } | null>(null);
+  const [modal, setModal] = useState<string | null>(null);
   const [textoObservacao, setTextoObservacao] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -213,20 +207,19 @@ export function ProducaoDiariaPage() {
     setSetoresSelecionados(null);
   };
 
-  const openObservation = (setor: string, targetLine: DailyObservationLine) => {
-    if (dataInicio !== dataFim || observacoesError) return;
-    const note = observacoes.find((item) => item.data === dataInicio && item.setor === setor && item.linha === targetLine);
+  const openDetails = (setor: string) => {
+    const note = observacoes.find((item) => item.data === dataInicio && item.setor === setor && item.linha === 'GERAL');
     setTextoObservacao(note?.observacao || '');
     setSaveError('');
-    setModal({ setor, linha: targetLine });
+    setModal(setor);
   };
 
   const saveObservation = async () => {
-    if (!modal || !textoObservacao.trim() || salvando || dataInicio !== dataFim) return;
+    if (!modal || !textoObservacao.trim() || salvando || dataInicio !== dataFim || observacoesError) return;
     setSalvando(true);
     setSaveError('');
     try {
-      const saved = await producaoDiariaService.saveObservacao(dataInicio, modal.setor, modal.linha, textoObservacao.trim());
+      const saved = await producaoDiariaService.saveObservacao(dataInicio, modal, 'GERAL', textoObservacao.trim());
       setObservacoes((current) => [...current.filter((item) => !(item.data === saved.data && item.setor === saved.setor && item.linha === saved.linha)), saved]);
       setModal(null);
     } catch (reason) {
@@ -235,7 +228,7 @@ export function ProducaoDiariaPage() {
       setSalvando(false);
     }
   };
-  const modalMetric = metrics.setores.find((item) => item.setor === modal?.setor);
+  const modalMetric = metrics.setores.find((item) => item.setor === modal);
   const singleDay = dataInicio === dataFim;
 
   return (
@@ -315,15 +308,14 @@ export function ProducaoDiariaPage() {
               </div>
               <span>{metrics.setores.length} setor(es)</span>
             </div>
-            {!singleDay && <p className="daily-observation-hint">Para registrar observações por setor, selecione apenas uma data (inicial e final iguais).</p>}
+            {!singleDay && <p className="daily-observation-hint">Os detalhes abrangem o período filtrado. Para registrar observações, selecione apenas um dia.</p>}
             {observacoesError && <p className="daily-observation-hint" role="alert">{observacoesError}</p>}
             <div className="daily-sector-grid">
               {metrics.setores.map((row) => <SectorCard
                 key={row.setor}
                 row={row}
                 observacoes={observacoes}
-                onOpen={openObservation}
-                disabled={!singleDay || Boolean(observacoesError)}
+                onOpen={openDetails}
               />)}
             </div>
           </section>
@@ -350,31 +342,19 @@ export function ProducaoDiariaPage() {
           </SectionCard>
         </>
       )}
-      <ModalShell
-        isOpen={Boolean(modal)}
+      <DailySectorDetailModal
+        sector={modal}
+        metric={modalMetric}
+        dataInicio={dataInicio}
+        dataFim={dataFim}
+        observacoesError={observacoesError}
+        textoObservacao={textoObservacao}
+        onTextoObservacaoChange={setTextoObservacao}
         onClose={() => setModal(null)}
-        title={`Observação · ${modal?.setor || ''}${modal?.linha && modal.linha !== 'GERAL' ? ` · ${modal.linha}` : ''}`}
-        description={`Resultado consolidado do setor em ${dataInicio.split('-').reverse().join('/')}.`}
-        size="md"
-        busy={salvando}
-        footer={<div className="flex flex-wrap justify-end gap-2">
-          <Button variant="secondary" onClick={() => setModal(null)} disabled={salvando}>Cancelar</Button>
-          <Button leftIcon={<Save className="size-4" aria-hidden="true" />} onClick={() => void saveObservation()} disabled={salvando || !textoObservacao.trim()} isLoading={salvando}>Salvar observação</Button>
-        </div>}
-      >
-        <div className="space-y-4">
-          <div className="daily-observation-metrics">
-            <MetricCard label="Programado" value={formatNum(modalMetric?.programado || 0)} icon={<ClipboardList className="size-5" aria-hidden="true" />} tone="info" />
-            <MetricCard label="Produzido" value={formatNum(modalMetric?.produzido || 0)} icon={<CheckCircle2 className="size-5" aria-hidden="true" />} tone="success" />
-            <MetricCard label="Aderência" value={modalMetric?.aderencia == null ? '—' : formatPct(modalMetric.aderencia)} icon={<Gauge className="size-5" aria-hidden="true" />} tone={modalMetric?.aderencia != null && modalMetric.aderencia >= 100 ? 'success' : 'warning'} />
-          </div>
-          {modal?.linha !== 'GERAL' && <p className="text-xs text-slate-400">A observação é específica da linha {modal?.linha}; os indicadores acima somam todas as linhas do setor.</p>}
-          <Field label="Observação" hint="Explique o resultado do setor na data selecionada.">
-            <textarea className="field-control min-h-32 resize-y" maxLength={3000} value={textoObservacao} onChange={(event) => setTextoObservacao(event.target.value)} placeholder="Registre os motivos do desempenho da produção..." />
-          </Field>
-          {saveError && <p role="alert" className="text-sm text-rose-300">{saveError}</p>}
-        </div>
-      </ModalShell>
+        onSave={() => void saveObservation()}
+        salvando={salvando}
+        saveError={saveError}
+      />
     </PageContainer>
   );
 }

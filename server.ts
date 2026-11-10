@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import pg from 'pg';
 import jwt from 'jsonwebtoken';
 import { registerGestaoAtrasosRoutes } from './server.gestaoAtrasos.js';
+import { registerProducaoDiariaObservacoesRoutes } from './server.producaoDiariaObservacoes.js';
 
 dotenv.config();
 const { Pool } = pg;
@@ -2554,6 +2555,9 @@ app.get('/api/coordenacao/producao-diaria', auth, requireCoordenacao, async (req
     res.status(500).json({ error: 'Falha ao carregar os dados da Produção Diária.' });
   }
 });
+
+// Observações gerenciais independentes; não modifica a consulta original nem as ocorrências.
+registerProducaoDiariaObservacoesRoutes(app, pool, auth, requireCoordenacao);
 
 // Visão somente leitura. A aprovação continua exclusivamente no PATCH existente,
 // por apontamento inteiro; produção isolada não compõe esta fila.

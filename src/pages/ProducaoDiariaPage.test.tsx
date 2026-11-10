@@ -1,12 +1,12 @@
 import React from 'react';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { producaoDiariaService } from '../services/producaoDiariaService';
 import { ProducaoDiariaPage } from './ProducaoDiariaPage';
 
 vi.mock('../services/producaoDiariaService', () => ({
-  producaoDiariaService: { getData: vi.fn() },
+  producaoDiariaService: { getData: vi.fn(), getObservacoes: vi.fn(), saveObservacao: vi.fn() },
 }));
 
 vi.mock('recharts', () => ({
@@ -22,6 +22,8 @@ vi.mock('recharts', () => ({
 }));
 
 const getDataMock = vi.mocked(producaoDiariaService.getData);
+const getObservacoesMock = vi.mocked(producaoDiariaService.getObservacoes);
+const saveObservacaoMock = vi.mocked(producaoDiariaService.saveObservacao);
 
 beforeAll(() => {
   Element.prototype.scrollIntoView = vi.fn();
@@ -33,6 +35,9 @@ afterEach(() => {
 });
 
 describe('Produção Diária', () => {
+  beforeEach(() => {
+    getObservacoesMock.mockResolvedValue([]);
+  });
   it('exibe totais ponderados e todos os setores retornados para o período', async () => {
     getDataMock.mockResolvedValue({
       geradoEm: '2026-09-04T12:00:00.000Z',

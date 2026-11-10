@@ -5,6 +5,8 @@ import {
   CheckCircle2,
   ClipboardList,
   Gauge,
+  MessageSquareText,
+  Save,
   RefreshCw,
   RotateCcw,
 } from 'lucide-react';
@@ -20,6 +22,7 @@ import {
   YAxis,
 } from 'recharts';
 import { CustomSelect } from '../components/common/CustomSelect';
+import { ModalShell } from '../components/common/ModalShell';
 import {
   Button,
   EmptyState,
@@ -36,19 +39,14 @@ import {
 import { formatNum, formatPct } from '../dashboard/lib/formatters';
 import { buildDailyProductionMetrics } from '../producao-diaria/metrics';
 import type { DailyProductionSectorMetric } from '../producao-diaria/types';
+import { SectorMultiSelect } from '../producao-diaria/SectorMultiSelect';
+import { observationLinesForSector, previousLocalDate, type DailyProductionObservation, type DailyObservationLine } from '../producao-diaria/observacoes';
 import { producaoDiariaService } from '../services/producaoDiariaService';
 import '../producao-diaria/producao-diaria.css';
 
-function localDateValue(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-}
-
 function initialPeriod() {
-  const today = new Date();
-  return {
-    start: localDateValue(new Date(today.getFullYear(), today.getMonth(), 1)),
-    end: localDateValue(today),
-  };
+  const yesterday = previousLocalDate();
+  return { start: yesterday, end: yesterday };
 }
 
 function adherencePresentation(value: number | null) {
@@ -72,7 +70,17 @@ function RankingTooltip({ active, payload }: any) {
   );
 }
 
-function SectorCard({ row }: { row: DailyProductionSectorMetric }) {
+function SectorCard({
+  row,
+  observacoes,
+  onOpen,
+  disabled,
+}: {
+  row: DailyProductionSectorMetric;
+  observacoes: DailyProductionObservation[];
+  onOpen: (setor: string, linha: DailyObservationLine) => void;
+  disabled: boolean;
+}) {
   const presentation = adherencePresentation(row.aderencia);
   const gaugeStyle = {
     '--daily-progress': `${Math.min(Math.max(row.aderencia || 0, 0), 100) * 3.6}deg`,
@@ -106,6 +114,24 @@ function SectorCard({ row }: { row: DailyProductionSectorMetric }) {
           </div>
         </dl>
       </div>
+      <div className="daily-sector-card__observations">
+        {observationLinesForSector(row.setor).map((line) => {
+          const hasNote = observacoes.some((note) => note.setor === row.setor && note.linha === line);
+          return (
+            <button
+              key={line}
+              type="button"
+              className="daily-observation-button"
+              onClick={() => onOpen(row.setor, line)}
+              disabled={disabled}
+              title={disabled ? 'Escolha um único dia e carregue as observações para registrar.' : undefined}
+            >
+              <MessageSquareText className="size-4 shrink-0" aria-hidden="true" />
+              {line === 'GERAL' ? (hasNote ? 'Ver / editar observação' : 'Adicionar observação') : `${line} · ${hasNote ? 'Ver / editar' : 'Adicionar observação'}`}
+            </button>
+          );
+        })}
+      </div>
     </article>
   );
 }
@@ -115,6 +141,13 @@ export function ProducaoDiariaPage() {
   const [dataInicio, setDataInicio] = useState(defaults.start);
   const [dataFim, setDataFim] = useState(defaults.end);
   const [linha, setLinha] = useState('ALL');
+  const [setoresSelecionados, setSetoresSelecionados] = useState<string[] | null>(null);
+  const [observacoes, setObservacoes] = useState<DailyProductionObservation[]>([]);
+  const [observacoesError, setObservacoesError] = useState('');
+  const [modal, setModal] = useState<{ setor: string; linha: DailyObservationLine } | null>(null);
+  const [textoObservacao, setTextoObservacao] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [data, setData] = useState<Awaited<ReturnType<typeof producaoDiariaService.getData>> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -131,10 +164,17 @@ export function ProducaoDiariaPage() {
     let active = true;
     setLoading(true);
     setError('');
-    void producaoDiariaService.getData(dataInicio, dataFim, linha)
-      .then((result) => {
+    const observacoesRequest = dataInicio === dataFim
+      ? producaoDiariaService.getObservacoes(dataInicio, dataFim)
+        .then((items) => ({ items, error: '' }))
+        .catch(() => ({ items: [] as DailyProductionObservation[], error: 'Não foi possível carregar as observações. Tente atualizar.' }))
+      : Promise.resolve({ items: [] as DailyProductionObservation[], error: '' });
+    void Promise.all([producaoDiariaService.getData(dataInicio, dataFim, linha), observacoesRequest])
+      .then(([result, noteResult]) => {
         if (!active) return;
         setData(result);
+        setObservacoes(noteResult.items);
+        setObservacoesError(noteResult.error);
         if (linha !== 'ALL' && !result.filtros.linhas.includes(linha)) setLinha('ALL');
       })
       .catch((reason) => {
@@ -147,7 +187,13 @@ export function ProducaoDiariaPage() {
     return () => { active = false; };
   }, [dataFim, dataInicio, invalidPeriod, linha, refreshKey]);
 
-  const metrics = useMemo(() => buildDailyProductionMetrics(data?.setores || []), [data]);
+  const setoresDisponiveis = useMemo(
+    () => (data?.setores || []).map((row) => row.setor).sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    [data],
+  );
+  const metrics = useMemo(() => buildDailyProductionMetrics(
+    (data?.setores || []).filter((row) => setoresSelecionados === null || setoresSelecionados.includes(row.setor)),
+  ), [data, setoresSelecionados]);
   const ranking = useMemo(() => [...metrics.setores].sort((a, b) => {
     if (a.aderencia === null && b.aderencia !== null) return 1;
     if (a.aderencia !== null && b.aderencia === null) return -1;
@@ -164,7 +210,33 @@ export function ProducaoDiariaPage() {
     setDataInicio(defaults.start);
     setDataFim(defaults.end);
     setLinha('ALL');
+    setSetoresSelecionados(null);
   };
+
+  const openObservation = (setor: string, targetLine: DailyObservationLine) => {
+    if (dataInicio !== dataFim || observacoesError) return;
+    const note = observacoes.find((item) => item.data === dataInicio && item.setor === setor && item.linha === targetLine);
+    setTextoObservacao(note?.observacao || '');
+    setSaveError('');
+    setModal({ setor, linha: targetLine });
+  };
+
+  const saveObservation = async () => {
+    if (!modal || !textoObservacao.trim() || salvando || dataInicio !== dataFim) return;
+    setSalvando(true);
+    setSaveError('');
+    try {
+      const saved = await producaoDiariaService.saveObservacao(dataInicio, modal.setor, modal.linha, textoObservacao.trim());
+      setObservacoes((current) => [...current.filter((item) => !(item.data === saved.data && item.setor === saved.setor && item.linha === saved.linha)), saved]);
+      setModal(null);
+    } catch (reason) {
+      setSaveError(reason instanceof Error ? reason.message : 'Não foi possível salvar a observação.');
+    } finally {
+      setSalvando(false);
+    }
+  };
+  const modalMetric = metrics.setores.find((item) => item.setor === modal?.setor);
+  const singleDay = dataInicio === dataFim;
 
   return (
     <PageContainer size="wide" className="daily-production-page space-y-5 py-6 sm:py-8">
@@ -197,7 +269,7 @@ export function ProducaoDiariaPage() {
             Limpar filtros
           </Button>
         )}
-        contentClassName="sm:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_minmax(14rem,1fr)]"
+        contentClassName="sm:grid-cols-2 xl:grid-cols-4"
       >
         <Field label="Data inicial" error={invalidPeriod ? 'Revise o período informado.' : undefined}>
           <input className="field-control" type="date" value={dataInicio} max={dataFim || undefined} onChange={(event) => setDataInicio(event.target.value)} />
@@ -207,6 +279,9 @@ export function ProducaoDiariaPage() {
         </Field>
         <Field label="Linha">
           <CustomSelect ariaLabel="Linha" value={linha} options={lineOptions} onChange={setLinha} />
+        </Field>
+        <Field label="Setores">
+          <SectorMultiSelect options={setoresDisponiveis} selected={setoresSelecionados} onChange={setSetoresSelecionados} />
         </Field>
       </FilterPanel>
 
@@ -240,8 +315,16 @@ export function ProducaoDiariaPage() {
               </div>
               <span>{metrics.setores.length} setor(es)</span>
             </div>
+            {!singleDay && <p className="daily-observation-hint">Para registrar observações por setor, selecione apenas uma data (inicial e final iguais).</p>}
+            {observacoesError && <p className="daily-observation-hint" role="alert">{observacoesError}</p>}
             <div className="daily-sector-grid">
-              {metrics.setores.map((row) => <SectorCard key={row.setor} row={row} />)}
+              {metrics.setores.map((row) => <SectorCard
+                key={row.setor}
+                row={row}
+                observacoes={observacoes}
+                onOpen={openObservation}
+                disabled={!singleDay || Boolean(observacoesError)}
+              />)}
             </div>
           </section>
 
@@ -267,6 +350,31 @@ export function ProducaoDiariaPage() {
           </SectionCard>
         </>
       )}
+      <ModalShell
+        isOpen={Boolean(modal)}
+        onClose={() => setModal(null)}
+        title={`Observação · ${modal?.setor || ''}${modal?.linha && modal.linha !== 'GERAL' ? ` · ${modal.linha}` : ''}`}
+        description={`Resultado consolidado do setor em ${dataInicio.split('-').reverse().join('/')}.`}
+        size="md"
+        busy={salvando}
+        footer={<div className="flex flex-wrap justify-end gap-2">
+          <Button variant="secondary" onClick={() => setModal(null)} disabled={salvando}>Cancelar</Button>
+          <Button leftIcon={<Save className="size-4" aria-hidden="true" />} onClick={() => void saveObservation()} disabled={salvando || !textoObservacao.trim()} isLoading={salvando}>Salvar observação</Button>
+        </div>}
+      >
+        <div className="space-y-4">
+          <div className="daily-observation-metrics">
+            <MetricCard label="Programado" value={formatNum(modalMetric?.programado || 0)} icon={<ClipboardList className="size-5" aria-hidden="true" />} tone="info" />
+            <MetricCard label="Produzido" value={formatNum(modalMetric?.produzido || 0)} icon={<CheckCircle2 className="size-5" aria-hidden="true" />} tone="success" />
+            <MetricCard label="Aderência" value={modalMetric?.aderencia == null ? '—' : formatPct(modalMetric.aderencia)} icon={<Gauge className="size-5" aria-hidden="true" />} tone={modalMetric?.aderencia != null && modalMetric.aderencia >= 100 ? 'success' : 'warning'} />
+          </div>
+          {modal?.linha !== 'GERAL' && <p className="text-xs text-slate-400">A observação é específica da linha {modal?.linha}; os indicadores acima somam todas as linhas do setor.</p>}
+          <Field label="Observação" hint="Explique o resultado do setor na data selecionada.">
+            <textarea className="field-control min-h-32 resize-y" maxLength={3000} value={textoObservacao} onChange={(event) => setTextoObservacao(event.target.value)} placeholder="Registre os motivos do desempenho da produção..." />
+          </Field>
+          {saveError && <p role="alert" className="text-sm text-rose-300">{saveError}</p>}
+        </div>
+      </ModalShell>
     </PageContainer>
   );
 }

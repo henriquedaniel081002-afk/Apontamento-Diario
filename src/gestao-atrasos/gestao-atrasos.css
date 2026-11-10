@@ -22,3 +22,8 @@
 .op-table-viewport>div{overflow:visible}
 .op-table-viewport thead{position:sticky;top:0;z-index:1;background:var(--surface-raised)}
 .op-table-viewport:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+
+@media(max-width:420px){
+  .op-dashboard .dashboard-filter:has(#op-situacao),
+  .op-dashboard .dashboard-filter:has(#op-justificativa){grid-column:1/-1}
+}

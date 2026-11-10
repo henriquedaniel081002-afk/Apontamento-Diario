@@ -5,7 +5,7 @@ import {apiRequest} from '../services/apiClient';
 vi.mock('../services/apiClient',()=>({apiRequest:vi.fn()}));
 const api=vi.mocked(apiRequest);
 const user={id:'1',name:'Coordenação',perfil:'COORDENACAO' as const,setor:'SOLDA' as const,linhas:[]};
-const row=(op:string)=>({op,setor:'SOLDA',linha:'TRI',cliente:'Cliente teste',programados:10,produzidos:2,pendentes_vencidos:8,produzidos_em_atraso:1,dias_programados:2,primeira_data_programada:'2026-07-01',ultima_data_programada:'2026-07-31',situacao:'SEM_JUSTIFICATIVA'});
+const row=(op:string)=>({op,data_programada:'2026-07-03',qtde_total_op:15,referencia:'DES-1',setor:'SOLDA',linha:'TRI',cliente:'Cliente teste',programados:10,produzidos:2,pendentes_vencidos:8,produzidos_em_atraso:1,dias_programados:2,primeira_data_programada:'2026-07-01',ultima_data_programada:'2026-07-31',situacao:'SEM_JUSTIFICATIVA'});
 const summary=(op='111')=>({rows:[row(op)],total:1,page:1,periodo:{inicio:'2026-07-01',fim:'2026-07-31',hoje:'2026-10-30'},kpis:{ops_atrasadas:1},importacoes:[{tipo:'APONTAMENTO',esperado:10}]});
 afterEach(cleanup);
 beforeEach(()=>{api.mockReset();});
@@ -34,7 +34,7 @@ describe('Visão OP — concorrência e contexto',()=>{
      if(path.includes('/filtros'))return {combinacoes:[{setor:'SOLDA',linha:'TRI'}]};
      if(path.includes('/resumo'))return summary();
      if(path.includes('/justificativas'))return {rows:[]};
-     expect(path).toContain('inicio=2026-07-01&fim=2026-07-31');
+     expect(path).toContain('inicio=2026-07-03&fim=2026-07-03');
      detailSignal=init!.signal as AbortSignal;
      return new Promise(()=>{});
    });
@@ -58,8 +58,21 @@ describe('Visão OP — concorrência e contexto',()=>{
    const modal=screen.getByRole('dialog');
    expect(await within(modal).findByRole('alert')).toHaveTextContent('Falha controlada');
    expect(within(modal).getByRole('button',{name:'Tentar novamente'})).toBeEnabled();
-   fireEvent.click(within(modal).getByRole('button',{name:'Justificativa'}));
-   expect(within(modal).getByRole('button',{name:'Registrar justificativa e prazo'})).toBeDisabled();
+   fireEvent.click(within(modal).getByRole('button',{name:'Observação'}));
+   expect(within(modal).getByRole('button',{name:'Registrar observação'})).toBeDisabled();
+ });
+ it('abre a data correta quando a OP e o setor se repetem',async()=>{
+   api.mockImplementation(async(path)=>{
+     if(path.includes('/filtros'))return {combinacoes:[]};
+     if(path.includes('/resumo'))return {...summary(),rows:[row('111'),{...row('111'),data_programada:'2026-07-04'}]};
+     if(path.includes('/justificativas'))return {rows:[]};
+     return {series:[],progresso:[],apontamentoImportado:true};
+   });
+   render(<GestaoAtrasosPage user={user} active/>);
+   const day=await screen.findByRole('region',{name:'Programação de 04/07/2026'});
+   fireEvent.click(within(day).getByRole('button',{name:'OP 111'}));
+   await waitFor(()=>expect(api.mock.calls.some(([url])=>url.includes('inicio=2026-07-04&fim=2026-07-04'))).toBe(true));
+   expect(screen.getByRole('dialog')).toHaveTextContent('04/07/2026');
  });
  it('não consulta a aba inativa',async()=>{
    render(<GestaoAtrasosPage user={user} active={false}/>);
@@ -72,20 +85,19 @@ describe('Visão OP — concorrência e contexto',()=>{
      if(path.includes('/filtros'))return {combinacoes:[{setor:'SOLDA',linha:'TRI'}]};
      if(path.includes('/resumo'))return summary();
      if(init?.method==='POST'){
-       expect(JSON.parse(String(init.body))).toMatchObject({op:'111',setor:'SOLDA',motivo:'Teste local de justificativa',previsao_regularizacao:'2026-11-15',inicio:'2026-07-01',fim:'2026-07-31'});
+       expect(JSON.parse(String(init.body))).toMatchObject({op:'111',setor:'SOLDA',motivo:'Teste local de justificativa',previsao_regularizacao:null,inicio:'2026-07-03',fim:'2026-07-03'});
        saved=true;return {};
      }
-     if(path.includes('/justificativas'))return {rows:saved?[{id:'1',motivo:'Teste local de justificativa',responsavel:'Teste',criado_em:'2026-10-30T16:00:00Z',previsao_regularizacao:'2026-11-15'}]:[]};
+     if(path.includes('/justificativas'))return {rows:saved?[{id:'1',motivo:'Teste local de justificativa',responsavel:'Teste',criado_em:'2026-10-30T16:00:00Z',previsao_regularizacao:null}]:[]};
      return {series:[],progresso:[],apontamentoImportado:true};
    });
    render(<GestaoAtrasosPage user={user} active/>);
    fireEvent.click(await screen.findByText('OP 111'));
    const modal=screen.getByRole('dialog');
    await within(modal).findByText(/Progresso dos setores/);
-   fireEvent.click(within(modal).getByRole('button',{name:'Justificativa'}));
-   fireEvent.change(within(modal).getByLabelText(/^Motivo/),{target:{value:'Teste local de justificativa'}});
-   fireEvent.change(within(modal).getByLabelText(/^Previsão de regularização/),{target:{value:'2026-11-15'}});
-   fireEvent.click(within(modal).getByRole('button',{name:'Registrar justificativa e prazo'}));
+   fireEvent.click(within(modal).getByRole('button',{name:'Observação'}));
+   fireEvent.change(within(modal).getByLabelText(/^Observação/),{target:{value:'Teste local de justificativa'}});
+   fireEvent.click(within(modal).getByRole('button',{name:'Registrar observação'}));
    await waitFor(()=>expect(saved).toBe(true));
    fireEvent.click(within(modal).getByRole('button',{name:'Histórico'}));
    expect(await within(modal).findByText('Teste local de justificativa')).toBeVisible();

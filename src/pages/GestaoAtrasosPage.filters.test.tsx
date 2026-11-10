@@ -35,15 +35,16 @@ describe('Visão OP — filtros reais e importação',()=>{
   expect(Object.fromEntries(query)).toMatchObject({op:'123',serie:'987',cliente:'Cliente',page:'1'});expect(optionsCalls()).toHaveLength(1);
  });
 
- it('Situação e Justificativa usam lista escura padronizada e somente três situações',async()=>{
+ it('Situação começa em Todos e oferece Atrasos junto ao filtro de observação',async()=>{
   await ready();
+  expect(screen.getByRole('combobox',{name:'Situação'})).toHaveTextContent('Todos');
   fireEvent.click(screen.getByRole('combobox',{name:'Situação'}));
-  expect(screen.getAllByRole('option').filter(o=>['Com atraso','Concluída','Todas'].includes(o.textContent||''))).toHaveLength(3);
+  expect(screen.getAllByRole('option').map(o=>o.textContent)).toEqual(['Todos','Atrasos']);
   expect(screen.queryByRole('option',{name:'Prazo vencido'})).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('option',{name:'Concluída'}));
-  await waitFor(()=>expect(summaries().at(-1)?.[0]).toContain('situacao=CONCLUIDOS'));
-  fireEvent.click(screen.getByRole('combobox',{name:'Justificativa'}));
-  expect(screen.getByRole('option',{name:'Com justificativa'})).toBeVisible();
+  fireEvent.click(screen.getByRole('option',{name:'Atrasos'}));
+  await waitFor(()=>expect(summaries().at(-1)?.[0]).toContain('situacao=ATRASADOS'));
+  fireEvent.click(screen.getByRole('combobox',{name:'Observação'}));
+  expect(screen.getByRole('option',{name:'Com observação'})).toBeVisible();
  });
  it('valida OP antes da rede e mantém a tabela acessível por teclado',async()=>{
   await ready();fireEvent.change(screen.getByLabelText('OP'),{target:{value:'ABC'}});
@@ -56,7 +57,7 @@ describe('Visão OP — filtros reais e importação',()=>{
   fireEvent.click(screen.getByRole('button',{name:'Próxima'}));
   await waitFor(()=>expect(summaries().at(-1)?.[0]).toContain('page=2'));
   fireEvent.click(screen.getByRole('button',{name:'Limpar filtros'}));
-  await waitFor(()=>expect(summaries().at(-1)?.[0]).toBe('/api/gestao-atrasos/resumo?situacao=ATRASADOS&page=1'));
+  await waitFor(()=>expect(summaries().at(-1)?.[0]).toBe('/api/gestao-atrasos/resumo?situacao=TODOS&page=1'));
   expect(screen.getByRole('combobox',{name:'Setor'})).toHaveTextContent('Todos os autorizados');
  });
  it('teclado seleciona setor e Escape fecha a lista',async()=>{

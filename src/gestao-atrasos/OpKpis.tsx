@@ -5,7 +5,7 @@ const metrics = [
   {key:'ops_atrasadas', label:'OPs atrasadas', tone:'danger', icon:ClockAlert, description:'Ordens com atraso'},
   {key:'transformadores_vencidos', label:'Transformadores vencidos', tone:'danger', icon:AlertCircle, description:'Unidades pendentes vencidas'},
   {key:'produzidos_fora_prazo', label:'Produzidos fora do prazo', tone:'info', icon:PackageCheck, description:'Produção após a data'},
-  {key:'sem_justificativa', label:'Sem justificativa', tone:'warning', icon:Timer, description:'Pendências sem motivo'},
+  {key:'sem_justificativa', label:'Sem observação', tone:'warning', icon:Timer, description:'Grupos sem observação'},
   {key:'prazo_vencido', label:'Prazo vencido', tone:'danger', icon:CalendarClock, description:'Regularização fora do prazo'},
   {key:'regularizados', label:'Regularizados', tone:'success', icon:CheckCircle2, description:'Situações regularizadas'},
 ] as const;
@@ -20,6 +20,6 @@ export function OpKpis({values,loading}:{values?:Record<string,number>;loading:b
         <p>{description}</p>
       </article>)}
     </div>
-    <p className="mt-2 text-xs leading-5 text-slate-400">Todos os filtros se aplicam aos indicadores, em todas as páginas. OPs e transformadores são distintos; demais indicadores contam OP/setor ou produção em cada setor.</p>
+    <p className="mt-2 text-xs leading-5 text-slate-400">Todos os filtros se aplicam aos indicadores, em todas as páginas. OPs e transformadores são distintos; os demais indicadores contam grupos diários ou séries produzidas por setor.</p>
   </section>;
 }

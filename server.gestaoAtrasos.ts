@@ -215,35 +215,99 @@ export function registerGestaoAtrasosRoutes(
     } catch(e:any) { if(client){await client.query('ROLLBACK').catch(()=>{});client.release();} res.status(400).json({error:e?.message||'Falha ao finalizar importação.'}); }
   });
 
-  // A mesma série pode percorrer vários setores. Conflitos dentro de um setor
-  // são resolvidos deterministamente para que não multipliquem quantidades.
-  const activeRows = (scope = 'TRUE', bulkDone = false) => `WITH prog AS (
-    SELECT DISTINCT ON (p.serie,p.setor) p.serie,p.setor,p.op,p.data_programada,p.linha,p.cliente,p.potencia
+  // A PK da importação já garante uma linha por série, setor e OP.
+  const activeRows = (scope: string) => `WITH prog AS (
+    SELECT p.serie,p.setor,p.op,p.data_programada,p.linha,p.cliente,p.potencia,p.referencia
     FROM public.atrasos_programacao_detalhada p
-    JOIN public.atrasos_importacoes i ON i.id=p.importacao_id AND i.status='ATIVA' AND i.tipo='PROGRAMACAO'
-    WHERE ${scope}
-    ORDER BY p.serie,p.setor,p.data_programada,p.op
-  ), done AS ${bulkDone?'MATERIALIZED':'NOT MATERIALIZED'} (
+    WHERE p.importacao_id=(SELECT id FROM public.atrasos_importacoes WHERE tipo='PROGRAMACAO' AND status='ATIVA')
+      AND ${scope}
+  ), done AS NOT MATERIALIZED (
     SELECT a.serie,a.setor,a.op,a.data_produzida
     FROM public.atrasos_apontamentos_detalhados a
-    JOIN public.atrasos_importacoes i ON i.id=a.importacao_id AND i.status='ATIVA' AND i.tipo='APONTAMENTO'
+    WHERE a.importacao_id=(SELECT id FROM public.atrasos_importacoes WHERE tipo='APONTAMENTO' AND status='ATIVA')
   )`;
+
+  // Listagem e relatório partem das mesmas séries e observações. Os filtros de
+  // situação são aplicados depois dos agrupamentos diários, em cada consumidor.
+  const dailyRows = `${activeRows(`p.data_programada >= $1::date AND p.data_programada < $2::date
+    AND ($4::text[] IS NULL OR p.setor=ANY($4::text[]))
+    AND ($5::text IS NULL OR p.setor=$5) AND ($6::text IS NULL OR p.op=$6)
+    AND ($7::text IS NULL OR p.serie=$7) AND ($8::text IS NULL OR p.linha=$8)
+    AND ($9::text IS NULL OR p.cliente ILIKE '%'||$9||'%')`)}, daily AS (
+    SELECT p.op,p.setor,p.data_programada,
+      ${['linha','cliente','potencia','referencia'].map(field =>
+        `string_agg(DISTINCT coalesce(nullif(p.${field},''),'—'), ' / ' ORDER BY coalesce(nullif(p.${field},''),'—')) ${field}`).join(',\n      ')},
+      COUNT(*)::int programados, COUNT(a.data_produzida)::int produzidos,
+      COUNT(*) FILTER (WHERE a.data_produzida > p.data_programada)::int produzidos_em_atraso,
+      COUNT(*) FILTER (WHERE p.data_programada < $3::date AND a.data_produzida IS NULL)::int pendentes_vencidos,
+      array_agg(p.serie) FILTER (WHERE p.data_programada < $3::date AND a.data_produzida IS NULL) series_vencidas,
+      MAX(a.data_produzida) ultima_producao,
+      (COUNT(*) OVER (PARTITION BY p.op,p.setor))::int dias_programados
+    FROM prog p LEFT JOIN done a USING (serie,setor,op)
+    GROUP BY p.op,p.setor,p.data_programada
+  ), latest AS (
+    SELECT DISTINCT ON (op,setor) op,setor,motivo,previsao_regularizacao,usuario_login AS responsavel,criado_em
+    FROM public.atrasos_justificativas
+    WHERE ($4::text[] IS NULL OR setor=ANY($4::text[])) AND ($5::text IS NULL OR setor=$5)
+      AND ($6::text IS NULL OR op=$6)
+    ORDER BY op,setor,criado_em DESC,id DESC
+  ), ready AS (
+    SELECT d.*,j.motivo,j.previsao_regularizacao::text,j.responsavel,j.criado_em,
+      CASE WHEN NOT EXISTS(SELECT 1 FROM public.atrasos_importacoes WHERE tipo='APONTAMENTO' AND status='ATIVA')
+             THEN 'SEM_APONTAMENTO'
+           WHEN d.produzidos=d.programados AND d.ultima_producao>j.previsao_regularizacao THEN 'CONCLUIDO_APOS_PRAZO'
+           WHEN d.produzidos=d.programados THEN 'REGULARIZADO'
+           WHEN d.pendentes_vencidos=0 THEN 'NO_PRAZO'
+           WHEN j.motivo IS NULL THEN 'SEM_JUSTIFICATIVA'
+           WHEN j.previsao_regularizacao IS NULL THEN 'SEM_PRAZO'
+           WHEN j.previsao_regularizacao<$3::date THEN 'PRAZO_VENCIDO'
+           ELSE 'JUSTIFICADO' END situacao
+    FROM daily d LEFT JOIN latest j USING(op,setor)
+    WHERE ($10='' OR ($10='COM' AND j.motivo IS NOT NULL) OR ($10='SEM' AND j.motivo IS NULL))
+      AND (NOT $11::boolean OR d.dias_programados>1)
+  )`;
+
+  // Calculado uma vez por OP do resultado limitado, ao longo da programação
+  // inteira. A quantidade física não soma a passagem de uma série por setores.
+  const opTotals = `op_totals AS (
+    SELECT p.op,COUNT(DISTINCT p.serie)::int qtde_total_op
+    FROM public.atrasos_programacao_detalhada p
+    JOIN (SELECT DISTINCT op FROM page_rows) chosen USING(op)
+    WHERE p.importacao_id=(SELECT id FROM public.atrasos_importacoes WHERE tipo='PROGRAMACAO' AND status='ATIVA')
+    GROUP BY p.op
+  )`;
+
+  const sectorComplete=`NOT EXISTS (
+            SELECT 1 FROM public.atrasos_programacao_detalhada p
+            WHERE p.importacao_id=(SELECT id FROM public.atrasos_importacoes WHERE tipo='PROGRAMACAO' AND status='ATIVA')
+              AND p.op=ready.op AND p.setor=ready.setor
+              AND NOT EXISTS(SELECT 1 FROM done a WHERE (a.serie,a.setor,a.op)=(p.serie,p.setor,p.op))
+          )`;
+
+  function dailyFilters(input: any, allowed: string[] | null) {
+    const {start,end,today}=selectedPeriod(input);
+    const op=String(input.op||'').trim(), serie=String(input.serie||'').trim();
+    const setor=sector(input.setor), linha=normal(input.linha), cliente=String(input.cliente||'').trim();
+    const situacao=String(input.situacao||'TODOS'), observacao=String(input.justificativa||'');
+    if ((op&&!/^\d{1,20}$/.test(op)) || (serie&&!/^\d{1,20}$/.test(serie)) ||
+      !['ATRASADOS','TODOS','CONCLUIDOS'].includes(situacao) || !['','COM','SEM'].includes(observacao)) {
+      throw new RangeError('Filtros inválidos.');
+    }
+    return {start,end,today,setor,situacao,values:[start,end,today,allowed,setor||null,op||null,
+      serie||null,linha||null,cliente||null,observacao,input.multiplos==='true']};
+  }
 
   app.get(`${base}/filtros`, auth, async (req: any, res) => {
     try {
       const allowed = await getAuthorizedSectors(req.auth);
       const { start, end } = selectedPeriod(req.query);
       if (allowed !== null && !allowed.length) return res.json({ combinacoes: [] });
-      const result = await pool.query(`WITH canonical AS (
-        SELECT DISTINCT ON (p.serie,p.setor) p.setor,p.linha,p.data_programada
+      const result = await pool.query(`SELECT DISTINCT p.setor,p.linha
         FROM public.atrasos_programacao_detalhada p
-        JOIN public.atrasos_importacoes i ON i.id=p.importacao_id
-          AND i.status='ATIVA' AND i.tipo='PROGRAMACAO'
-        WHERE ($1::text[] IS NULL OR p.setor=ANY($1::text[])) AND p.data_programada<$3::date
-        ORDER BY p.serie,p.setor,p.data_programada,p.op
-      ) SELECT DISTINCT setor,linha FROM canonical
-        WHERE data_programada >= $2::date AND data_programada < $3::date
-        ORDER BY setor,linha`, [allowed, start, end]);
+        WHERE p.importacao_id=(SELECT id FROM public.atrasos_importacoes WHERE status='ATIVA' AND tipo='PROGRAMACAO')
+          AND ($1::text[] IS NULL OR p.setor=ANY($1::text[]))
+          AND p.data_programada >= $2::date AND p.data_programada < $3::date
+        ORDER BY p.setor,p.linha`, [allowed, start, end]);
       // No server cache: every explicit refresh sees the committed active import,
       // including changes made by another instance. The UI reuses this small list.
       res.json({ combinacoes: result.rows });
@@ -255,106 +319,52 @@ export function registerGestaoAtrasosRoutes(
   app.get(`${base}/resumo`, auth, async (req:any,res) => {
     try {
       const allowed=await getAuthorizedSectors(req.auth);
-      if (allowed !== null && !allowed.length) return res.json({periodo:period(),rows:[],total:0,importacoes:[]});
-      const {start,end,today}=period();
-      const op=String(req.query.op||'').trim();
-      const serie=String(req.query.serie||'').trim();
-      const setor=sector(req.query.setor);
-      const linha=normal(req.query.linha);const cliente=String(req.query.cliente||'').trim();
-      const situacao=String(req.query.situacao||'ATRASADOS');
-      const justificativa=String(req.query.justificativa||'');
-      const multiplos=req.query.multiplos==='true';
-      const dateFrom=String(req.query.inicio||start),dateTo=String(req.query.fim||new Date(Date.parse(end)-86400000).toISOString().slice(0,10));
+      const {start,end,today,setor,situacao,values}=dailyFilters(req.query,allowed);
+      if (allowed !== null && setor && !allowed.includes(setor)) return res.status(403).json({error:'Setor não autorizado.'});
       const page=Number(req.query.page||1);
       if (!Number.isInteger(page)||page<1||page>100000) return res.status(400).json({error:'Página inválida.'});
-      if ((op&&!/^\d{1,20}$/.test(op))||(serie&&!/^\d{1,20}$/.test(serie))||
-        !['ATRASADOS','TODOS','CONCLUIDOS'].includes(situacao)||
-        (justificativa&&!['COM','SEM'].includes(justificativa))||!validDate(dateFrom)||!validDate(dateTo)||dateFrom>dateTo)
-        return res.status(400).json({error:'Filtros inválidos.'});
-      if (allowed !== null && setor && !allowed.includes(setor)) return res.status(403).json({error:'Setor não autorizado.'});
-      const values:any[]=[dateFrom,dateTo,today,allowed,setor||null,op||null,serie||null,linha||null,cliente||null,dateFrom,dateTo,situacao,justificativa,multiplos];
-      const result=await pool.query(`${activeRows('($4::text[] IS NULL OR p.setor=ANY($4::text[])) AND ($5::text IS NULL OR p.setor=$5) AND ($7::text IS NULL OR p.serie=$7) AND p.data_programada <= $11::date',!op&&!serie&&!setor&&!linha&&!cliente&&allowed===null)}, scoped AS (
-        SELECT p.*,a.data_produzida
-        FROM prog p LEFT JOIN done a ON a.serie=p.serie AND a.setor=p.setor AND a.op=p.op
-        WHERE ($4::text[] IS NULL OR p.setor=ANY($4::text[]))
-          AND ($5::text IS NULL OR p.setor=$5)
-          AND ($6::text IS NULL OR p.op=$6)
-          AND ($7::text IS NULL OR p.serie=$7)
-          AND ($8::text IS NULL OR p.linha=$8)
-          AND ($9::text IS NULL OR p.cliente ILIKE '%'||$9||'%')
-          AND p.data_programada BETWEEN $1::date AND $2::date
-          AND p.data_programada BETWEEN $10::date AND $11::date
-      ), grouped AS (
-        SELECT op,setor,MAX(linha) linha,MAX(cliente) cliente,MAX(potencia) potencia,
-          COUNT(*)::int programados,COUNT(data_produzida)::int produzidos,
-          array_agg(serie) FILTER(WHERE data_programada<$3::date AND data_produzida IS NULL) series_vencidas,
-          COUNT(*) FILTER(WHERE data_programada<$3::date AND data_produzida IS NULL)::int pendentes_vencidos,
-          COUNT(*) FILTER(WHERE data_produzida>data_programada)::int produzidos_em_atraso,
-          COUNT(DISTINCT data_programada)::int dias_programados,
-          MIN(data_programada)::text primeira_data_programada,MAX(data_programada)::text ultima_data_programada,
-          MAX(data_produzida) ultima_producao
-        FROM scoped GROUP BY op,setor
-      ), ready AS (
-        SELECT g.*,j.motivo,j.previsao_regularizacao::text,j.usuario_login AS responsavel,j.criado_em,
-          CASE WHEN g.programados=g.produzidos AND j.previsao_regularizacao IS NOT NULL
-                 AND g.ultima_producao>j.previsao_regularizacao THEN 'CONCLUIDO_APOS_PRAZO'
-            WHEN g.programados=g.produzidos THEN 'REGULARIZADO'
-            WHEN j.previsao_regularizacao<$3::date AND g.pendentes_vencidos>0 THEN 'PRAZO_VENCIDO'
-            WHEN g.pendentes_vencidos>0 AND j.id IS NULL THEN 'SEM_JUSTIFICATIVA'
-            WHEN g.pendentes_vencidos>0 AND j.previsao_regularizacao IS NULL THEN 'SEM_PRAZO'
-            WHEN g.pendentes_vencidos>0 THEN 'JUSTIFICADO' ELSE 'NO_PRAZO' END situacao
-        FROM grouped g LEFT JOIN LATERAL (
-          SELECT id,motivo,previsao_regularizacao,usuario_login,criado_em
-          FROM public.atrasos_justificativas WHERE op=g.op AND setor=g.setor
-          ORDER BY criado_em DESC,id DESC LIMIT 1
-        ) j ON true
-      ), filtered AS MATERIALIZED (
-      SELECT * FROM ready
-      WHERE ($12='TODOS' OR ($12='ATRASADOS' AND pendentes_vencidos>0)
-        OR ($12='CONCLUIDOS' AND programados=produzidos AND NOT EXISTS (
-          -- Fechar a OP exige concluir todas as séries do setor, inclusive fora do período filtrado.
-          SELECT 1 FROM public.atrasos_programacao_detalhada all_p
-          JOIN public.atrasos_importacoes all_i ON all_i.id=all_p.importacao_id
-            AND all_i.status='ATIVA' AND all_i.tipo='PROGRAMACAO'
-          WHERE all_p.op=ready.op AND all_p.setor=ready.setor
-            AND NOT EXISTS (
-              SELECT 1 FROM public.atrasos_apontamentos_detalhados all_a
-              JOIN public.atrasos_importacoes done_i ON done_i.id=all_a.importacao_id
-                AND done_i.status='ATIVA' AND done_i.tipo='APONTAMENTO'
-              WHERE all_a.op=all_p.op AND all_a.setor=all_p.setor AND all_a.serie=all_p.serie
-            )
-        )))
-        AND ($13='' OR ($13='COM' AND motivo IS NOT NULL) OR ($13='SEM' AND motivo IS NULL))
-        AND (NOT $14::boolean OR dias_programados>1)
+      const fim=new Date(Date.parse(end)-86400000).toISOString().slice(0,10);
+      const periodo={inicio:start,fim,hoje:today};
+      if (allowed !== null && !allowed.length) return res.json({periodo,rows:[],total:0,page,importacoes:[]});
+      const result=await pool.query(`${dailyRows}, filtered AS MATERIALIZED (
+        SELECT * FROM ready
+        WHERE $12='TODOS' OR (situacao<>'SEM_APONTAMENTO' AND (
+          ($12='ATRASADOS' AND pendentes_vencidos>0) OR
+          ($12='CONCLUIDOS' AND produzidos=programados AND ${sectorComplete})))
       ), page_rows AS (
-        SELECT * FROM filtered ORDER BY pendentes_vencidos DESC,ultima_data_programada DESC,op DESC,setor
-        LIMIT 50 OFFSET $15
-      )
+        SELECT * FROM filtered ORDER BY data_programada,op,setor LIMIT 50 OFFSET $13
+      ), ${opTotals}
       SELECT totals.total,
-        COALESCE((SELECT jsonb_agg(to_jsonb(r)-'series_vencidas') FROM page_rows r),'[]'::jsonb) rows,
-        jsonb_build_object(
+        COALESCE((SELECT jsonb_agg((to_jsonb(r)-'series_vencidas') || jsonb_build_object(
+          'qtde_total_op',t.qtde_total_op,'primeira_data_programada',r.data_programada,
+          'ultima_data_programada',r.data_programada,
+          'produzidos',CASE WHEN r.situacao<>'SEM_APONTAMENTO' THEN r.produzidos END,
+          'pendentes_vencidos',CASE WHEN r.situacao<>'SEM_APONTAMENTO' THEN r.pendentes_vencidos END,
+          'produzidos_em_atraso',CASE WHEN r.situacao<>'SEM_APONTAMENTO' THEN r.produzidos_em_atraso END
+        ) ORDER BY r.data_programada,r.op,r.setor) FROM page_rows r JOIN op_totals t USING(op)),'[]'::jsonb) rows,
+        CASE WHEN EXISTS(SELECT 1 FROM public.atrasos_importacoes WHERE tipo='APONTAMENTO' AND status='ATIVA') THEN jsonb_build_object(
           'ops_atrasadas',totals.ops_atrasadas,
-          'transformadores_vencidos',(SELECT COUNT(DISTINCT serie)::int FROM filtered f CROSS JOIN LATERAL unnest(f.series_vencidas) serie),
+          'transformadores_vencidos',(SELECT COUNT(DISTINCT serie)::int FROM filtered f CROSS JOIN LATERAL unnest(f.series_vencidas) serie WHERE f.situacao<>'SEM_APONTAMENTO'),
           'produzidos_fora_prazo',totals.produzidos_fora_prazo,
           'sem_justificativa',totals.sem_justificativa,
           'prazo_vencido',totals.prazo_vencido,
           'regularizados',totals.regularizados
-        ) kpis,
+        ) END kpis,
         COALESCE((SELECT jsonb_agg(i) FROM (SELECT tipo,esperado,atualizado_em FROM public.atrasos_importacoes WHERE status='ATIVA') i),'[]'::jsonb) importacoes
       FROM (
         SELECT COUNT(*)::int total,
-          COUNT(DISTINCT op) FILTER(WHERE pendentes_vencidos>0 OR produzidos_em_atraso>0)::int ops_atrasadas,
+          COUNT(DISTINCT op) FILTER(WHERE pendentes_vencidos>0 AND situacao<>'SEM_APONTAMENTO')::int ops_atrasadas,
           COALESCE(SUM(produzidos_em_atraso)::int,0) produzidos_fora_prazo,
           COUNT(*) FILTER(WHERE situacao='SEM_JUSTIFICATIVA')::int sem_justificativa,
           COUNT(*) FILTER(WHERE situacao='PRAZO_VENCIDO')::int prazo_vencido,
           COUNT(*) FILTER(WHERE programados=produzidos)::int regularizados
         FROM filtered
-      ) totals`,[...values,(page-1)*50]);
-      res.json({periodo:{inicio:dateFrom,fim:dateTo,hoje:today},...result.rows[0],page});
-    } catch(e:any) { res.status(500).json({error:e?.code==='42P01'?'Execute SUPABASE_GESTAO_ATRASOS.sql no banco de atrasos.':'Falha ao carregar a Visão OP.'}); }
+      ) totals`,[...values,situacao,(page-1)*50]);
+      res.json({periodo,...result.rows[0],page});
+    } catch(e:any) { res.status(e instanceof RangeError?400:500).json({error:e instanceof RangeError?e.message:e?.code==='42P01'?'Execute SUPABASE_GESTAO_ATRASOS.sql no banco de atrasos.':'Falha ao carregar a Visão OP.'}); }
   });
 
-  registerGestaoAtrasosRelatorio(app,pool,auth,getAuthorizedSectors,activeRows,selectedPeriod,period,sector);
+  registerGestaoAtrasosRelatorio(app,pool,auth,getAuthorizedSectors,dailyFilters,dailyRows,opTotals,sectorComplete);
 
   app.get(`${base}/op/:op`,auth,async(req:any,res)=>{
     try {
@@ -365,16 +375,16 @@ export function registerGestaoAtrasosRoutes(
       const {start,end,today}=selectedPeriod(req.query);
       const linha=normal(req.query.linha),cliente=String(req.query.cliente||'').trim(),serie=String(req.query.serie||'').trim();
       if(serie&&!/^\d{1,20}$/.test(serie))return res.status(400).json({error:'Série inválida.'});
-      const result=await pool.query(`${activeRows('p.data_programada < $4::date')}, scoped AS MATERIALIZED (
+      const result=await pool.query(`${activeRows('p.op=$1')}, scoped AS MATERIALIZED (
         SELECT p.*,a.data_produzida FROM prog p
         LEFT JOIN done a ON a.serie=p.serie AND a.setor=p.setor AND a.op=p.op
-        WHERE p.op=$1 AND p.data_programada >= $3::date AND p.data_programada<$4::date
+
       ), series AS (
         SELECT serie,setor,op,data_programada::text,linha,cliente,potencia,data_produzida::text,
           CASE WHEN data_produzida>data_programada THEN 'PRODUZIDO_ATRASADO'
             WHEN data_produzida IS NOT NULL THEN 'PRODUZIDO_NO_PRAZO'
             WHEN data_programada<$5::date THEN 'PENDENTE_VENCIDO' ELSE 'PENDENTE_NO_PRAZO' END situacao
-        FROM scoped WHERE setor=$2
+        FROM scoped WHERE setor=$2 AND data_programada >= $3::date AND data_programada < $4::date
           AND ($6::text IS NULL OR linha=$6)
           AND ($7::text IS NULL OR cliente ILIKE '%'||$7||'%')
           AND ($8::text IS NULL OR serie=$8)
@@ -391,6 +401,10 @@ export function registerGestaoAtrasosRoutes(
       const resultRow=result.rows[0];
       if(!resultRow?.visible) return res.status(404).json({error:'OP não encontrada no setor autorizado.'});
       const {visible,...detail}=resultRow;
+      if(!detail.apontamentoImportado){
+        detail.series=detail.series.map((row:any)=>({...row,situacao:'SEM_APONTAMENTO'}));
+        detail.progresso=detail.progresso.map((row:any)=>({...row,produzidos:null,pendentes_vencidos:null}));
+      }
       res.json(detail);
     }catch(e) {res.status(e instanceof RangeError?400:500).json({error:e instanceof RangeError?e.message:'Falha ao carregar detalhes da OP.'});}
   });
@@ -411,21 +425,25 @@ export function registerGestaoAtrasosRoutes(
   app.post(`${base}/justificativas`,auth,async(req:any,res)=>{
     try {
       const op=String(req.body?.op ?? '').trim();const setor=sector(req.body?.setor);
-      const motivo=String(req.body?.motivo ?? '').trim();const previsao=req.body?.previsao_regularizacao;
-      if(!/^\d{1,20}$/.test(op) || !setor || motivo.length<5 || motivo.length>3000 || !validDate(previsao)) {
-        return res.status(400).json({error:'Informe OP, setor, motivo de 5 a 3000 caracteres e previsão válida.'});
+      const motivo=typeof req.body?.motivo==='string' ? req.body.motivo.trim() : '';
+      const raw=req.body?.previsao_regularizacao;
+      const previsao=raw==='' || raw==null ? null : raw;
+      if(!/^\d{1,20}$/.test(op) || !setor || motivo.length<5 || motivo.length>3000 || (previsao!==null && !validDate(previsao))) {
+        return res.status(400).json({error:'Informe OP, setor, observação de 5 a 3000 caracteres e, se houver prazo, uma data válida.'});
       }
       const allowed=await getAuthorizedSectors(req.auth);
       if (allowed !== null && !allowed.includes(setor)) return res.status(403).json({error:'Setor não autorizado.'});
       const {start,end}=selectedPeriod(req.body);
-      const opExists=await pool.query(`SELECT 1 FROM public.atrasos_programacao_detalhada p JOIN public.atrasos_importacoes i
-        ON i.id=p.importacao_id AND i.status='ATIVA' WHERE p.op=$1 AND p.setor=$2
-        AND p.data_programada >= $3::date AND p.data_programada < $4::date LIMIT 1`,[op,setor,start,end]);
-      if(!opExists.rowCount)return res.status(404).json({error:'OP e setor não encontrados na programação ativa do período.'});
-      const result=await pool.query(`INSERT INTO public.atrasos_justificativas(op,setor,motivo,previsao_regularizacao,usuario_id,usuario_login)
-        VALUES($1,$2,$3,$4,$5,$6) RETURNING id,criado_em`,[op,setor,motivo,previsao,Number(req.auth.userId),String(req.auth.login || 'USUARIO')]);
+      const result=await pool.query(`INSERT INTO public.atrasos_justificativas
+        (op,setor,motivo,previsao_regularizacao,usuario_id,usuario_login)
+        SELECT $1,$2,$3,$4::date,$5::integer,$6 WHERE EXISTS (
+          SELECT 1 FROM public.atrasos_programacao_detalhada p
+          JOIN public.atrasos_importacoes i ON i.id=p.importacao_id AND i.status='ATIVA' AND i.tipo='PROGRAMACAO'
+          WHERE p.op=$1 AND p.setor=$2 AND p.data_programada >= $7::date AND p.data_programada < $8::date
+        ) RETURNING id,criado_em`,[op,setor,motivo,previsao,Number(req.auth.userId),String(req.auth.login||'USUARIO'),start,end]);
+      if(!result.rowCount) return res.status(404).json({error:'OP e setor não encontrados na programação ativa do período.'});
       invalidateSummary();
       res.json({ok:true,...result.rows[0]});
-    } catch(e) {res.status(e instanceof RangeError?400:500).json({error:e instanceof RangeError?e.message:'Falha ao salvar justificativa.'});}
+    } catch(e) {res.status(e instanceof RangeError?400:500).json({error:e instanceof RangeError?e.message:'Falha ao salvar observação.'});}
   });
 }

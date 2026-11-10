@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { registerGestaoAtrasosRoutes as original } from '../tests/fixtures/audit-gestaoAtrasos.ts';
 import { registerGestaoAtrasosRoutes as optimized } from '../server.gestaoAtrasos.ts';
 import assert from 'node:assert/strict';
+import { verifyDailySummary } from '../tests/fixtures/verify-daily-summary.ts';
 mkdirSync('homologacao-missao',{recursive:true});
 const NativeDate=Date;
 // Fixed reference date keeps canonical comparisons reproducible outside October 2026.
@@ -36,14 +37,14 @@ function router(register,perfil='COORDENACAO',access=[{setor:'BOBINAGEM'}]) {
  return async(path,query={},body={},method='GET',params={},expectedStatus=200)=>{let status=200,value;await routes.get(method+' /api/gestao-atrasos'+path)({query,body,params,auth:{perfil,userId:1,login:'mascarado'}},{status(n){status=n;return this;},json(x){value=x;return this;}});assert.equal(status,expectedStatus,JSON.stringify(value));return value;};
 }
 const before=router(original),after=router(optimized);
-function normalize(rows){return rows.map(({total,...r})=>({...r,criado_em:r.criado_em?new Date(r.criado_em).toISOString():null,ultima_producao:r.ultima_producao?String(r.ultima_producao instanceof Date?r.ultima_producao.toISOString():r.ultima_producao).slice(0,10):null}));}
 const scenarios=[{setor:'BOBINAGEM',linha:'MON',cliente:'Cliente 2',op:'1002',situacao:'TODOS'},{serie:'900001',inicio:'2026-07-01',fim:'2026-07-31',situacao:'TODOS'},{inicio:'2026-11-01',fim:'2026-11-30',situacao:'TODOS'},{page:'999',situacao:'TODOS'},{op:'999999999',situacao:'TODOS'}, {}, {situacao:'TODOS'},{setor:'BOBINAGEM'},{op:'1000',situacao:'TODOS'},{serie:'1',situacao:'TODOS'}, {serie:'2',situacao:'TODOS'}, {linha:'MON'}, {cliente:'Cliente 3'}, {situacao:'PENDENTES'}, {situacao:'CONCLUIDOS'}, {justificativa:'COM'}, {justificativa:'SEM'}, {multiplos:'true'}, {situacao:'PRAZO_VENCIDO'}, {inicio:'2026-09-12',fim:'2026-10-20'}, {situacao:'TODOS',page:'3'}];
-for(const q of scenarios){const a=await before('/resumo',q),b=await after('/resumo',q);assert.deepEqual(normalize(b.rows),normalize(a.rows),JSON.stringify(q));assert.equal(b.total,a.total);assert.deepEqual(b.kpis,a.kpis);assert.deepEqual(b.periodo,a.periodo);}
+await verifyDailySummary(db,after,scenarios);
 const empty=await after('/resumo',{situacao:'TODOS',page:'999'});assert(empty.total>0);assert.equal(empty.rows.length,0);assert.equal(empty.kpis.ops_atrasadas,(await after('/resumo',{situacao:'TODOS'})).kpis.ops_atrasadas);
 const historical=await after('/resumo',{inicio:'2026-07-01',fim:'2026-07-31',situacao:'TODOS'});assert.equal(historical.rows[0].op,'8000');
 const future=await after('/resumo',{inicio:'2026-11-01',fim:'2026-11-30',situacao:'TODOS'});assert.equal(future.rows[0].op,'8001');
 for(const register of [original,optimized]) {const leader=router(register,'APONTADOR');const summary=await leader('/resumo',{situacao:'TODOS'});assert(summary.rows.every(r=>r.setor==='BOBINAGEM'));}
-const oldDetail=await before('/op/:op',{setor:'BOBINAGEM'},{},'GET',{op:'1000'});const newDetail=await after('/op/:op',{setor:'BOBINAGEM'},{},'GET',{op:'1000'});assert.deepEqual(newDetail,oldDetail);
+const detail=await after('/op/:op',{setor:'BOBINAGEM'},{},'GET',{op:'1000'});
+assert(detail.series.length>0 && detail.progresso.some(p=>p.setor==='BOBINAGEM'));
 const detailFiltered=await after('/op/:op',{setor:'BOBINAGEM',serie:'2',inicio:'2026-09-01',fim:'2026-10-31'},{},'GET',{op:'1000'});
 assert.equal(detailFiltered.series.length,1);assert.equal(detailFiltered.series[0].serie,'2');
 assert(detailFiltered.progresso.length>1,'other sector progress remains read only');
@@ -55,15 +56,15 @@ assert(leaderOptions.combinacoes.every(r=>r.setor==='BOBINAGEM'));
 assert.deepEqual((await router(optimized,'APONTADOR',[])('/filtros')).combinacoes,[]);
 await after('/filtros',{inicio:'2026-02-30'},{},'GET',{},400);
 await router(optimized,'APONTADOR')('/resumo',{setor:'SOLDA'},{},'GET',{},403);
-// Canonical earlier row outside period must prevent a later alternate OP/line.
+// Options must come from the selected period.
 assert.deepEqual((await after('/filtros',{inicio:'2026-08-01',fim:'2026-08-31'})).combinacoes,[{setor:'SOLDA',linha:'TRI'}]);
 // Two sides of the year/month boundary in Manaus (UTC-4), including UTC date mismatch.
 for(const now of ['2027-01-01T02:00:00Z','2027-01-01T04:00:00Z','2026-11-01T03:59:59Z','2026-11-01T04:00:00Z']){
  globalThis.Date=class extends NativeDate {constructor(...args:any[]){super(...(args.length?args:[now]) as [any]);}static now(){return new NativeDate(now).getTime();}} as DateConstructor;
- assert.deepEqual(await after('/resumo',{situacao:'TODOS'}),await before('/resumo',{situacao:'TODOS'}),now);
+ assert.deepEqual((await after('/resumo',{situacao:'TODOS'})).periodo,(await before('/resumo',{situacao:'TODOS'})).periodo,now);
 }
 globalThis.Date=class extends NativeDate {constructor(...args:any[]){super(...(args.length?args:['2026-10-30T16:00:00Z']) as [any]);}static now(){return new NativeDate('2026-10-30T16:00:00Z').getTime();}} as DateConstructor;
-console.log('Equivalência, períodos, perfis e detalhes: aprovados. Iniciando benchmark local.');
+console.log('Grupos diários, períodos, perfis e detalhes aprovados. Iniciando benchmark local.');
 console.log('Options, authorization and Manaus boundary parity passed.');
 const scenarioResults=[];
 for(const q of [{situacao:'TODOS'},{setor:'BOBINAGEM',cliente:'Cliente 2',situacao:'TODOS'},{serie:'2',situacao:'TODOS'}]) {
@@ -127,6 +128,6 @@ await after('/importacoes/finalizar',{}, {tipo:'PROGRAMACAO',id:session.id},'POS
 assert.equal((await after('/importacoes/finalizar',{}, {tipo:'PROGRAMACAO',id:session.id},'POST')).repetida,true);
 for(const esperado of [0,200001,2000000000])await after('/importacoes/iniciar',{}, {tipo:'PROGRAMACAO',esperado},'POST',{},400);
 
-const report={engine:'PGlite PostgreSQL local WASM; no cloud connections',version:(await db.query('SELECT version()')).rows[0],equivalenceScenarios:scenarios.length,checks:['empty page preserves total/KPIs','custom historical/future dates','authorized sector','detail parity','identical replay no extra rows','transactional finalize','incomplete import preserves active','changed retry rolls back entire batch','repeated finalize is idempotent','API quantity limits before SQL'],scenarioResults,batchBenchmarks};
+const report={engine:'PGlite PostgreSQL local WASM; no cloud connections',version:(await db.query('SELECT version()')).rows[0],dailyScenarios:scenarios.length,checks:['empty page preserves total/KPIs','custom historical/future dates','authorized sector','daily detail and global progress','identical replay no extra rows','transactional finalize','incomplete import preserves active','changed retry rolls back entire batch','repeated finalize is idempotent','API quantity limits before SQL'],scenarioResults,batchBenchmarks};
 writeFileSync('homologacao-missao/benchmark-sql.json',JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));await db.close();globalThis.Date=NativeDate;
 

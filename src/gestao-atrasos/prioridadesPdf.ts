@@ -1,6 +1,6 @@
 /** PDF A4 horizontal, vetorial e com texto pesquisável. Sem dependências extras. */
 export interface PrioridadeLinha {
-  op:string; setor:string; linha:string; cliente:string; potencia:string;
+  op:string; setor:string; linha:string; cliente:string; potencia:string; referencia?:string;
   data_programada:string; qtde_total_op:number;
   programada:number; produzida:number; pendente:number;
   concluida:boolean; motivo:string|null; previsao_regularizacao:string|null;
@@ -37,8 +37,22 @@ function encodeText(s:string){
   return result;
 }
 const rgb=(c:Cor)=>c.map(n=>(n/255).toFixed(3)).join(' ');
-type Grupo='ATRASADAS'|'HOJE'|'ATENDIDAS';
-const cat=(r:PrioridadeLinha,today:string):Grupo=>r.pendente>0&&r.data_programada<today?'ATRASADAS':r.pendente>0&&r.data_programada===today?'HOJE':'ATENDIDAS';
+// Largura fixa das linhas de conteúdo em Courier. Quebra palavras extensas
+// e conserva quebras explícitas, inclusive em uma observação de várias páginas.
+function wrap(text:string, columns:number):string[] {
+  const lines:string[]=[];
+  for (const paragraph of text.replace(/\r\n?/g,'\n').replace(/\t/g,'    ').split('\n')) {
+    let chars=Array.from(paragraph);
+    while(chars.length>columns) {
+      const space=chars.lastIndexOf(' ',columns);
+      const cut=space>0?space:columns;
+      lines.push(chars.slice(0,cut).join(''));
+      chars=chars.slice(space>0?cut+1:cut);
+    }
+    lines.push(chars.join(''));
+  }
+  return lines;
+}
 export function gerarPdfPrioridades(relatorio:RelatorioPrioridades,filtros:FiltrosPrioridades):Uint8Array {
   if(!relatorio.rows.length)throw new Error('Sem dados para gerar o PDF.');
   const pages:string[][]=[];let cmds:string[]=[],y=0;
@@ -52,81 +66,90 @@ export function gerarPdfPrioridades(relatorio:RelatorioPrioridades,filtros:Filtr
   function txt(value:string,x:number,top:number,size=10,color:Cor=C.ink,bold=false){
     cmds.push(`${rgb(color)} rg BT /F${bold?2:1} ${size} Tf 1 0 0 1 ${x.toFixed(2)} ${(H-top-size).toFixed(2)} Tm (${encodeText(value)}) Tj ET`);
   }
-  function filterLabel(){
-    const situacao:Record<string,string>={ATRASADOS:'Com atraso',CONCLUIDOS:'Concluída',TODOS:'Todas'};
-    return ['Situação: '+(situacao[filtros.situacao]||'Com atraso'),
-      filtros.linha?'Linha: '+filtros.linha:'',filtros.cliente?'Cliente: '+filtros.cliente:'',
-      filtros.op?'OP: '+filtros.op:'',filtros.serie?'Série: '+filtros.serie:'',
-      filtros.justificativa?'Justificativa: '+(filtros.justificativa==='COM'?'Com':'Sem'):'',
-      filtros.multiplos?'Múltiplos dias':'',
-      `Período: ${filtros.inicio?pdfDate(filtros.inicio):'padrão'} a ${filtros.fim?pdfDate(filtros.fim):'padrão'}`
-    ].filter(Boolean).join('  |  ');
-  }
-  function pageStart(setor:string,continua=false){
-    if(cmds.length)pages.push(cmds);
-    cmds=[];y=0;
-    rect(0,0,W,77,C.dark);
-    txt('ITAM  /  CHECKLIST DO LÍDER',30,12,18,C.white,true);
-    txt('IMPRESSÃO DIÁRIA',697,17,9,[224,234,240],true);
-    txt(`SETOR: ${limit(setor,52)}   •   ${pdfDate(relatorio.hoje)}${continua?'   •   CONTINUAÇÃO':''}`,30,43,9,[222,231,236]);
-    txt(limit(filterLabel(),152),30,59,7,[185,201,210]);
-    txt('ORDEM DE EXECUÇÃO',30,87,12,C.ink,true);
-    txt('1º regularizar atrasos     2º atender produção do dia     3º registrar justificativas',30,106,8.2,C.soft);
-    line(30,123,812,123,C.line);
-    y=133;
-  }
-  const config:Record<Grupo,{label:string;light:Cor;dark:Cor}>={
-    ATRASADAS:{label:'ATRASADAS  •  PRIORIDADE MÁXIMA',light:C.redPale,dark:C.red},
-    HOJE:{label:'HOJE  •  PROGRAMAÇÃO ATUAL',light:C.bluePale,dark:C.blue},
-    ATENDIDAS:{label:'ATENDIDAS  •  SEM PENDÊNCIA',light:C.neutral,dark:C.soft},
-  };
-  function section(group:Grupo,count:number,continua=false){
-    const cfg=config[group];
-    rect(30,y,782,25,cfg.light);
-    txt(cfg.label+(continua?' (CONTINUAÇÃO)':''),39,y+5,9,cfg.dark,true);
-    txt(`${num(count)} linha(s) por data programada`,631,y+7,7,cfg.dark);
-    y+=29;
-  }
-  function card(r:PrioridadeLinha,group:Grupo){
-    const cfg=config[group];
-    const top=y;
-    rect(30,top,782,46,C.white,C.line);
-    rect(30,top,4,46,cfg.dark);
-    // Checkbox para conferência do líder.
-    cmds.push(`${rgb([142,160,173])} RG 0.8 w 40 ${(H-top-20).toFixed(2)} 16 16 re S`);
-    txt(`OP ${r.op}`,68,top+5,11.3,C.ink,true);
-    txt(limit(`${r.cliente||'Cliente não informado'}  •  ${r.linha||'—'}  •  ${r.potencia||'—'}`,46),195,top+6,8,C.soft);
-    txt(`Data ${pdfDate(r.data_programada)}   |   Total OP ${num(r.qtde_total_op)}   |   Programada ${num(r.programada)}   |   Produzida ${num(r.produzida)}`,68,top+25,8.1,C.ink);
-    txt(`PEND. ${num(r.pendente)}`,393,top+32,10,cfg.dark,true);
-    line(494,top+5,494,top+42,C.line);
-    txt('Justificativa / ação do líder:',505,top+6,8,C.soft);
-    if(r.motivo){txt(`Registrada: ${limit(r.motivo.replace(/\s+/g,' '),43)}`,505,top+18,7.5,C.ink);}
-    line(505,top+36,799,top+36,[145,162,177]);
-    y+=50;
-  }
-  const ordered=[...relatorio.rows].sort((a,b)=>a.setor.localeCompare(b.setor,'pt-BR')||
-    (['ATRASADAS','HOJE','ATENDIDAS'].indexOf(cat(a,relatorio.hoje)) - ['ATRASADAS','HOJE','ATENDIDAS'].indexOf(cat(b,relatorio.hoje)))||
-    a.data_programada.localeCompare(b.data_programada)||a.op.localeCompare(b.op,undefined,{numeric:true}));
-  const setores=[...new Set(ordered.map(r=>r.setor))];
-  for(const setor of setores){
-    pageStart(setor);
-    const subset=ordered.filter(r=>r.setor===setor);
-    for(const kind of ['ATRASADAS','HOJE','ATENDIDAS'] as const){
-      const group=subset.filter(r=>cat(r,relatorio.hoje)===kind);
-      if(!group.length)continue;
-      if(y+29+50>H-33)pageStart(setor,true);
-      section(kind,group.length);
-      for(let i=0;i<group.length;i++){
-        if(y+50>H-33){pageStart(setor,true);section(kind,group.length,true);}
-        card(group[i],kind);
-      }
-      y+=9;
+  const bottom=H-38;
+  function bodyLine(value:string,top:number) {
+    const size=9;
+    // WinAnsi cobre português. Para outros alfabetos, o navegador desenha a
+    // linha com fontes locais e o PDF conserva o texto Unicode em ActualText.
+    if (Array.from(value).every(c=>c.codePointAt(0)!<=255 || CP[c]!==undefined)) {
+      cmds.push(`${rgb(C.ink)} rg BT /F3 ${size} Tf 1 0 0 1 42 ${(H-top-size).toFixed(2)} Tm (${encodeText(value)}) Tj ET`);
+      return;
     }
+    const canvas=document.createElement('canvas');
+    canvas.width=2250; canvas.height=42;
+    const ctx=canvas.getContext('2d');
+    if(!ctx) throw new Error('O navegador não conseguiu renderizar a observação no PDF.');
+    ctx.fillStyle='white';ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle='#16242d';ctx.font='27px monospace';ctx.fillText(value,0,29,canvas.width);
+    const bytes=atob(canvas.toDataURL('image/jpeg',0.95).split(',')[1]);
+    const hex=Array.from(bytes,c=>c.charCodeAt(0).toString(16).padStart(2,'0')).join('');
+    const unicode=value.split('').map(c=>c.charCodeAt(0).toString(16).padStart(4,'0')).join('');
+    cmds.push(`/Span << /ActualText <FEFF${unicode}> >> BDC q 750 0 0 14 42 ${(H-top-13).toFixed(2)} cm BI /W 2250 /H 42 /CS /RGB /BPC 8 /F [/ASCIIHexDecode /DCTDecode] ID\n${hex}>\nEI Q EMC`);
+  }
+  const hasToday=relatorio.rows.some(r=>r.data_programada===relatorio.hoje);
+  function pageStart() {
+    if(cmds.length)pages.push(cmds);
+    cmds=[];
+    rect(0,0,W,64,C.dark);
+    txt('ITAM  /  Prioridades de produção',30,11,18,C.white,true);
+    txt(`${hasToday?'Atrasos + dia atual':'Atrasos pendentes'}  |  Manaus, ${pdfDate(relatorio.hoje)}`,30,39,10,C.white);
+    y=76;
+    const context=[filtros.setor,filtros.linha,filtros.op&&'OP '+filtros.op,filtros.serie&&'Série '+filtros.serie,
+      filtros.cliente,filtros.justificativa&&(filtros.justificativa==='COM'?'Com observação':'Sem observação'),
+      filtros.multiplos&&'Vários dias',filtros.inicio&&filtros.fim&&`Período ${pdfDate(filtros.inicio)} a ${pdfDate(filtros.fim)}`].filter(Boolean);
+    if(context.length){txt(limit(context.join('  ·  '),115),30,y,7.5,C.soft);y+=17;}
+  }
+  function section(today:boolean,continued=false) {
+    const label=today?'HOJE  ·  PROGRAMAÇÃO DO DIA':'ATRASADAS  ·  PENDÊNCIAS ANTERIORES';
+    rect(30,y,782,23,today?C.bluePale:C.redPale);
+    txt(label+(continued?'  /  continuação':''),40,y+5,9,today?C.blue:C.red,true);
+    y+=30;
+  }
+  const ordered=relatorio.rows.filter(r=>r.data_programada===relatorio.hoje ||
+    (r.data_programada<relatorio.hoje && r.pendente>0)).sort((a,b)=>
+    a.data_programada.localeCompare(b.data_programada)||a.op.localeCompare(b.op,'pt-BR',{numeric:true})||
+    a.setor.localeCompare(b.setor,'pt-BR'));
+  if(!ordered.length)throw new Error('Sem dados para gerar o PDF.');
+  pageStart();
+  let previous:boolean|undefined;
+  for(const r of ordered) {
+    const today=r.data_programada===relatorio.hoje;
+    const newPage=y+85>bottom;
+    if(newPage)pageStart();
+    if(newPage||previous!==today)section(today,newPage&&previous===today);
+    previous=today;
+    const heading=`OP ${r.op}   |   ${pdfDate(r.data_programada)}   |   ${r.setor}`;
+    function headingLines(continued=false) {
+      for(const part of wrap(heading+(continued?'   (continuação)':''),96)) {
+        bodyLine(part,y); y+=14;
+      }
+    }
+    line(30,y,812,y,C.line); y+=5;
+    rect(30,y+2,8,8,C.white,C.soft);
+    headingLines();
+    const metrics=`Total OP ${num(r.qtde_total_op)}   Programada ${num(r.programada)}   Produzida ${num(r.produzida)}   Pendente ${num(r.pendente)}   Progresso ${Math.round(100*r.produzida/Math.max(1,r.programada))}%`;
+    const state=r.pendente===0?'Concluída':today?'Programada para hoje':'Atraso pendente';
+    const fields=[`Cliente: ${r.cliente||'—'}   Linha: ${r.linha||'—'}   Potência: ${r.potencia||'—'}   Referência: ${r.referencia||'—'}`,
+      metrics,`Situação: ${state}   Prazo: ${r.previsao_regularizacao?pdfDate(r.previsao_regularizacao):'—'}`,
+      'Observação: '+(r.motivo||'—')];
+    for(const field of fields) {
+      for(const part of wrap(field,135)) {
+        if(y+14>bottom){pageStart();section(today,true);headingLines(true);}
+        bodyLine(part,y); y+=14;
+      }
+    }
+    if(y+16<=bottom){
+      txt('Conferência do líder',42,y,7,C.soft);
+      line(117,y+8,795,y+8);
+      y+=14;
+    }
+    y+=8;
   }
   if(cmds.length)pages.push(cmds);
   const objects:string[]=['','',
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
-    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>'];
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>'];
   const kids:number[]=[];
   for(let i=0;i<pages.length;i++){
     const contents=pages[i];
@@ -136,7 +159,7 @@ export function gerarPdfPrioridades(relatorio:RelatorioPrioridades,filtros:Filtr
     contents.push(`${rgb(C.soft)} rg BT /F2 7.4 Tf 1 0 0 1 747 16 Tm (Pag. ${i+1} / ${pages.length}) Tj ET`);
     const stream=contents.join('\n')+'\n';
     const contentId=objects.push(`<< /Length ${stream.length} >>\nstream\n${stream}endstream`);
-    const pageId=objects.push(`<< /Type /Page /Parent 1 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${contentId} 0 R >>`);
+    const pageId=objects.push(`<< /Type /Page /Parent 1 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents ${contentId} 0 R >>`);
     kids.push(pageId);
   }
   objects[0]=`<< /Type /Pages /Kids [${kids.map(id=>`${id} 0 R`).join(' ')}] /Count ${kids.length} >>`;

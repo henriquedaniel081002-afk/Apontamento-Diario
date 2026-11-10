@@ -43,12 +43,12 @@ describe('Gestão de atrasos — segurança das rotas',()=>{
       expect(t.query).not.toHaveBeenCalled();
     }finally{await t.close();}
   });
-  it('nega escrita em outro setor e exige prazo no setor próprio',async()=>{
+  it('nega escrita em outro setor e aceita observação sem prazo no setor próprio',async()=>{
     const t=await setup();try{
       const body={op:'12580',setor:'SOLDA',motivo:'Problema de material',previsao_regularizacao:'2026-11-02'};
       expect((await t.request('/justificativas',{method:'POST',body:JSON.stringify(body)})).status).toBe(403);
-      expect((await t.request('/justificativas',{method:'POST',body:JSON.stringify({...body,setor:'BOBINAGEM',previsao_regularizacao:null})})).status).toBe(400);
-      expect(t.query).not.toHaveBeenCalled();
+      expect((await t.request('/justificativas',{method:'POST',body:JSON.stringify({...body,setor:'BOBINAGEM',previsao_regularizacao:null})})).status).toBe(200);
+      expect(t.query.mock.calls.at(-1)?.[1]?.[3]).toBeNull();
     }finally{await t.close();}
   });
   it('permite progresso agregado de outros setores apenas para OP visível no próprio setor',async()=>{
@@ -64,7 +64,6 @@ describe('Gestão de atrasos — segurança das rotas',()=>{
   it('registra motivo e prazo por OP e setor criando histórico sem sobrescrever',async()=>{
     const t=await setup();try{
       t.query.mockImplementation(async(sql:string):Promise<any>=>{
-        if(sql.includes('SELECT 1 FROM public.atrasos_programacao_detalhada'))return {rowCount:1,rows:[{exists:1}]};
         if(sql.includes('INSERT INTO public.atrasos_justificativas'))return {rowCount:1,rows:[{id:42,criado_em:'2026-10-29T12:00:00Z'}]};
         return {rowCount:0,rows:[]};
       });
@@ -72,7 +71,7 @@ describe('Gestão de atrasos — segurança das rotas',()=>{
       expect(r.status).toBe(200);expect((await r.json()).id).toBe(42);
       const sql=t.query.mock.calls.map(([q])=>q).join(' ');
       expect(sql).toContain('INSERT INTO public.atrasos_justificativas');expect(sql).not.toContain('UPDATE public.atrasos_justificativas');
-      expect(t.query.mock.calls.at(-1)?.[1]).toEqual(['12580','BOBINAGEM','Material em falta','2026-11-02',5,'lider']);
+      expect(t.query.mock.calls.at(-1)?.[1]?.slice(0,6)).toEqual(['12580','BOBINAGEM','Material em falta','2026-11-02',5,'lider']);
     }finally{await t.close();}
   });
   it('importação incompleta mantém a anterior ativa e reverte a transação',async()=>{
@@ -104,12 +103,12 @@ describe('Exportação de prioridades — filtros e permissões',()=>{
     const t=await setup();try{
       const r=await t.request('/relatorio-prioridades?setor=BOBINAGEM&linha=TRI&op=12580&situacao=TODOS&justificativa=SEM&multiplos=true&inicio=2026-10-01&fim=2026-12-31');
       expect(r.status).toBe(200);
-      const [sql,params]=t.query.mock.calls.find(([query])=>query.includes('full_prog'))!;
-      expect(sql).toContain('p.data_programada < $3::date');
-      expect(sql).toContain('data_programada,op,linha LIMIT 5001');
-      expect(sql).toContain('COUNT(DISTINCT serie)::int qtde_total_op');
-      expect(params[0]).toEqual(['BOBINAGEM']);
-      expect(params.slice(3)).toEqual(['2026-10-01','12580',null,'TRI',null,expect.any(String),'TODOS','SEM',true]);
+      const [sql,params]=t.query.mock.calls.find(([query])=>query.includes('LIMIT 5001'))!;
+      expect(sql).toContain('p.data_programada < $2::date');
+      expect(sql).toContain('data_programada,op,setor LIMIT 5001');
+      expect(sql).toContain('COUNT(DISTINCT p.serie)::int qtde_total_op');
+      expect(params.slice(0,4)).toEqual(['2026-10-01','2027-01-01',expect.any(String),['BOBINAGEM']]);
+      expect(params.slice(4)).toEqual(['BOBINAGEM','12580',null,'TRI',null,'SEM',true,false,'TODOS']);
     }finally{await t.close();}
   });
   it('nega exportação de outro setor e situação removida',async()=>{

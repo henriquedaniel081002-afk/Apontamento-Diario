@@ -4,6 +4,7 @@ import {
   BarChart3,
   ClipboardList,
   ClipboardCheck,
+  ListChecks,
   Gauge,
   History,
   LogOut,
@@ -21,7 +22,7 @@ import { User } from '../../types';
 import logoItam from '../../assets/logo-itam.png';
 import { cx } from './ui';
 
-export type HeaderTab = 'apontamento' | 'historico' | 'dashboard' | 'producao-diaria' | 'aderencia-anual' | 'controle-faltas' | 'produtividade-individual' | 'atraso' | 'nao-conformidades';
+export type HeaderTab = 'apontamento' | 'historico' | 'dashboard' | 'producao-diaria' | 'aderencia-anual' | 'controle-faltas' | 'produtividade-individual' | 'atraso' | 'acompanhamento-producao' | 'nao-conformidades';
 
 export interface HeaderProps {
   user: User;
@@ -55,7 +56,7 @@ const navigationByProfile: Record<User['perfil'], NavigationConfig> = {
       { id: 'historico', label: 'Histórico', icon: History },
       { id: 'nao-conformidades', label: 'Não Conformidades', icon: ClipboardCheck },
       { id: 'dashboard', label: 'Aderência Mensal', icon: BarChart3 },
-      { id: 'atraso', label: 'Atraso', icon: AlertTriangle },
+      { id: 'acompanhamento-producao', label: 'Acompanhamento da Produção', icon: ListChecks },
     ],
   },
   COORDENACAO: {
@@ -69,6 +70,7 @@ const navigationByProfile: Record<User['perfil'], NavigationConfig> = {
       { id: 'controle-faltas', label: 'Controle Faltas', icon: UserRoundX },
       { id: 'produtividade-individual', label: 'Produtividade', icon: Gauge },
       { id: 'atraso', label: 'Atraso', icon: AlertTriangle },
+      { id: 'acompanhamento-producao', label: 'Acompanhamento da Produção', icon: ListChecks },
     ],
   },
 };
@@ -105,7 +107,7 @@ function Navigation({
               <span className="absolute inset-y-2 left-0 w-0.5 rounded-r-full bg-emerald-300" aria-hidden="true" />
             )}
             <Icon className="size-[1.1rem] shrink-0" aria-hidden="true" />
-            <span className={cx('min-w-0 truncate', collapsed && 'md:sr-only')}>{item.label}</span>
+            <span className={cx('min-w-0', item.id === 'acompanhamento-producao' ? 'leading-tight' : 'truncate', collapsed && 'md:sr-only')}>{item.label}</span>
           </button>
         );
       })}
@@ -114,6 +116,7 @@ function Navigation({
 }
 
 function getPageTitle(isCoordination: boolean, activeTab: HeaderTab): string {
+  if (activeTab === 'acompanhamento-producao') return 'Acompanhamento da Produção';
   if (activeTab === 'nao-conformidades') return 'Não Conformidades';
   if (activeTab === 'produtividade-individual') return 'Produtividade Individual';
   if (isCoordination) {
@@ -178,7 +181,7 @@ export const Header: React.FC<HeaderProps> = ({ user, activeTab, onTabChange, on
         </button>
         <img src={logoItam} alt="ITAM Transformadores" className="h-9 w-auto max-w-[96px] object-contain" />
         <div className="min-w-0 border-l border-white/10 pl-3">
-          <p className="truncate text-sm font-extrabold text-white">{getPageTitle(isCoordination, activeTab)}</p>
+          <p className={cx("text-sm font-extrabold text-white", activeTab === "acompanhamento-producao" ? "leading-tight" : "truncate")}>{getPageTitle(isCoordination, activeTab)}</p>
           <p className="truncate text-xs font-medium text-slate-500">Operação industrial</p>
         </div>
       </div>

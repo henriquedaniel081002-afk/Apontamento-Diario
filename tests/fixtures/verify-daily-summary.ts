@@ -44,6 +44,17 @@ export async function verifyDailySummary(db:PGlite,request:Request,scenarios:Inp
         q.multiplos==='true'&&datesPerSector.get(pair)!.size<=1);
     });
     const actual=await request('/resumo',q);
+    const totals = new Map<string, {data_programada:string; programado:number; produzido:number}>();
+    for (const key of keys) {
+      const day = days.get(key)!;
+      const total = totals.get(day.data_programada) ?? {data_programada:day.data_programada, programado:0, produzido:0};
+      total.programado += day.programados;
+      total.produzido += day.produzidos;
+      totals.set(day.data_programada, total);
+    }
+    assert.deepEqual(actual.totaisPorData, [...totals.values()].map(total => ({
+      ...total, percentual: Math.round(10000 * total.produzido / total.programado) / 100,
+    })), JSON.stringify(q));
     const offset=(Number(q.page||1)-1)*50;
     assert.equal(actual.total,keys.length,JSON.stringify(q));
     const expected=keys.slice(offset,offset+50).map(k=>days.get(k));

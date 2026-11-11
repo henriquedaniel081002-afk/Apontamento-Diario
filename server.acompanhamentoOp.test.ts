@@ -126,6 +126,26 @@ describe('Visão OP sobre PostgreSQL local',()=>{
     expect((await api('/resumo?'+start+'&op=42')).total).toBe(3);
     expect((await db.query('SELECT count(*)::int AS n FROM atrasos_programacao_detalhada WHERE importacao_id=$1',[session.id])).rows).toEqual([{n:1}]);
   });
+  it('vincula sete de dez séries à data programada, incluindo produção antes e depois', async () => {
+    const dia = '2026-11-07';
+    await db.query(`INSERT INTO atrasos_programacao_detalhada(importacao_id,serie,setor,op,data_programada,linha)
+      SELECT $1, n::text, 'AMOSTRA', '765', $2, 'MON' FROM generate_series(1,10) n`, [prog, dia]);
+    try {
+      await db.query(`INSERT INTO atrasos_apontamentos_detalhados(importacao_id,serie,setor,op,data_produzida)
+        SELECT $1,n::text,'AMOSTRA','765',$2::date+(n%3-1) FROM generate_series(1,7) n`, [done, dia]);
+      const path = '/resumo?' + start + '&setor=AMOSTRA';
+      const result = await api(path, undefined, 'coord');
+      expect(result.totaisPorData).toEqual([{data_programada:dia, programado:10, produzido:7, percentual:70}]);
+      expect(result.rows[0]).toMatchObject({produzidos_em_atraso:2, qtde_total_op:10});
+      expect((await api(path + '&serie=10', undefined, 'coord')).totaisPorData)
+        .toEqual([{data_programada:dia, programado:1, produzido:0, percentual:0}]);
+      expect((await api(path + '&serie=88', undefined, 'coord')).totaisPorData).toEqual([]);
+      expect((await api('/resumo?' + start, undefined, 'nenhum')).totaisPorData).toEqual([]);
+    } finally {
+      await db.query("DELETE FROM atrasos_apontamentos_detalhados WHERE setor='AMOSTRA'");
+      await db.query("DELETE FROM atrasos_programacao_detalhada WHERE setor='AMOSTRA'");
+    }
+  });
   it('pagina sem repetir grupos e exige refinar o PDF acima de 5.000 linhas',async()=>{
     await db.query(`INSERT INTO atrasos_programacao_detalhada(importacao_id,serie,setor,op,data_programada,linha)
       SELECT $1::uuid,n::text,'C',n::text,'2026-11-05','TRI' FROM generate_series(80000,85000) n`,[prog]);
@@ -135,6 +155,13 @@ describe('Visão OP sobre PostgreSQL local',()=>{
       expect(a.total).toBe(5001);expect(b.total).toBe(5001);expect(a.rows).toHaveLength(50);
       expect(b.rows).toHaveLength(50);expect(a.rows.at(-1).op).toBe('80049');expect(b.rows[0].op).toBe('80050');
       expect(b.kpis).toEqual(a.kpis);
+      const vazia = await api(path + '&page=102', undefined, 'coord');
+      expect(vazia.rows).toEqual([]);
+      expect(vazia.total).toBe(5001);
+      expect(vazia.kpis).toEqual(a.kpis);
+      expect(a.totaisPorData).toEqual([{data_programada:'2026-11-05',programado:5001,produzido:0,percentual:0}]);
+      expect(b.totaisPorData).toEqual(a.totaisPorData);
+      expect(vazia.totaisPorData).toEqual(a.totaisPorData);
       await api('/relatorio-prioridades?'+start+'&setor=C',undefined,'coord',413);
     } finally {
       await db.query("DELETE FROM atrasos_programacao_detalhada WHERE importacao_id=$1 AND setor='C'",[prog]);
@@ -145,6 +172,8 @@ describe('Visão OP sobre PostgreSQL local',()=>{
     try {
       const r=await api('/resumo?'+start);
       expect(r.total).toBe(6);expect(r.kpis).toBeNull();
+      expect(r.totaisPorData).toHaveLength(5);
+      expect(r.totaisPorData.every((d:any)=>d.programado>0 && d.produzido===null && d.percentual===null)).toBe(true);
       expect(r.rows.every((x:any)=>x.produzidos===null&&x.situacao==='SEM_APONTAMENTO')).toBe(true);
       expect((await api('/resumo?'+start+'&situacao=ATRASADOS')).rows).toEqual([]);
       expect((await api('/relatorio-prioridades?'+start+'&incluirHoje=true')).rows).toEqual([]);

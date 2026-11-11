@@ -40,7 +40,6 @@ import { atrasoService } from '../atraso/services/atrasoService';
 import type { AtrasoRecord, AtrasoStatus } from '../atraso/types';
 import '../atraso/atraso.css';
 import type { User } from '../types';
-import { GestaoAtrasosPage } from './GestaoAtrasosPage';
 
 function formatDateBR(value: string): string {
   const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -79,7 +78,6 @@ function ChartTooltip({ active, payload }: any) {
 }
 
 export function AtrasoPage({ user }: { user: User }) {
-  const [view, setView] = useState<'SERIE' | 'OP'>(user.perfil === 'COORDENACAO' ? 'SERIE' : 'OP');
   const [records, setRecords] = useState<AtrasoRecord[]>([]);
   const [status, setStatus] = useState<AtrasoStatus>('ATRASO');
   const [linha, setLinha] = useState('ALL');
@@ -195,17 +193,8 @@ export function AtrasoPage({ user }: { user: User }) {
   const statusColor = status === 'ATRASO' ? '#fb7185' : '#34d399';
   const chartHeight = Math.max(320, chartData.length * 48 + 42);
 
-  return (<>
-    <div className="app-container app-container--wide pt-5" role="tablist" aria-label="Visões de atraso">
-      {(user.perfil === 'COORDENACAO' ? ['SERIE', 'OP'] : ['OP']).map((item) => (
-        <button key={item} role="tab" aria-selected={view === item} onClick={() => setView(item as 'SERIE' | 'OP')}
-          className={`mr-2 rounded-xl border px-5 py-2 font-semibold ${view === item ? 'border-emerald-400 bg-emerald-400/15 text-emerald-200' : 'border-white/15 text-slate-400'}`}>
-          Visão {item === 'SERIE' ? 'Série' : 'OP'}
-        </button>
-      ))}
-    </div>
-    <div hidden={view !== 'OP'}><GestaoAtrasosPage user={user} active={view === 'OP'} /></div>
-    {user.perfil === 'COORDENACAO' && <div hidden={view !== 'SERIE'}>
+  if (user.perfil !== 'COORDENACAO') return null;
+  return (
     <PageContainer size="wide" className="atraso-page space-y-5 py-6 sm:py-8">
       <PageHeader
         eyebrow="COORDENAÇÃO · SUPABASE"
@@ -405,6 +394,5 @@ export function AtrasoPage({ user }: { user: User }) {
       />
       <AtrasoPrintModal isOpen={printOpen} onClose={() => setPrintOpen(false)} records={records} />
     </PageContainer>
-    </div>}</>
   );
 }

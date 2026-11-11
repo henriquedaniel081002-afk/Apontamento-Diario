@@ -46,10 +46,10 @@ describe('Visão OP — filtros reais e importação',()=>{
   fireEvent.click(screen.getByRole('combobox',{name:'Observação'}));
   expect(screen.getByRole('option',{name:'Com observação'})).toBeVisible();
  });
- it('valida OP antes da rede e mantém a tabela acessível por teclado',async()=>{
+ it('valida OP antes da rede e mantém a região de programação identificada',async()=>{
   await ready();fireEvent.change(screen.getByLabelText('OP'),{target:{value:'ABC'}});
   await screen.findByText('Informe apenas números em OP e Série (até 20 dígitos).');expect(summaries()).toHaveLength(1);
-  expect(screen.getByRole('region',{name:'Tabela de OPs com rolagem horizontal e vertical'})).toHaveAttribute('tabindex','0');
+  expect(screen.getByRole('region',{name:'Programação por data, OP e setor'})).toBeVisible();
  });
  it('limpar redefine filtros, dependências e página',async()=>{
   await ready();await choose('Setor','SOLDA');await choose('Linha','MON');

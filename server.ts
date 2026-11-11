@@ -4,6 +4,8 @@ import dotenv from 'dotenv';
 import pg from 'pg';
 import jwt from 'jsonwebtoken';
 import { registerGestaoAtrasosRoutes } from './server.gestaoAtrasos.js';
+import { registerProducaoDiariaObservacoesRoutes } from './server.producaoDiariaObservacoes.js';
+import { buildDailyProductionDetail } from './server.producaoDiariaDetalhamento.js';
 
 dotenv.config();
 const { Pool } = pg;
@@ -2505,14 +2507,14 @@ app.get('/api/coordenacao/producao-diaria', auth, requireCoordenacao, async (req
       `, [dataInicio, dataFim]),
       pool.query(`
         SELECT s.nome setor, a.tipo_bobina, UPPER(TRIM(l.nome)) linha,
-               SUM(p.quantidade)::bigint quantidade
+               p.potencia::text potencia, SUM(p.quantidade)::bigint quantidade
           FROM producao p
           JOIN apontamentos a ON a.id = p.apontamento_id
           JOIN setores s ON s.id = a.setor_id
           JOIN linhas l ON l.id = p.linha_id
          WHERE a.data BETWEEN $1::date AND $2::date
-         GROUP BY s.nome, a.tipo_bobina, UPPER(TRIM(l.nome))
-         ORDER BY s.nome, linha
+         GROUP BY s.nome, a.tipo_bobina, UPPER(TRIM(l.nome)), p.potencia
+         ORDER BY s.nome, linha, p.potencia
       `, [dataInicio, dataFim]),
     ]);
 
@@ -2520,40 +2522,24 @@ app.get('/api/coordenacao/producao-diaria', auth, requireCoordenacao, async (req
       ...programacaoResult.rows.map((row: any) => String(row.linha || '').trim().toUpperCase()),
       ...producaoResult.rows.map((row: any) => String(row.linha || '').trim().toUpperCase()),
     ].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
-    const setores = new Map<string, { setor: string; programado: number; produzido: number }>();
-
-    const ensureSector = (setor: string) => {
-      const current = setores.get(setor) || { setor, programado: 0, produzido: 0 };
-      setores.set(setor, current);
-      return current;
-    };
-
-    for (const row of programacaoResult.rows) {
-      const linha = String(row.linha || '').trim().toUpperCase();
-      if (linhaSelecionada !== 'ALL' && linha !== linhaSelecionada) continue;
-      for (const setor of expandedDashboardSectors(String(row.setor || ''), linha)) {
-        ensureSector(setor).programado += Number(row.quantidade) || 0;
-      }
-    }
-
-    for (const row of producaoResult.rows) {
-      const linha = String(row.linha || '').trim().toUpperCase();
-      if (linhaSelecionada !== 'ALL' && linha !== linhaSelecionada) continue;
-      for (const setor of expandedDashboardSectors(String(row.setor || ''), linha, row.tipo_bobina)) {
-        ensureSector(setor).produzido += Number(row.quantidade) || 0;
-      }
-    }
+    // Preserva os totais e a expansão de setores da versão anterior.
+    const setores = buildDailyProductionDetail(
+      programacaoResult.rows, producaoResult.rows, linhaSelecionada, expandedDashboardSectors,
+    );
 
     res.json({
       geradoEm: new Date().toISOString(),
       filtros: { linhas },
-      setores: [...setores.values()].sort((a, b) => a.setor.localeCompare(b.setor, 'pt-BR')),
+      setores,
     });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Falha ao carregar os dados da Produção Diária.' });
   }
 });
+
+// Observações gerenciais independentes; não modifica a consulta original nem as ocorrências.
+registerProducaoDiariaObservacoesRoutes(app, pool, auth, requireCoordenacao);
 
 // Visão somente leitura. A aprovação continua exclusivamente no PATCH existente,
 // por apontamento inteiro; produção isolada não compõe esta fila.

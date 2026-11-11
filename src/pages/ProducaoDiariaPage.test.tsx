@@ -1,12 +1,12 @@
 import React from 'react';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { producaoDiariaService } from '../services/producaoDiariaService';
 import { ProducaoDiariaPage } from './ProducaoDiariaPage';
 
 vi.mock('../services/producaoDiariaService', () => ({
-  producaoDiariaService: { getData: vi.fn() },
+  producaoDiariaService: { getData: vi.fn(), getObservacoes: vi.fn(), saveObservacao: vi.fn() },
 }));
 
 vi.mock('recharts', () => ({
@@ -22,6 +22,8 @@ vi.mock('recharts', () => ({
 }));
 
 const getDataMock = vi.mocked(producaoDiariaService.getData);
+const getObservacoesMock = vi.mocked(producaoDiariaService.getObservacoes);
+const saveObservacaoMock = vi.mocked(producaoDiariaService.saveObservacao);
 
 beforeAll(() => {
   Element.prototype.scrollIntoView = vi.fn();
@@ -33,6 +35,9 @@ afterEach(() => {
 });
 
 describe('Produção Diária', () => {
+  beforeEach(() => {
+    getObservacoesMock.mockResolvedValue([]);
+  });
   it('exibe totais ponderados e todos os setores retornados para o período', async () => {
     getDataMock.mockResolvedValue({
       geradoEm: '2026-09-04T12:00:00.000Z',
@@ -70,4 +75,35 @@ describe('Produção Diária', () => {
       expect(getDataMock).toHaveBeenLastCalledWith(expect.any(String), expect.any(String), 'MON');
     });
   });
+
+  it('usa um único olho e uma observação geral; exibe MON, TRI e quantidades por potência', async () => {
+    getDataMock.mockResolvedValue({
+      geradoEm:'2026-11-09T12:00:00.000Z',
+      filtros:{linhas:['MON','TRI','EPO']},
+      setores:[{setor:'MPA',programado:120,produzido:90,linhas:[
+        {linha:'MON',programado:70,produzido:50,potencias:[{potencia:'5',produzido:20},{potencia:'10',produzido:30}]},
+        {linha:'TRI',programado:50,produzido:40,potencias:[{potencia:'30',produzido:15},{potencia:'75',produzido:25}]},
+      ]}],
+    });
+    const user=userEvent.setup();
+    render(<ProducaoDiariaPage />);
+    await screen.findByText('MPA');
+    expect(screen.getAllByRole('button',{name:'Ver detalhes de MPA'})).toHaveLength(1);
+    await user.click(screen.getByRole('button',{name:'Ver detalhes de MPA'}));
+    const dlg=screen.getByRole('dialog');
+    expect(dlg).toHaveTextContent('Detalhes · MPA');
+    expect(dlg).toHaveTextContent('Monofásico (MON)');
+    expect(dlg).toHaveTextContent('Trifásico (TRI)');
+    expect(dlg).toHaveTextContent('20 un.');
+    expect(dlg).toHaveTextContent('25 un.');
+    expect(dlg).toHaveTextContent('75,00%');
+    expect(screen.getAllByRole('textbox',{name:'Observação'})).toHaveLength(1);
+    saveObservacaoMock.mockImplementation(async(data,setor,linha,observacao)=>({
+      data,setor,linha,observacao,atualizado_em:'2026-11-09T14:00:00Z',atualizado_por_login:'COORDENACAO',
+    }));
+    await user.type(screen.getByRole('textbox',{name:'Observação'}),'Produção antecipada.');
+    await user.click(screen.getByRole('button',{name:'Salvar observação'}));
+    await waitFor(()=>expect(saveObservacaoMock).toHaveBeenCalledWith(expect.any(String),'MPA','GERAL','Produção antecipada.'));
+  });
+
 });

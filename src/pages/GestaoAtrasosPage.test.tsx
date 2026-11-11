@@ -74,6 +74,16 @@ describe('Visão OP — concorrência e contexto',()=>{
    await waitFor(()=>expect(api.mock.calls.some(([url])=>url.includes('inicio=2026-07-04&fim=2026-07-04'))).toBe(true));
    expect(screen.getByRole('dialog')).toHaveTextContent('04/07/2026');
  });
+ it.each([[70,7,'70,00%'],[null,null,'—']])('mostra os totais da API mesmo quando a página só traz uma linha',async(percentual,produzido,texto)=>{
+   api.mockImplementation(async path=>path.includes('/filtros')?{combinacoes:[]}:{
+     ...summary(), totaisPorData:[{data_programada:'2026-07-03',programado:10,produzido,percentual}],
+   });
+   render(<GestaoAtrasosPage user={user} active/>);
+   const day=await screen.findByRole('region',{name:'Programação de 03/07/2026'});
+   expect(day).toHaveTextContent('Programado: 10');
+   expect(day).toHaveTextContent('Produzido: '+(produzido??'—'));
+   expect(day).toHaveTextContent('Percentual: '+texto);
+ });
  it('não consulta a aba inativa',async()=>{
    render(<GestaoAtrasosPage user={user} active={false}/>);
    await new Promise(resolve=>setTimeout(resolve,300));

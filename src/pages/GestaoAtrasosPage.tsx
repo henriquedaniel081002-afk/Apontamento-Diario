@@ -7,7 +7,7 @@ import { FilterBar, FilterSelect } from '../dashboard/components/FilterBar';
 import '../dashboard/dashboard.css';
 import '../gestao-atrasos/gestao-atrasos.css';
 import { OpKpis } from '../gestao-atrasos/OpKpis';
-import { Button, DataTable, DateInput, Field, Input, PageContainer, PageHeader, SectionCard, StatusBadge, type BadgeVariant, type DataTableColumn } from '../components/common/ui';
+import { Button, DateInput, Field, Input, PageContainer, PageHeader, SectionCard, StatusBadge, type BadgeVariant, type DataTableColumn } from '../components/common/ui';
 import { recordPerformance } from '../services/performanceService';
 import type { User } from '../types';
 import { apiRequest } from '../services/apiClient';
@@ -173,6 +173,9 @@ export function GestaoAtrasosPage({user,active}:{user:User;active:boolean}) {
     }
     return [...grouped];
   },[data]);
+  const totalsByDate = useMemo(() => new Map(
+    data?.totaisPorData?.map(total => [total.data_programada, total])
+  ), [data]);
   const situationTone=(row:Row):BadgeVariant=>{
     if(row.situacao==='REGULARIZADO'||row.situacao==='NO_PRAZO')return 'success';
     if(row.situacao==='PRAZO_VENCIDO'||row.situacao==='PENDENTE_VENCIDO'||(row.pendentes_vencidos??0)>0)return 'danger';
@@ -180,21 +183,21 @@ export function GestaoAtrasosPage({user,active}:{user:User;active:boolean}) {
     return 'info';
   };
   const columns:DataTableColumn<Row>[]=[
-    {id:'op',header:'OP / Cliente',cell:r=><div className="min-w-[9rem] max-w-52">
+    {id:'op',header:'OP / Cliente',cell:r=><div>
       <button type="button" disabled={loading||Boolean(error)} onClick={()=>void open(r)} className="font-black text-white underline-offset-4 transition-colors hover:text-emerald-300 hover:underline focus-visible:rounded-sm disabled:opacity-50">OP {r.op}</button>
-      <p title={r.cliente||''} className="mt-1 truncate text-xs text-slate-400">{r.cliente||'Cliente não informado'}</p>
+      <p title={r.cliente||''} className="mt-1 text-xs text-slate-400">{r.cliente||'Cliente não informado'}</p>
     </div>},
-    {id:'setor',header:'Setor / Linha',cell:r=><div className="min-w-32">
+    {id:'setor',header:'Setor / Linha',cell:r=><div>
       <p className="font-bold text-slate-100">{r.setor}</p>
       <p className="mt-1 text-xs text-slate-400">{r.linha||'—'} · {r.potencia||'—'}</p><p className="mt-1 text-xs text-slate-400">Ref. {r.referencia||'—'}</p>
     </div>},
     {id:'total',header:'Total OP',align:'right',cell:r=>fmt(r.qtde_total_op)},
     {id:'programados',header:'Programado',align:'right',cell:r=><div className="tabular-nums"><span className="font-bold text-slate-100">{fmt(r.programados)}</span></div>},
     {id:'produzidos',header:'Produzido',align:'right',cell:r=><span className="font-bold tabular-nums text-emerald-300">{fmt(r.produzidos)}</span>},
-    {id:'pendentes',header:'Pendente',align:'right',cell:r=><div className="tabular-nums"><span className={r.pendentes_vencidos?'font-black text-rose-300':'font-bold text-slate-200'}>{fmt(r.produzidos===null?null:r.programados-r.produzidos)}</span><p className="mt-1 whitespace-nowrap text-xs text-slate-500">{fmt(r.produzidos_em_atraso)} após data</p></div>},
-    {id:'progresso',header:'Progresso',cell:r=>{if(r.produzidos===null)return '—';const percent=Math.round(100*r.produzidos/Math.max(1,r.programados));return <div className="min-w-28"><span className="text-sm font-extrabold tabular-nums text-white">{percent}%</span><div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-emerald-400" style={{width:`${Math.min(100,percent)}%`}}/></div></div>;}},
-    {id:'situacao',header:'Situação',cell:r=><StatusBadge dot variant={situationTone(r)} className="whitespace-nowrap">{situation[r.situacao]||r.situacao}</StatusBadge>},
-    {id:'justificativa',header:'Observação / Prazo',cell:r=><div className="min-w-28 text-xs"><p className="line-clamp-2 max-w-52 break-words" title={r.motivo||undefined}>{r.motivo||'—'}</p><p className="mt-1.5 whitespace-nowrap text-slate-400">Previsão: {br(r.previsao_regularizacao)}</p></div>},
+    {id:'pendentes',header:'Pendente',align:'right',cell:r=><div className="tabular-nums"><span className={r.pendentes_vencidos?'font-black text-rose-300':'font-bold text-slate-200'}>{fmt(r.produzidos===null?null:r.programados-r.produzidos)}</span><p className="mt-1 text-xs text-slate-500">{fmt(r.produzidos_em_atraso)} após data</p></div>},
+    {id:'progresso',header:'Progresso',cell:r=>{if(r.produzidos===null)return '—';const percent=Math.round(100*r.produzidos/Math.max(1,r.programados));return <div><span className="text-sm font-extrabold tabular-nums text-white">{percent}%</span><div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-emerald-400" style={{width:`${Math.min(100,percent)}%`}}/></div></div>;}},
+    {id:'situacao',header:'Situação',cell:r=><StatusBadge dot variant={situationTone(r)} className="op-status">{situation[r.situacao]||r.situacao}</StatusBadge>},
+    {id:'justificativa',header:'Observação / Prazo',cell:r=><div className="text-xs"><p className="break-words" title={r.motivo||undefined}>{r.motivo||'—'}</p><p className="mt-1.5 text-slate-400">Previsão: {br(r.previsao_regularizacao)}</p></div>},
     {id:'acao',header:'Detalhes',align:'center',cell:r=><Button variant="secondary" size="icon" aria-label={`Detalhar OP ${r.op} - ${r.setor} - ${br(r.data_programada)}`} title={`Detalhar OP ${r.op} - ${r.setor} - ${br(r.data_programada)}`} disabled={loading||Boolean(error)} onClick={()=>void open(r)}><Eye className="size-4" aria-hidden="true"/></Button>},
   ];
   return <PageContainer as="main" size="wide" className="op-dashboard dashboard-shell space-y-5 py-6 sm:py-8">
@@ -238,12 +241,35 @@ export function GestaoAtrasosPage({user,active}:{user:User;active:boolean}) {
     {error&&<p role="alert" className="rounded-xl border border-rose-400/30 bg-rose-400/[0.06] p-3 text-sm text-rose-200">{error}</p>}
     <SectionCard title={`Grupos por data, OP e setor · ${fmt(data?.total||0)}`} icon={<Search className="size-5" aria-hidden="true"/>} description={data?.periodo ? `Período de ${br(data.periodo.inicio)} a ${br(data.periodo.fim)} (inclusive).` : undefined} actions={<span className="text-xs font-medium text-slate-400" aria-live="polite">{loading?'Atualizando...':`Página ${page} · ${rows.length} grupos exibidos`}</span>}>
       <div aria-busy={loading} className="min-w-0">
-        <div className="op-table-viewport" role="region" aria-label="Tabela de OPs com rolagem horizontal e vertical" tabIndex={0}>
-          {days.map(([date,group])=><section key={date} aria-label={`Programação de ${br(date)}`}>
-            <h3 className="px-3 py-2 text-sm font-bold text-emerald-300">{br(date)}</h3>
-            <DataTable columns={columns} rows={group} getRowKey={r=>JSON.stringify([r.data_programada,r.op,r.setor])}
-              caption={`Programação de ${br(date)} por OP e setor`} className="min-w-[72rem] text-xs"/>
-          </section>)}
+        <div className="op-groups" role="region" aria-label="Programação por data, OP e setor">
+          {days.length > 0 && <p className="mb-2 text-xs text-slate-400">Totais por data programada em todas as páginas, com os filtros selecionados.</p>}
+          {days.map(([date, group]) => {
+            const total = totalsByDate.get(date);
+            return <section key={date} aria-label={`Programação de ${br(date)}`}>
+              <div className="op-day-heading">
+                <h3>{br(date)}</h3>
+                {total && <div className="op-day-totals">
+                  <span>Programado: <strong>{fmt(total.programado)}</strong></span>
+                  <span>Produzido: <strong>{fmt(total.produzido)}</strong></span>
+                  <span>Percentual: <strong>{total.percentual === null ? '—' : total.percentual.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%'}</strong></span>
+                </div>}
+              </div>
+              <table className="op-schedule" role="table">
+                <caption className="sr-only">Programação de {br(date)} por OP e setor</caption>
+                <thead role="rowgroup"><tr role="row">{columns.map(c =>
+                  <th scope="col" role="columnheader" key={c.id} data-col={c.id} data-align={c.align}>{c.header}</th>
+                )}</tr></thead>
+                <tbody role="rowgroup">{group.map((row, index) =>
+                  <tr role="row" key={JSON.stringify([date, row.op, row.setor])}>
+                    {columns.map(c => <td role="cell" key={c.id} data-col={c.id} data-align={c.align}>
+                      <span className="op-card-label" aria-hidden="true">{c.header}</span>
+                      <div className="op-cell">{c.cell(row, index)}</div>
+                    </td>)}
+                  </tr>
+                )}</tbody>
+              </table>
+            </section>;
+          })}
           {!days.length&&<p className="py-8 text-center text-sm text-slate-400">{loading?'Carregando resultados...':'Nenhum registro neste filtro.'}</p>}
         </div>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-slate-500">{fmt(data?.total||0)} resultados · 50 por página</p><div className="flex gap-2"><Button variant="secondary" size="sm" disabled={loading||page<=1} onClick={()=>setPage(p=>p-1)}>Anterior</Button><Button variant="secondary" size="sm" disabled={loading||page*50>=(data?.total||0)} onClick={()=>setPage(p=>p+1)}>Próxima</Button></div></div>

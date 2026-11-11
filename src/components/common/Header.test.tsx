@@ -121,10 +121,16 @@ describe('Header compartilhado', () => {
   });
 });
 
-describe('Atraso unificado na navegação', () => {
-  it.each([apontador, coordenacao])('exibe apenas uma aba Atraso para $perfil', (profile) => {
-    render(<Header user={profile} activeTab="atraso" onTabChange={() => undefined} onLogout={() => undefined} />);
-    expect(screen.getAllByRole('button', { name: 'Atraso' }).length).toBeGreaterThan(0);
-    expect(screen.queryByRole('button', { name: 'Gestão por OP' })).not.toBeInTheDocument();
+describe('Acompanhamento da Produção', () => {
+  it.each([apontador, coordenacao])('abre acompanhamento como aba independente para $perfil', async (profile) => {
+    const onTabChange = vi.fn();
+    render(<Header user={profile} activeTab="acompanhamento-producao" onTabChange={onTabChange} onLogout={() => undefined} />);
+    const tab = screen.getByRole('button', { name: 'Acompanhamento da Produção' });
+    expect(tab).toHaveAttribute('aria-current', 'page');
+    await userEvent.setup().click(tab);
+    expect(onTabChange).toHaveBeenCalledWith('acompanhamento-producao');
+    const serie = screen.queryByRole('button', { name: 'Atraso' });
+    if (profile.perfil === 'COORDENACAO') expect(serie).toBeVisible();
+    else expect(serie).toBeNull();
   });
 });

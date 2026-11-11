@@ -325,16 +325,24 @@ export function registerGestaoAtrasosRoutes(
       if (!Number.isInteger(page)||page<1||page>100000) return res.status(400).json({error:'Página inválida.'});
       const fim=new Date(Date.parse(end)-86400000).toISOString().slice(0,10);
       const periodo={inicio:start,fim,hoje:today};
-      if (allowed !== null && !allowed.length) return res.json({periodo,rows:[],total:0,page,importacoes:[]});
+      if (allowed !== null && !allowed.length) return res.json({periodo,rows:[],total:0,page,importacoes:[],totaisPorData:[]});
       const result=await pool.query(`${dailyRows}, filtered AS MATERIALIZED (
         SELECT * FROM ready
         WHERE $12='TODOS' OR (situacao<>'SEM_APONTAMENTO' AND (
           ($12='ATRASADOS' AND pendentes_vencidos>0) OR
           ($12='CONCLUIDOS' AND produzidos=programados AND ${sectorComplete})))
+      ), totais_por_data AS (
+        SELECT data_programada, SUM(programados) AS programado,
+               SUM(produzidos) FILTER (WHERE situacao <> 'SEM_APONTAMENTO') AS produzido
+        FROM filtered GROUP BY data_programada
       ), page_rows AS (
         SELECT * FROM filtered ORDER BY data_programada,op,setor LIMIT 50 OFFSET $13
       ), ${opTotals}
       SELECT totals.total,
+        COALESCE((SELECT jsonb_agg(jsonb_build_object(
+          'data_programada', data_programada, 'programado', programado, 'produzido', produzido,
+          'percentual', ROUND(100.0 * produzido / NULLIF(programado, 0), 2)
+        ) ORDER BY data_programada) FROM totais_por_data), '[]'::jsonb) AS "totaisPorData",
         COALESCE((SELECT jsonb_agg((to_jsonb(r)-'series_vencidas') || jsonb_build_object(
           'qtde_total_op',t.qtde_total_op,'primeira_data_programada',r.data_programada,
           'ultima_data_programada',r.data_programada,

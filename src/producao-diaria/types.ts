@@ -1,7 +1,15 @@
+export interface DailyProductionLineDetail {
+  linha: string;
+  programado: number;
+  produzido: number;
+  potencias: { potencia: string; produzido: number }[];
+}
+
 export interface DailyProductionSectorRow {
   setor: string;
   programado: number;
   produzido: number;
+  linhas?: DailyProductionLineDetail[];
 }
 
 export interface DailyProductionResponse {

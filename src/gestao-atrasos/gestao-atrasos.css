@@ -18,10 +18,38 @@
 @media(max-width:1280px){.op-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}.op-dashboard .dash-filter-panel{grid-template-columns:1fr}.op-dashboard .dash-filter-panel__actions{justify-content:flex-end}}
 @media(max-width:760px){.op-dashboard .dash-filter-panel__fields{grid-template-columns:repeat(2,minmax(0,1fr))}.op-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.op-metric{padding:.85rem;min-height:8rem}}
 @media(max-width:420px){.op-dashboard .dashboard-filter:first-child{grid-column:1/-1}}
-.op-table-viewport{max-height:min(65vh,42rem);overflow:auto;border-radius:var(--radius-lg)}
-.op-table-viewport>div{overflow:visible}
-.op-table-viewport thead{position:sticky;top:0;z-index:1;background:var(--surface-raised)}
-.op-table-viewport:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.op-groups { container-type: inline-size; min-width: 0; }
+.op-day-heading, .op-day-totals { display: flex; align-items: baseline; flex-wrap: wrap; gap: .35rem 1rem; }
+.op-day-heading { margin: 1rem 0 .5rem; padding: .65rem .6rem; background: var(--surface-raised); border-radius: .5rem; }
+.op-day-heading h3 { color: var(--accent); font-size: .95rem; font-weight: 800; }
+.op-day-totals { font-size: .8rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.op-day-totals strong { color: var(--text-primary); }
+.op-schedule { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: .75rem; }
+.op-schedule th, .op-schedule td { padding: .65rem .3rem; overflow-wrap: anywhere; text-align: left; vertical-align: top; }
+.op-schedule th { color: var(--text-secondary); font-weight: 700; }
+.op-schedule td { border-top: 1px solid var(--border-subtle); }
+.op-schedule th[data-col="op"] { width: 12%; }
+.op-schedule th[data-col="setor"] { width: 15%; }
+.op-schedule th[data-col="total"] { width: 6%; }
+.op-schedule th[data-col="programados"] { width: 9%; }
+.op-schedule th[data-col="produzidos"], .op-schedule th[data-col="pendentes"], .op-schedule th[data-col="progresso"] { width: 8%; }
+.op-schedule th[data-col="situacao"] { width: 12%; }
+.op-schedule th[data-col="justificativa"] { width: 15%; }
+.op-schedule th[data-col="acao"] { width: 7%; }
+.op-schedule [data-align="right"] { text-align: right; }
+.op-schedule td[data-col="acao"], .op-schedule th[data-col="acao"] { text-align: center; }
+.op-status { max-width: 100%; white-space: normal; padding-inline: .35rem; }
+.op-card-label { display: none; }
+
+@container (max-width: 49rem) {
+  .op-schedule, .op-schedule tbody { display: block; }
+  .op-schedule thead { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden; }
+  .op-schedule tbody { display: grid; gap: .75rem; }
+  .op-schedule tbody tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: .55rem; border: 1px solid var(--border-subtle); border-radius: .75rem; }
+  .op-schedule td { display: block; min-width: 0; border: 0; }
+  .op-schedule td[data-align] { text-align: left; }
+  .op-card-label { display: block; margin-bottom: .25rem; font-size: .72rem; font-weight: 700; color: var(--text-secondary); }
+}
 
 @media(max-width:420px){
   .op-dashboard .dashboard-filter:has(#op-situacao),

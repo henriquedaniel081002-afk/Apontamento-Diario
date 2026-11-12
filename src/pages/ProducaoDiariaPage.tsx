@@ -36,7 +36,7 @@ import {
   cx,
 } from '../components/common/ui';
 import { formatNum, formatPct } from '../dashboard/lib/formatters';
-import { buildDailyProductionMetrics } from '../producao-diaria/metrics';
+import { buildDailyProductionMetrics, calculateAdherence, isBelowDailyProgramming } from '../producao-diaria/metrics';
 import type { DailyProductionSectorMetric } from '../producao-diaria/types';
 import { SectorMultiSelect } from '../producao-diaria/SectorMultiSelect';
 import { previousLocalDate, type DailyProductionObservation } from '../producao-diaria/observacoes';
@@ -53,6 +53,12 @@ function adherencePresentation(value: number | null) {
   if (value >= 100) return { color: '#34d399', className: 'is-success', label: 'Adequado' };
   if (value >= 90) return { color: '#fbbf24', className: 'is-warning', label: 'Atenção' };
   return { color: '#fb7185', className: 'is-danger', label: 'Abaixo do programado' };
+}
+
+function sectorPresentation(row: DailyProductionSectorMetric) {
+  return isBelowDailyProgramming(row)
+    ? { color: '#fb7185', className: 'is-danger', label: 'Linha abaixo do programado' }
+    : adherencePresentation(row.aderencia);
 }
 
 function RankingTooltip({ active, payload }: any) {
@@ -78,14 +84,14 @@ function SectorCard({
   observacoes: DailyProductionObservation[];
   onOpen: (setor: string) => void;
 }) {
-  const presentation = adherencePresentation(row.aderencia);
+  const presentation = sectorPresentation(row);
   const gaugeStyle = {
     '--daily-progress': `${Math.min(Math.max(row.aderencia || 0, 0), 100) * 3.6}deg`,
     '--daily-color': presentation.color,
   } as CSSProperties;
 
   return (
-    <article className={cx('daily-sector-card', presentation.className)}>
+    <article aria-label={`Produção de ${row.setor}`} className={cx('daily-sector-card', presentation.className)}>
       <div className="daily-sector-card__heading">
         <div>
           <span>Setor</span>
@@ -111,6 +117,36 @@ function SectorCard({
           </div>
         </dl>
       </div>
+      <section className="daily-sector-card__lines" aria-label={`Produção por linha de ${row.setor}`}>
+        {row.linhas?.length ? (
+          <table className="daily-sector-lines-table">
+            <thead>
+              <tr>
+                <th scope="col">Linha</th>
+                <th scope="col" title="Programado">Prog.</th>
+                <th scope="col" title="Produzido">Prod.</th>
+                <th scope="col" title="Aderência">Ader.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {row.linhas.map((item) => {
+                const below = item.programado > 0 && item.produzido < item.programado;
+                const adherence = calculateAdherence(item.programado, item.produzido);
+                return (
+                  <tr key={item.linha} className={below ? 'is-below' : undefined}>
+                    <th scope="row">{item.linha}</th>
+                    <td>{formatNum(item.programado)}</td>
+                    <td>{formatNum(item.produzido)}</td>
+                    <td className={below ? 'daily-line-shortfall' : undefined}>
+                      {adherence === null ? '—' : formatPct(adherence)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        ) : <p className="daily-sector-lines-empty">Detalhamento por linha indisponível.</p>}
+      </section>
       <div className="daily-sector-card__details">
         <button
           type="button"
@@ -135,6 +171,7 @@ export function ProducaoDiariaPage() {
   const [dataInicio, setDataInicio] = useState(defaults.start);
   const [dataFim, setDataFim] = useState(defaults.end);
   const [linha, setLinha] = useState('ALL');
+  const [situacao, setSituacao] = useState<'ALL' | 'BELOW'>('ALL');
   const [setoresSelecionados, setSetoresSelecionados] = useState<string[] | null>(null);
   const [observacoes, setObservacoes] = useState<DailyProductionObservation[]>([]);
   const [observacoesError, setObservacoesError] = useState('');
@@ -188,11 +225,14 @@ export function ProducaoDiariaPage() {
   const metrics = useMemo(() => buildDailyProductionMetrics(
     (data?.setores || []).filter((row) => setoresSelecionados === null || setoresSelecionados.includes(row.setor)),
   ), [data, setoresSelecionados]);
-  const ranking = useMemo(() => [...metrics.setores].sort((a, b) => {
+  const setoresVisiveis = useMemo(() => situacao === 'BELOW'
+    ? metrics.setores.filter(isBelowDailyProgramming)
+    : metrics.setores, [metrics.setores, situacao]);
+  const ranking = useMemo(() => [...setoresVisiveis].sort((a, b) => {
     if (a.aderencia === null && b.aderencia !== null) return 1;
     if (a.aderencia !== null && b.aderencia === null) return -1;
     return (b.aderencia || 0) - (a.aderencia || 0) || a.setor.localeCompare(b.setor, 'pt-BR');
-  }), [metrics.setores]);
+  }), [setoresVisiveis]);
   const chartHeight = Math.max(320, ranking.length * 48 + 44);
   const lineOptions = [
     { value: 'ALL', label: 'Todas as linhas' },
@@ -204,6 +244,7 @@ export function ProducaoDiariaPage() {
     setDataInicio(defaults.start);
     setDataFim(defaults.end);
     setLinha('ALL');
+    setSituacao('ALL');
     setSetoresSelecionados(null);
   };
 
@@ -262,7 +303,7 @@ export function ProducaoDiariaPage() {
             Limpar filtros
           </Button>
         )}
-        contentClassName="sm:grid-cols-2 xl:grid-cols-4"
+        contentClassName="sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5"
       >
         <Field label="Data inicial" error={invalidPeriod ? 'Revise o período informado.' : undefined}>
           <input className="field-control" type="date" value={dataInicio} max={dataFim || undefined} onChange={(event) => setDataInicio(event.target.value)} />
@@ -275,6 +316,10 @@ export function ProducaoDiariaPage() {
         </Field>
         <Field label="Setores">
           <SectorMultiSelect options={setoresDisponiveis} selected={setoresSelecionados} onChange={setSetoresSelecionados} />
+        </Field>
+        <Field label="Situação">
+          <CustomSelect ariaLabel="Situação" value={situacao} onChange={(value) => setSituacao(value as 'ALL' | 'BELOW')}
+            options={[{ value: 'ALL', label: 'Todos os setores' }, { value: 'BELOW', label: 'Abaixo do programado' }]} />
         </Field>
       </FilterPanel>
 
@@ -304,23 +349,29 @@ export function ProducaoDiariaPage() {
             <div className="daily-section-heading">
               <div>
                 <h2 id="setores-producao-diaria">Desempenho por setor</h2>
-                <p>Programado, produzido e aderência consolidados para os filtros ativos.</p>
+                <p>Programado, produzido e aderência consolidados, com detalhamento por linha.</p>
               </div>
-              <span>{metrics.setores.length} setor(es)</span>
+              <span>{setoresVisiveis.length} setor(es)</span>
             </div>
             {!singleDay && <p className="daily-observation-hint">Os detalhes abrangem o período filtrado. Para registrar observações, selecione apenas um dia.</p>}
             {observacoesError && <p className="daily-observation-hint" role="alert">{observacoesError}</p>}
-            <div className="daily-sector-grid">
-              {metrics.setores.map((row) => <SectorCard
-                key={row.setor}
-                row={row}
-                observacoes={observacoes}
-                onOpen={openDetails}
-              />)}
-            </div>
+            {setoresVisiveis.length ? (
+              <div className="daily-sector-grid">
+                {setoresVisiveis.map((row) => <SectorCard
+                  key={row.setor}
+                  row={row}
+                  observacoes={observacoes}
+                  onOpen={openDetails}
+                />)}
+              </div>
+            ) : (
+              <p className="daily-sector-filter-empty" role="status">
+                Nenhum setor abaixo do programado nas linhas consultadas.
+              </p>
+            )}
           </section>
 
-          <SectionCard
+          {setoresVisiveis.length > 0 && <SectionCard
             title="Ranking de Aderência por Setor"
             description="Ordenado da maior para a menor aderência. Setores sem programação aparecem ao final."
             icon={<BarChart3 className="size-4" aria-hidden="true" />}
@@ -334,12 +385,12 @@ export function ProducaoDiariaPage() {
                   <Tooltip content={<RankingTooltip />} cursor={{ fill: 'rgba(255,255,255,0.025)' }} />
                   <Bar dataKey={(row: DailyProductionSectorMetric) => row.aderencia || 0} radius={[0, 7, 7, 0]} maxBarSize={24}>
                     <LabelList dataKey={(row: DailyProductionSectorMetric) => row.aderencia === null ? '—' : formatPct(row.aderencia)} position="right" fill="#e5eee9" fontSize={12} fontWeight={800} />
-                    {ranking.map((row) => <Cell key={row.setor} fill={adherencePresentation(row.aderencia).color} fillOpacity={0.9} />)}
+                    {ranking.map((row) => <Cell key={row.setor} fill={sectorPresentation(row).color} fillOpacity={0.9} />)}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
-          </SectionCard>
+          </SectionCard>}
         </>
       )}
       <DailySectorDetailModal

@@ -74,3 +74,18 @@
 .daily-detail-observation{border-top:1px solid var(--border-subtle);padding-top:.9rem}
 .daily-detail-observation h3{margin-bottom:.65rem}
 @media(max-width:640px){.daily-detail-lines{grid-template-columns:1fr}}
+
+
+/* Visão resumida por linha dentro do cartão. Não altera os detalhes/modais existentes. */
+.daily-sector-card__lines{border-top:1px solid var(--border-subtle);padding:.65rem .7rem .75rem}
+.daily-sector-lines-table{width:100%;border-collapse:collapse;font-size:.67rem;font-variant-numeric:tabular-nums}
+.daily-sector-lines-table thead th{padding:.25rem .28rem .42rem;color:var(--text-tertiary);font-weight:800;text-align:right;white-space:nowrap}
+.daily-sector-lines-table thead th:first-child{text-align:left}
+.daily-sector-lines-table tbody tr{border-top:1px solid var(--border-subtle)}
+.daily-sector-lines-table tbody th,.daily-sector-lines-table tbody td{padding:.45rem .28rem;color:var(--text-secondary);font-weight:750;text-align:right;white-space:nowrap}
+.daily-sector-lines-table tbody th{text-align:left;color:var(--text-primary);font-weight:850}
+.daily-sector-lines-table tbody tr.is-below{background:var(--danger-soft)}
+.daily-sector-lines-table tbody tr.is-below th{color:var(--danger)}
+.daily-sector-lines-table tbody td.daily-line-shortfall{color:var(--danger);font-weight:900}
+.daily-sector-lines-empty{margin:0;color:var(--text-tertiary);font-size:.72rem}
+.daily-sector-filter-empty{margin:0;border:1px dashed var(--border-strong);border-radius:var(--radius-lg);padding:1.3rem;color:var(--text-secondary);font-size:.85rem}

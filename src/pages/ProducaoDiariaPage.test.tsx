@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { producaoDiariaService } from '../services/producaoDiariaService';
@@ -74,6 +74,82 @@ describe('Produção Diária', () => {
     await waitFor(() => {
       expect(getDataMock).toHaveBeenLastCalledWith(expect.any(String), expect.any(String), 'MON');
     });
+  });
+
+  it('mostra MON, TRI e EPO dentro do mesmo cartão e destaca a linha pendente', async () => {
+    getDataMock.mockResolvedValue({
+      geradoEm: '2026-11-12T12:00:00.000Z',
+      filtros: { linhas: ['MON', 'TRI', 'EPO'] },
+      setores: [{ setor: 'BOBINA AT', programado: 100, produzido: 100, linhas: [
+        { linha: 'MON', programado: 40, produzido: 50, potencias: [] },
+        { linha: 'TRI', programado: 40, produzido: 30, potencias: [] },
+        { linha: 'EPO', programado: 20, produzido: 20, potencias: [] },
+      ] }],
+    });
+
+    render(<ProducaoDiariaPage />);
+    const card = await screen.findByRole('article', { name: 'Produção de BOBINA AT' });
+    expect(card).toHaveTextContent('Linha abaixo do programado');
+    expect(within(card).getByRole('table')).toHaveTextContent('MON');
+    expect(within(card).getByRole('table')).toHaveTextContent('TRI');
+    expect(within(card).getByRole('table')).toHaveTextContent('EPO');
+    const tri = within(card).getByRole('row', { name: /TRI/ });
+    expect(tri).toHaveTextContent('40');
+    expect(tri).toHaveTextContent('30');
+    expect(tri).toHaveTextContent('75,00%');
+    expect(screen.getAllByText('100 unidades')).toHaveLength(2);
+  });
+
+  it('filtra por qualquer linha pendente sem alterar totais nem refazer consulta', async () => {
+    getDataMock.mockResolvedValue({
+      geradoEm: '2026-11-12T12:00:00.000Z',
+      filtros: { linhas: ['MON', 'TRI', 'EPO'] },
+      setores: [
+        { setor: 'BOBINA AT', programado: 80, produzido: 80, linhas: [
+          { linha: 'MON', programado: 40, produzido: 50, potencias: [] },
+          { linha: 'TRI', programado: 40, produzido: 30, potencias: [] },
+        ] },
+        { setor: 'ISOLANTE', programado: 60, produzido: 60, linhas: [
+          { linha: 'MON', programado: 30, produzido: 30, potencias: [] },
+          { linha: 'TRI', programado: 30, produzido: 30, potencias: [] },
+        ] },
+        { setor: 'EPOXI', programado: 0, produzido: 5, linhas: [
+          { linha: 'EPO', programado: 0, produzido: 5, potencias: [] },
+        ] },
+      ],
+    });
+    const user = userEvent.setup();
+    render(<ProducaoDiariaPage />);
+    await screen.findByRole('article', { name: 'Produção de BOBINA AT' });
+    expect(screen.getAllByRole('article', { name: /Produção de / })).toHaveLength(3);
+    await user.click(screen.getByRole('combobox', { name: 'Situação' }));
+    await user.click(screen.getByRole('option', { name: 'Abaixo do programado' }));
+    expect(screen.getAllByRole('article', { name: /Produção de / })).toHaveLength(1);
+    expect(screen.getByRole('article', { name: 'Produção de BOBINA AT' })).toBeInTheDocument();
+    expect(screen.getByText('140 unidades')).toBeInTheDocument();
+    expect(screen.getByText('145 unidades')).toBeInTheDocument();
+    expect(getDataMock).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole('button', { name: 'Limpar filtros' }));
+    expect(screen.getAllByRole('article', { name: /Produção de / })).toHaveLength(3);
+  });
+
+  it('mantém o resumo e exibe mensagem quando nenhuma linha está pendente', async () => {
+    getDataMock.mockResolvedValue({
+      geradoEm: '2026-11-12T12:00:00.000Z',
+      filtros: { linhas: ['MON'] },
+      setores: [{ setor: 'SOLDA', programado: 20, produzido: 25, linhas: [
+        { linha: 'MON', programado: 20, produzido: 25, potencias: [] },
+      ] }],
+    });
+    const user = userEvent.setup();
+    render(<ProducaoDiariaPage />);
+    await screen.findByRole('article', { name: 'Produção de SOLDA' });
+    await user.click(screen.getByRole('combobox', { name: 'Situação' }));
+    await user.click(screen.getByRole('option', { name: 'Abaixo do programado' }));
+    expect(screen.queryByRole('article', { name: 'Produção de SOLDA' })).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Nenhum setor abaixo do programado');
+    expect(screen.getByText('20 unidades')).toBeInTheDocument();
+    expect(screen.getByText('25 unidades')).toBeInTheDocument();
   });
 
   it('usa um único olho e uma observação geral; exibe MON, TRI e quantidades por potência', async () => {

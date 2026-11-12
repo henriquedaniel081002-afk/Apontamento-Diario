@@ -76,7 +76,7 @@ describe('Produção Diária', () => {
     });
   });
 
-  it('mostra MON, TRI e EPO dentro do mesmo cartão e destaca a linha pendente', async () => {
+  it('mostra círculos individuais de MON, TRI e EPO no mesmo cartão e destaca a pendência', async () => {
     getDataMock.mockResolvedValue({
       geradoEm: '2026-11-12T12:00:00.000Z',
       filtros: { linhas: ['MON', 'TRI', 'EPO'] },
@@ -90,14 +90,63 @@ describe('Produção Diária', () => {
     render(<ProducaoDiariaPage />);
     const card = await screen.findByRole('article', { name: 'Produção de BOBINA AT' });
     expect(card).toHaveTextContent('Linha abaixo do programado');
-    expect(within(card).getByRole('table')).toHaveTextContent('MON');
-    expect(within(card).getByRole('table')).toHaveTextContent('TRI');
-    expect(within(card).getByRole('table')).toHaveTextContent('EPO');
-    const tri = within(card).getByRole('row', { name: /TRI/ });
+    expect(within(card).queryByRole('table')).not.toBeInTheDocument();
+    expect(within(card).getAllByRole('img', { name: /Aderência da linha/ })).toHaveLength(3);
+    const mon = within(card).getByRole('group', { name: 'Linha MON' });
+    const tri = within(card).getByRole('group', { name: 'Linha TRI' });
+    const epo = within(card).getByRole('group', { name: 'Linha EPO' });
+    expect(within(mon).getByRole('img', { name: 'Aderência da linha MON: 125,00%' })).toBeInTheDocument();
+    expect(within(tri).getByRole('img', { name: 'Aderência da linha TRI: 75,00%' })).toBeInTheDocument();
     expect(tri).toHaveTextContent('40');
     expect(tri).toHaveTextContent('30');
-    expect(tri).toHaveTextContent('75,00%');
+    expect(within(epo).getByRole('img', { name: 'Aderência da linha EPO: 100,00%' })).toBeInTheDocument();
+    expect(card).toHaveTextContent('Prog. 100 · Prod. 100');
     expect(screen.getAllByText('100 unidades')).toHaveLength(2);
+  });
+
+  it('mostra apenas um círculo se a consulta retornar uma linha, mantendo detalhes e total', async () => {
+    getDataMock.mockResolvedValue({
+      geradoEm: '2026-11-12T12:00:00.000Z',
+      filtros: { linhas: ['MON'] },
+      setores: [{ setor: 'SOLDA', programado: 15, produzido: 18, linhas: [
+        { linha: 'MON', programado: 15, produzido: 18, potencias: [] },
+      ] }],
+    });
+    render(<ProducaoDiariaPage />);
+    const card = await screen.findByRole('article', { name: 'Produção de SOLDA' });
+    expect(within(card).getAllByRole('img', { name: /Aderência da linha/ })).toHaveLength(1);
+    expect(within(card).getByRole('img', { name: 'Aderência da linha MON: 120,00%' })).toBeInTheDocument();
+    expect(card).toHaveTextContent('Prog. 15 · Prod. 18');
+    expect(within(card).getByRole('button', { name: 'Ver detalhes de SOLDA' })).toBeInTheDocument();
+  });
+
+  it('exibe círculo neutro sem percentual quando linha não possui programação', async () => {
+    getDataMock.mockResolvedValue({
+      geradoEm: '2026-11-12T12:00:00.000Z',
+      filtros: { linhas: ['EPO'] },
+      setores: [{ setor: 'EPOXI', programado: 0, produzido: 5, linhas: [
+        { linha: 'EPO', programado: 0, produzido: 5, potencias: [] },
+      ] }],
+    });
+    render(<ProducaoDiariaPage />);
+    const card = await screen.findByRole('article', { name: 'Produção de EPOXI' });
+    expect(within(card).getByRole('img', { name: 'Aderência da linha EPO: sem programação' })).toBeInTheDocument();
+    expect(within(card).getByText('—')).toBeInTheDocument();
+    expect(card).toHaveTextContent('Prog. 0 · Prod. 5');
+  });
+
+  it('mantém total e detalhes acessíveis quando a API ainda não fornece linhas', async () => {
+    getDataMock.mockResolvedValue({
+      geradoEm: '2026-11-12T12:00:00.000Z',
+      filtros: { linhas: ['MON'] },
+      setores: [{ setor: 'PINTURA', programado: 10, produzido: 4 }],
+    });
+    render(<ProducaoDiariaPage />);
+    const card = await screen.findByRole('article', { name: 'Produção de PINTURA' });
+    expect(within(card).queryByRole('img', { name: /Aderência da linha/ })).not.toBeInTheDocument();
+    expect(card).toHaveTextContent('Detalhamento por linha indisponível.');
+    expect(card).toHaveTextContent('Prog. 10 · Prod. 4');
+    expect(within(card).getByRole('button', { name: 'Ver detalhes de PINTURA' })).toBeInTheDocument();
   });
 
   it('filtra por qualquer linha pendente sem alterar totais nem refazer consulta', async () => {

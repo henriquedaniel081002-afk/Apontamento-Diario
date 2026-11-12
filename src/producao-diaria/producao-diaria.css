@@ -13,19 +13,12 @@
 .daily-sector-card.is-success .daily-sector-card__status{border-color:var(--success-border);background:var(--success-soft);color:var(--success)}
 .daily-sector-card.is-warning .daily-sector-card__status{border-color:var(--warning-border);background:var(--warning-soft);color:var(--warning)}
 .daily-sector-card.is-danger .daily-sector-card__status{border-color:var(--danger-border);background:var(--danger-soft);color:var(--danger)}
-.daily-sector-card__body{display:grid;grid-template-columns:minmax(6.6rem,.9fr) minmax(0,1.1fr);align-items:center;gap:.9rem;padding:1rem}
-.daily-sector-gauge{--daily-progress:0deg;--daily-color:var(--accent);display:grid;width:100%;max-width:7.5rem;aspect-ratio:1;place-items:center;border-radius:50%;background:conic-gradient(var(--daily-color) var(--daily-progress),var(--border-subtle) 0)}
-.daily-sector-gauge>div{display:grid;width:73%;aspect-ratio:1;place-content:center;border-radius:50%;background:var(--surface-raised);text-align:center}
-.daily-sector-gauge strong{color:var(--daily-color);font-size:clamp(1rem,1.65vw,1.35rem);font-weight:900;letter-spacing:-.03em}
-.daily-sector-gauge span{margin-top:.15rem;color:var(--text-tertiary);font-size:.58rem;font-weight:800;text-transform:uppercase}
-.daily-sector-card dl{display:grid;gap:.55rem;margin:0}.daily-sector-card dl>div{min-width:0;border-bottom:1px solid var(--border-subtle);padding-bottom:.5rem}.daily-sector-card dl>div:last-child{border:0;padding-bottom:0}
-.daily-sector-card dt{color:var(--text-tertiary);font-size:.66rem;font-weight:750}.daily-sector-card dd{margin:.12rem 0 0;overflow-wrap:anywhere;color:var(--text-primary);font-size:1rem;font-weight:900}
 .daily-ranking-chart{min-width:0;width:100%}
 .daily-tooltip{display:grid;gap:.28rem;border:1px solid var(--border-strong);border-radius:.8rem;background:rgba(8,16,11,.97);padding:.7rem .8rem;box-shadow:var(--shadow-overlay)}
 .daily-tooltip strong{color:var(--text-primary);font-size:.78rem}.daily-tooltip span{color:var(--text-secondary);font-size:.72rem}
 @media(max-width:1240px){.daily-sector-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:980px){.daily-sector-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.daily-summary-grid{grid-template-columns:1fr 1fr}.daily-summary-grid>*:last-child{grid-column:1/-1}}
-@media(max-width:640px){.daily-summary-grid,.daily-sector-grid{grid-template-columns:1fr}.daily-summary-grid>*:last-child{grid-column:auto}.daily-section-heading{align-items:flex-start;flex-direction:column}.daily-sector-card__body{grid-template-columns:7rem minmax(0,1fr)}.daily-ranking-chart{overflow-x:auto}}
+@media(max-width:640px){.daily-summary-grid,.daily-sector-grid{grid-template-columns:1fr}.daily-summary-grid>*:last-child{grid-column:auto}.daily-section-heading{align-items:flex-start;flex-direction:column}.daily-ranking-chart{overflow-x:auto}}
 
 /* Extensões locais: preservam cartões, indicadores e tipografia existentes. */
 .daily-sector-card__observations{display:grid;gap:.35rem;border-top:1px solid var(--border-subtle);padding:.65rem .9rem}
@@ -47,8 +40,11 @@
 .daily-sector-select__option span{flex:1;min-width:0;overflow-wrap:anywhere}
 @media(max-width:640px){.daily-observation-metrics{grid-template-columns:1fr}}
 
-/* Detalhes por linha e potência, sem alterar os cartões e filtros existentes. */
-.daily-sector-card__details{display:flex;justify-content:flex-end;border-top:1px solid var(--border-subtle);padding:.55rem .9rem}
+/* Rodapé do cartão: mantém o botão/modal de detalhes e os totais do setor. */
+.daily-sector-card__footer{display:flex;align-items:center;justify-content:space-between;gap:.55rem;border-top:1px solid var(--border-subtle);padding:.65rem .8rem}
+.daily-sector-card__totals{display:grid;min-width:0;gap:.18rem}
+.daily-sector-card__totals span{color:var(--text-tertiary);font-size:.6rem;font-weight:850;letter-spacing:.06em;text-transform:uppercase}
+.daily-sector-card__totals strong{color:var(--text-primary);font-size:.7rem;font-weight:800;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .daily-sector-details-button{display:inline-flex;align-items:center;gap:.5rem;min-height:2rem;border:1px solid var(--border-subtle);border-radius:.6rem;background:var(--surface-muted);padding:.42rem .7rem;color:var(--text-secondary);font-size:.72rem;font-weight:800;transition:background .15s,border-color .15s}
 .daily-sector-details-button:hover{border-color:var(--border-strong);background:var(--surface-raised);color:var(--text-primary)}
 .daily-sector-details-note{width:.4rem;height:.4rem;border-radius:50%;background:var(--accent)}
@@ -76,16 +72,26 @@
 @media(max-width:640px){.daily-detail-lines{grid-template-columns:1fr}}
 
 
-/* Visão resumida por linha dentro do cartão. Não altera os detalhes/modais existentes. */
-.daily-sector-card__lines{border-top:1px solid var(--border-subtle);padding:.65rem .7rem .75rem}
-.daily-sector-lines-table{width:100%;border-collapse:collapse;font-size:.67rem;font-variant-numeric:tabular-nums}
-.daily-sector-lines-table thead th{padding:.25rem .28rem .42rem;color:var(--text-tertiary);font-weight:800;text-align:right;white-space:nowrap}
-.daily-sector-lines-table thead th:first-child{text-align:left}
-.daily-sector-lines-table tbody tr{border-top:1px solid var(--border-subtle)}
-.daily-sector-lines-table tbody th,.daily-sector-lines-table tbody td{padding:.45rem .28rem;color:var(--text-secondary);font-weight:750;text-align:right;white-space:nowrap}
-.daily-sector-lines-table tbody th{text-align:left;color:var(--text-primary);font-weight:850}
-.daily-sector-lines-table tbody tr.is-below{background:var(--danger-soft)}
-.daily-sector-lines-table tbody tr.is-below th{color:var(--danger)}
-.daily-sector-lines-table tbody td.daily-line-shortfall{color:var(--danger);font-weight:900}
-.daily-sector-lines-empty{margin:0;color:var(--text-tertiary);font-size:.72rem}
+/* Os círculos mostram aderência por linha; não existe mais círculo consolidado no cartão. */
+.daily-sector-card__gauges{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem;padding:.9rem .75rem 1rem}
+.daily-sector-card__gauges--single{grid-template-columns:minmax(0,1fr);justify-items:center}
+.daily-sector-card__gauges--multiple{grid-template-columns:repeat(3,minmax(0,1fr));gap:.4rem;padding:.85rem .5rem .95rem}
+.daily-sector-line{display:flex;min-width:0;width:100%;flex-direction:column;align-items:center;gap:.5rem;text-align:center}
+.daily-sector-card__gauges--single .daily-sector-line{max-width:10rem}
+.daily-sector-line__name{color:var(--text-primary);font-size:.76rem;font-weight:900;letter-spacing:.04em;overflow-wrap:anywhere}
+.daily-sector-line.is-below .daily-sector-line__name{color:var(--danger)}
+.daily-sector-line__gauge{--daily-progress:0deg;--daily-color:var(--accent);display:grid;place-items:center;width:100%;max-width:7rem;aspect-ratio:1;border-radius:50%;background:conic-gradient(var(--daily-color) var(--daily-progress),var(--border-subtle) 0)}
+.daily-sector-line__gauge>div{display:grid;place-content:center;width:73%;aspect-ratio:1;border-radius:50%;background:var(--surface-raised);text-align:center;min-width:0}
+.daily-sector-line__gauge strong{color:var(--daily-color);font-size:clamp(.72rem,1.03vw,1.1rem);font-weight:900;letter-spacing:-.045em;white-space:nowrap}
+.daily-sector-line__gauge span{margin-top:.13rem;color:var(--text-tertiary);font-size:.51rem;font-weight:800;text-transform:uppercase}
+.daily-sector-card__gauges--multiple .daily-sector-line__gauge strong{font-size:clamp(.59rem,.78vw,.84rem)}
+.daily-sector-card__gauges--multiple .daily-sector-line__gauge span{font-size:.43rem}
+.daily-sector-line__counts{display:grid;width:100%;grid-template-columns:repeat(2,minmax(0,1fr));gap:.25rem;margin:0;font-variant-numeric:tabular-nums}
+.daily-sector-line__counts div{min-width:0}
+.daily-sector-line__counts div+div{border-left:1px solid var(--border-subtle)}
+.daily-sector-line__counts dt{color:var(--text-tertiary);font-size:.59rem;font-weight:750}
+.daily-sector-line__counts dd{margin:.15rem 0 0;color:var(--text-primary);font-size:.83rem;font-weight:850;overflow-wrap:anywhere}
+.daily-sector-card__gauges--multiple .daily-sector-line__counts dt{font-size:.54rem}
+.daily-sector-card__gauges--multiple .daily-sector-line__counts dd{font-size:.73rem}
+.daily-sector-lines-empty{grid-column:1/-1;margin:0;color:var(--text-tertiary);font-size:.72rem;text-align:center}
 .daily-sector-filter-empty{margin:0;border:1px dashed var(--border-strong);border-radius:var(--radius-lg);padding:1.3rem;color:var(--text-secondary);font-size:.85rem}

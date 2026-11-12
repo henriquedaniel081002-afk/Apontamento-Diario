@@ -85,11 +85,6 @@ function SectorCard({
   onOpen: (setor: string) => void;
 }) {
   const presentation = sectorPresentation(row);
-  const gaugeStyle = {
-    '--daily-progress': `${Math.min(Math.max(row.aderencia || 0, 0), 100) * 3.6}deg`,
-    '--daily-color': presentation.color,
-  } as CSSProperties;
-
   return (
     <article aria-label={`Produção de ${row.setor}`} className={cx('daily-sector-card', presentation.className)}>
       <div className="daily-sector-card__heading">
@@ -99,55 +94,55 @@ function SectorCard({
         </div>
         <span className="daily-sector-card__status">{presentation.label}</span>
       </div>
-      <div className="daily-sector-card__body">
-        <div className="daily-sector-gauge" style={gaugeStyle} aria-label={`Aderência: ${row.aderencia === null ? 'sem programação' : formatPct(row.aderencia)}`}>
-          <div>
-            <strong>{row.aderencia === null ? '—' : formatPct(row.aderencia)}</strong>
-            <span>Aderência</span>
-          </div>
-        </div>
-        <dl>
-          <div>
-            <dt>Programado</dt>
-            <dd>{formatNum(row.programado)}</dd>
-          </div>
-          <div>
-            <dt>Produzido</dt>
-            <dd>{formatNum(row.produzido)}</dd>
-          </div>
-        </dl>
-      </div>
-      <section className="daily-sector-card__lines" aria-label={`Produção por linha de ${row.setor}`}>
-        {row.linhas?.length ? (
-          <table className="daily-sector-lines-table">
-            <thead>
-              <tr>
-                <th scope="col">Linha</th>
-                <th scope="col" title="Programado">Prog.</th>
-                <th scope="col" title="Produzido">Prod.</th>
-                <th scope="col" title="Aderência">Ader.</th>
-              </tr>
-            </thead>
-            <tbody>
-              {row.linhas.map((item) => {
-                const below = item.programado > 0 && item.produzido < item.programado;
-                const adherence = calculateAdherence(item.programado, item.produzido);
-                return (
-                  <tr key={item.linha} className={below ? 'is-below' : undefined}>
-                    <th scope="row">{item.linha}</th>
-                    <td>{formatNum(item.programado)}</td>
-                    <td>{formatNum(item.produzido)}</td>
-                    <td className={below ? 'daily-line-shortfall' : undefined}>
-                      {adherence === null ? '—' : formatPct(adherence)}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        ) : <p className="daily-sector-lines-empty">Detalhamento por linha indisponível.</p>}
+      <section
+        className={cx(
+          'daily-sector-card__gauges',
+          row.linhas?.length === 1 && 'daily-sector-card__gauges--single',
+          (row.linhas?.length || 0) >= 3 && 'daily-sector-card__gauges--multiple',
+        )}
+        aria-label={`Produção por linha de ${row.setor}`}
+      >
+        {row.linhas?.length ? row.linhas.map((item) => {
+          const adherence = calculateAdherence(item.programado, item.produzido);
+          const linePresentation = adherencePresentation(adherence);
+          const below = item.programado > 0 && item.produzido < item.programado;
+          const gaugeStyle = {
+            '--daily-progress': `${Math.min(Math.max(adherence ?? 0, 0), 100) * 3.6}deg`,
+            '--daily-color': linePresentation.color,
+          } as CSSProperties;
+          return (
+            <div key={item.linha} className={cx('daily-sector-line', below && 'is-below')} role="group" aria-label={`Linha ${item.linha}`}>
+              <strong className="daily-sector-line__name">{item.linha}</strong>
+              <div
+                className="daily-sector-line__gauge"
+                style={gaugeStyle}
+                role="img"
+                aria-label={`Aderência da linha ${item.linha}: ${adherence === null ? 'sem programação' : formatPct(adherence)}`}
+              >
+                <div>
+                  <strong>{adherence === null ? '—' : formatPct(adherence)}</strong>
+                  <span>Aderência</span>
+                </div>
+              </div>
+              <dl className="daily-sector-line__counts">
+                <div>
+                  <dt>Prog.</dt>
+                  <dd>{formatNum(item.programado)}</dd>
+                </div>
+                <div>
+                  <dt>Prod.</dt>
+                  <dd>{formatNum(item.produzido)}</dd>
+                </div>
+              </dl>
+            </div>
+          );
+        }) : <p className="daily-sector-lines-empty">Detalhamento por linha indisponível.</p>}
       </section>
-      <div className="daily-sector-card__details">
+      <div className="daily-sector-card__footer">
+        <div className="daily-sector-card__totals">
+          <span>Total do setor</span>
+          <strong>Prog. {formatNum(row.programado)} · Prod. {formatNum(row.produzido)}</strong>
+        </div>
         <button
           type="button"
           className="daily-sector-details-button"
@@ -349,7 +344,7 @@ export function ProducaoDiariaPage() {
             <div className="daily-section-heading">
               <div>
                 <h2 id="setores-producao-diaria">Desempenho por setor</h2>
-                <p>Programado, produzido e aderência consolidados, com detalhamento por linha.</p>
+                <p>Aderência individual por linha, com totais consolidados do setor.</p>
               </div>
               <span>{setoresVisiveis.length} setor(es)</span>
             </div>

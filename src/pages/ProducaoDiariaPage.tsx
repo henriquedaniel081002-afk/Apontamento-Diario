@@ -100,24 +100,24 @@ function SectorCard({
           row.linhas?.length === 1 && 'daily-sector-card__gauges--single',
           (row.linhas?.length || 0) >= 3 && 'daily-sector-card__gauges--multiple',
         )}
-        aria-label={\`Produção por linha de \${row.setor}\`}
+        aria-label={`Produção por linha de ${row.setor}`}
       >
         {row.linhas?.length ? row.linhas.map((item) => {
           const adherence = calculateAdherence(item.programado, item.produzido);
           const linePresentation = adherencePresentation(adherence);
           const below = item.programado > 0 && item.produzido < item.programado;
           const gaugeStyle = {
-            '--daily-progress': \`\${Math.min(Math.max(adherence ?? 0, 0), 100) * 3.6}deg\`,
+            '--daily-progress': `${Math.min(Math.max(adherence ?? 0, 0), 100) * 3.6}deg`,
             '--daily-color': linePresentation.color,
           } as CSSProperties;
           return (
-            <div key={item.linha} className={cx('daily-sector-line', below && 'is-below')} role="group" aria-label={\`Linha \${item.linha}\`}>
+            <div key={item.linha} className={cx('daily-sector-line', below && 'is-below')} role="group" aria-label={`Linha ${item.linha}`}>
               <strong className="daily-sector-line__name">{item.linha}</strong>
               <div
                 className="daily-sector-line__gauge"
                 style={gaugeStyle}
                 role="img"
-                aria-label={\`Aderência da linha \${item.linha}: \${adherence === null ? 'sem programação' : formatPct(adherence)}\`}
+                aria-label={`Aderência da linha ${item.linha}: ${adherence === null ? 'sem programação' : formatPct(adherence)}`}
               >
                 <div>
                   <strong>{adherence === null ? '—' : formatPct(adherence)}</strong>

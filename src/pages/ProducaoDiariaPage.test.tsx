@@ -101,6 +101,7 @@ describe('Produção Diária', () => {
     expect(tri).toHaveTextContent('30');
     expect(within(epo).getByRole('img', { name: 'Aderência da linha EPO: 100,00%' })).toBeInTheDocument();
     expect(card).toHaveTextContent('Prog. 100 · Prod. 100');
+    expect(within(card).getByRole('img', { name: 'Aderência do setor BOBINA AT: 100,00%' })).toBeInTheDocument();
     expect(screen.getAllByText('100 unidades')).toHaveLength(2);
   });
 
@@ -133,6 +134,7 @@ describe('Produção Diária', () => {
     expect(within(card).getByRole('img', { name: 'Aderência da linha EPO: sem programação' })).toBeInTheDocument();
     expect(within(card).getByText('—')).toBeInTheDocument();
     expect(card).toHaveTextContent('Prog. 0 · Prod. 5');
+    expect(within(card).getByRole('img', { name: 'Aderência do setor EPOXI: sem programação' })).toBeInTheDocument();
   });
 
   it('mantém total e detalhes acessíveis quando a API ainda não fornece linhas', async () => {
@@ -147,6 +149,40 @@ describe('Produção Diária', () => {
     expect(card).toHaveTextContent('Detalhamento por linha indisponível.');
     expect(card).toHaveTextContent('Prog. 10 · Prod. 4');
     expect(within(card).getByRole('button', { name: 'Ver detalhes de PINTURA' })).toBeInTheDocument();
+  });
+
+  it('exibe aderência consolidada ponderada do setor abaixo das linhas sem alterar as aderências individuais', async () => {
+    getDataMock.mockResolvedValue({
+      geradoEm: '2026-11-12T12:00:00.000Z',
+      filtros: { linhas: ['MON', 'TRI'] },
+      setores: [{ setor: 'BOBINA AT', programado: 215, produzido: 79, linhas: [
+        { linha: 'MON', programado: 140, produzido: 42, potencias: [] },
+        { linha: 'TRI', programado: 75, produzido: 37, potencias: [] },
+      ] }],
+    });
+    render(<ProducaoDiariaPage />);
+    const card = await screen.findByRole('article', { name: 'Produção de BOBINA AT' });
+    expect(within(card).getByRole('img', { name: 'Aderência da linha MON: 30,00%' })).toBeInTheDocument();
+    expect(within(card).getByRole('img', { name: 'Aderência da linha TRI: 49,33%' })).toBeInTheDocument();
+    const resumo = within(card).getByRole('region', { name: 'Total do setor BOBINA AT' });
+    expect(resumo).toHaveTextContent('Prog. 215 · Prod. 79');
+    expect(within(resumo).getByRole('img', { name: 'Aderência do setor BOBINA AT: 36,74%' })).toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: 'Ver detalhes de BOBINA AT' })).toBeInTheDocument();
+    expect(getDataMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('mostra aderência consolidada superior a 100% sem truncar o percentual', async () => {
+    getDataMock.mockResolvedValue({
+      geradoEm: '2026-11-12T12:00:00.000Z',
+      filtros: { linhas: ['MON'] },
+      setores: [{ setor: 'SOLDA', programado: 15, produzido: 18, linhas: [
+        { linha: 'MON', programado: 15, produzido: 18, potencias: [] },
+      ] }],
+    });
+    render(<ProducaoDiariaPage />);
+    const card = await screen.findByRole('article', { name: 'Produção de SOLDA' });
+    expect(within(card).getByRole('img', { name: 'Aderência do setor SOLDA: 120,00%' })).toBeInTheDocument();
+    expect(card).toHaveTextContent('Prog. 15 · Prod. 18');
   });
 
   it('filtra por qualquer linha pendente sem alterar totais nem refazer consulta', async () => {

@@ -41,7 +41,14 @@
 @media(max-width:640px){.daily-observation-metrics{grid-template-columns:1fr}}
 
 /* Rodapé do cartão: mantém o botão/modal de detalhes e os totais do setor. */
-.daily-sector-card__footer{display:flex;align-items:center;justify-content:space-between;gap:.55rem;border-top:1px solid var(--border-subtle);padding:.65rem .8rem}
+.daily-sector-card__summary{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.7rem;border-top:1px solid var(--border-subtle);padding:.7rem .8rem;background:linear-gradient(100deg,rgba(19,49,34,.28),transparent 85%)}
+.daily-sector-card__overall-adherence{display:flex;align-items:center;gap:.5rem;min-width:0}
+.daily-sector-card__overall-gauge{--daily-progress:0deg;--daily-color:var(--accent);display:grid;flex:none;place-items:center;width:2.9rem;aspect-ratio:1;border-radius:50%;background:conic-gradient(var(--daily-color) var(--daily-progress),var(--border-subtle) 0)}
+.daily-sector-card__overall-gauge>span{display:block;width:70%;aspect-ratio:1;border-radius:50%;background:var(--surface-raised)}
+.daily-sector-card__overall-value{display:grid;gap:.12rem;min-width:0}
+.daily-sector-card__overall-value>span{color:var(--text-tertiary);font-size:.55rem;font-weight:800;line-height:1.2;text-transform:uppercase}
+.daily-sector-card__overall-value>strong{font-size:.89rem;font-weight:900;white-space:nowrap;font-variant-numeric:tabular-nums}
+.daily-sector-card__footer{display:flex;align-items:center;justify-content:flex-end;gap:.55rem;border-top:1px solid var(--border-subtle);padding:.5rem .8rem}
 .daily-sector-card__totals{display:grid;min-width:0;gap:.18rem}
 .daily-sector-card__totals span{color:var(--text-tertiary);font-size:.6rem;font-weight:850;letter-spacing:.06em;text-transform:uppercase}
 .daily-sector-card__totals strong{color:var(--text-primary);font-size:.7rem;font-weight:800;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
@@ -72,7 +79,7 @@
 @media(max-width:640px){.daily-detail-lines{grid-template-columns:1fr}}
 
 
-/* Os círculos mostram aderência por linha; não existe mais círculo consolidado no cartão. */
+/* Os círculos por linha continuam; o resumo apresenta a aderência consolidada do setor. */
 .daily-sector-card__gauges{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem;padding:.9rem .75rem 1rem}
 .daily-sector-card__gauges--single{grid-template-columns:minmax(0,1fr);justify-items:center}
 .daily-sector-card__gauges--multiple{grid-template-columns:repeat(3,minmax(0,1fr));gap:.4rem;padding:.85rem .5rem .95rem}

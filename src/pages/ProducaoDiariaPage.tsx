@@ -85,6 +85,11 @@ function SectorCard({
   onOpen: (setor: string) => void;
 }) {
   const presentation = sectorPresentation(row);
+  const sectorAdherencePresentation = adherencePresentation(row.aderencia);
+  const sectorGaugeStyle = {
+    '--daily-progress': `${Math.min(Math.max(row.aderencia ?? 0, 0), 100) * 3.6}deg`,
+    '--daily-color': sectorAdherencePresentation.color,
+  } as CSSProperties;
   return (
     <article aria-label={`Produção de ${row.setor}`} className={cx('daily-sector-card', presentation.className)}>
       <div className="daily-sector-card__heading">
@@ -138,11 +143,29 @@ function SectorCard({
           );
         }) : <p className="daily-sector-lines-empty">Detalhamento por linha indisponível.</p>}
       </section>
-      <div className="daily-sector-card__footer">
+      <section className="daily-sector-card__summary" aria-label={`Total do setor ${row.setor}`}>
         <div className="daily-sector-card__totals">
           <span>Total do setor</span>
           <strong>Prog. {formatNum(row.programado)} · Prod. {formatNum(row.produzido)}</strong>
         </div>
+        <div className="daily-sector-card__overall-adherence">
+          <div
+            className="daily-sector-card__overall-gauge"
+            style={sectorGaugeStyle}
+            role="img"
+            aria-label={`Aderência do setor ${row.setor}: ${row.aderencia === null ? 'sem programação' : formatPct(row.aderencia)}`}
+          >
+            <span aria-hidden="true" />
+          </div>
+          <div className="daily-sector-card__overall-value">
+            <span>Aderência do setor</span>
+            <strong style={{ color: sectorAdherencePresentation.color }}>
+              {row.aderencia === null ? '—' : formatPct(row.aderencia)}
+            </strong>
+          </div>
+        </div>
+      </section>
+      <div className="daily-sector-card__footer">
         <button
           type="button"
           className="daily-sector-details-button"

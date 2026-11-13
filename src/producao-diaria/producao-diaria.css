@@ -3,7 +3,15 @@
 .daily-section-heading{display:flex;align-items:end;justify-content:space-between;gap:1rem;margin-bottom:.85rem}
 .daily-section-heading h2{margin:0;color:var(--text-primary);font-size:1.05rem;font-weight:850;letter-spacing:-.015em}
 .daily-section-heading p{margin:.3rem 0 0;color:var(--text-tertiary);font-size:.78rem}
-.daily-section-heading>span{flex:none;border:1px solid var(--border-subtle);border-radius:999px;background:var(--surface-muted);padding:.3rem .65rem;color:var(--text-secondary);font-size:.72rem;font-weight:800}
+.daily-section-count{flex:none;border:1px solid var(--border-subtle);border-radius:999px;background:var(--surface-muted);padding:.3rem .65rem;color:var(--text-secondary);font-size:.72rem;font-weight:800}
+.daily-section-controls{display:flex;align-items:center;justify-content:flex-end;gap:.65rem;flex-wrap:wrap}
+.daily-view-toggle{position:relative;display:inline-flex;align-items:center;gap:.5rem;cursor:pointer;color:var(--text-secondary);font-size:.72rem;font-weight:800;user-select:none}
+.daily-view-toggle input{position:absolute;width:1px;height:1px;opacity:0}
+.daily-view-toggle__track{display:inline-flex;align-items:center;box-sizing:border-box;flex:none;width:2.2rem;height:1.2rem;border:1px solid var(--border-strong);border-radius:99px;background:var(--surface-muted);padding:2px;transition:background .15s,border-color .15s}
+.daily-view-toggle__track>span{display:block;width:.75rem;height:.75rem;border-radius:50%;background:var(--text-tertiary);transition:transform .15s,background .15s}
+.daily-view-toggle input:checked+.daily-view-toggle__track{background:var(--success-soft);border-color:var(--success)}
+.daily-view-toggle input:checked+.daily-view-toggle__track>span{transform:translateX(.95rem);background:var(--success)}
+.daily-view-toggle input:focus-visible+.daily-view-toggle__track{outline:2px solid var(--accent);outline-offset:3px}
 .daily-sector-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1rem}
 .daily-sector-card{min-width:0;overflow:hidden;border:1px solid var(--border-subtle);border-radius:var(--radius-lg);background:linear-gradient(145deg,rgba(15,24,19,.98),rgba(7,12,9,.98));box-shadow:var(--shadow-surface)}
 .daily-sector-card__heading{display:flex;min-width:0;align-items:flex-start;justify-content:space-between;gap:.75rem;border-bottom:1px solid var(--border-subtle);padding:.9rem 1rem}
@@ -42,12 +50,6 @@
 
 /* Rodapé do cartão: mantém o botão/modal de detalhes e os totais do setor. */
 .daily-sector-card__summary{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.7rem;border-top:1px solid var(--border-subtle);padding:.7rem .8rem;background:linear-gradient(100deg,rgba(19,49,34,.28),transparent 85%)}
-.daily-sector-card__overall-adherence{display:flex;align-items:center;gap:.5rem;min-width:0}
-.daily-sector-card__overall-gauge{--daily-progress:0deg;--daily-color:var(--accent);display:grid;flex:none;place-items:center;width:2.9rem;aspect-ratio:1;border-radius:50%;background:conic-gradient(var(--daily-color) var(--daily-progress),var(--border-subtle) 0)}
-.daily-sector-card__overall-gauge>span{display:block;width:70%;aspect-ratio:1;border-radius:50%;background:var(--surface-raised)}
-.daily-sector-card__overall-value{display:grid;gap:.12rem;min-width:0}
-.daily-sector-card__overall-value>span{color:var(--text-tertiary);font-size:.55rem;font-weight:800;line-height:1.2;text-transform:uppercase}
-.daily-sector-card__overall-value>strong{font-size:.89rem;font-weight:900;white-space:nowrap;font-variant-numeric:tabular-nums}
 .daily-sector-card__footer{display:flex;align-items:center;justify-content:flex-end;gap:.55rem;border-top:1px solid var(--border-subtle);padding:.5rem .8rem}
 .daily-sector-card__totals{display:grid;min-width:0;gap:.18rem}
 .daily-sector-card__totals span{color:var(--text-tertiary);font-size:.6rem;font-weight:850;letter-spacing:.06em;text-transform:uppercase}
@@ -79,7 +81,10 @@
 @media(max-width:640px){.daily-detail-lines{grid-template-columns:1fr}}
 
 
-/* Os círculos por linha continuam; o resumo apresenta a aderência consolidada do setor. */
+/* Círculos por linha mantidos; o modo consolidado reutiliza o mesmo medidor. */
+.daily-sector-card__sector-view{display:grid;place-items:center;min-height:9rem;padding:.9rem .75rem}
+.daily-sector-card__sector-gauge{width:min(100%,7rem)}
+
 .daily-sector-card__gauges{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem;padding:.9rem .75rem 1rem}
 .daily-sector-card__gauges--single{grid-template-columns:minmax(0,1fr);justify-items:center}
 .daily-sector-card__gauges--multiple{grid-template-columns:repeat(3,minmax(0,1fr));gap:.4rem;padding:.85rem .5rem .95rem}
@@ -102,3 +107,5 @@
 .daily-sector-card__gauges--multiple .daily-sector-line__counts dd{font-size:.73rem}
 .daily-sector-lines-empty{grid-column:1/-1;margin:0;color:var(--text-tertiary);font-size:.72rem;text-align:center}
 .daily-sector-filter-empty{margin:0;border:1px dashed var(--border-strong);border-radius:var(--radius-lg);padding:1.3rem;color:var(--text-secondary);font-size:.85rem}
+
+@media(max-width:640px){.daily-section-controls{width:100%;justify-content:space-between}}

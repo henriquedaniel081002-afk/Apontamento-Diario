@@ -55,9 +55,12 @@ function adherencePresentation(value: number | null) {
   return { color: '#fb7185', className: 'is-danger', label: 'Abaixo do programado' };
 }
 
-function sectorPresentation(row: DailyProductionSectorMetric) {
-  return isBelowDailyProgramming(row)
-    ? { color: '#fb7185', className: 'is-danger', label: 'Linha abaixo do programado' }
+function sectorPresentation(row: DailyProductionSectorMetric, showSector: boolean) {
+  const below = showSector
+    ? row.programado > 0 && row.produzido < row.programado
+    : isBelowDailyProgramming(row);
+  return below
+    ? { color: '#fb7185', className: 'is-danger', label: showSector ? 'Setor abaixo do programado' : 'Linha abaixo do programado' }
     : adherencePresentation(row.aderencia);
 }
 
@@ -79,12 +82,14 @@ function SectorCard({
   row,
   observacoes,
   onOpen,
+  showSector,
 }: {
   row: DailyProductionSectorMetric;
   observacoes: DailyProductionObservation[];
   onOpen: (setor: string) => void;
+  showSector: boolean;
 }) {
-  const presentation = sectorPresentation(row);
+  const presentation = sectorPresentation(row, showSector);
   const sectorAdherencePresentation = adherencePresentation(row.aderencia);
   const sectorGaugeStyle = {
     '--daily-progress': `${Math.min(Math.max(row.aderencia ?? 0, 0), 100) * 3.6}deg`,
@@ -99,6 +104,21 @@ function SectorCard({
         </div>
         <span className="daily-sector-card__status">{presentation.label}</span>
       </div>
+      {showSector ? (
+        <section className="daily-sector-card__sector-view" aria-label={`Aderência consolidada de ${row.setor}`}>
+          <div
+            className="daily-sector-line__gauge daily-sector-card__sector-gauge"
+            style={sectorGaugeStyle}
+            role="img"
+            aria-label={`Aderência do setor ${row.setor}: ${row.aderencia === null ? 'sem programação' : formatPct(row.aderencia)}`}
+          >
+            <div>
+              <strong>{row.aderencia === null ? '—' : formatPct(row.aderencia)}</strong>
+              <span>Aderência</span>
+            </div>
+          </div>
+        </section>
+      ) : (
       <section
         className={cx(
           'daily-sector-card__gauges',
@@ -143,27 +163,13 @@ function SectorCard({
           );
         }) : <p className="daily-sector-lines-empty">Detalhamento por linha indisponível.</p>}
       </section>
+      )}
       <section className="daily-sector-card__summary" aria-label={`Total do setor ${row.setor}`}>
         <div className="daily-sector-card__totals">
           <span>Total do setor</span>
           <strong>Prog. {formatNum(row.programado)} · Prod. {formatNum(row.produzido)}</strong>
         </div>
-        <div className="daily-sector-card__overall-adherence">
-          <div
-            className="daily-sector-card__overall-gauge"
-            style={sectorGaugeStyle}
-            role="img"
-            aria-label={`Aderência do setor ${row.setor}: ${row.aderencia === null ? 'sem programação' : formatPct(row.aderencia)}`}
-          >
-            <span aria-hidden="true" />
-          </div>
-          <div className="daily-sector-card__overall-value">
-            <span>Aderência do setor</span>
-            <strong style={{ color: sectorAdherencePresentation.color }}>
-              {row.aderencia === null ? '—' : formatPct(row.aderencia)}
-            </strong>
-          </div>
-        </div>
+
       </section>
       <div className="daily-sector-card__footer">
         <button
@@ -190,6 +196,7 @@ export function ProducaoDiariaPage() {
   const [dataFim, setDataFim] = useState(defaults.end);
   const [linha, setLinha] = useState('ALL');
   const [situacao, setSituacao] = useState<'ALL' | 'BELOW'>('ALL');
+  const [showSector, setShowSector] = useState(false);
   const [setoresSelecionados, setSetoresSelecionados] = useState<string[] | null>(null);
   const [observacoes, setObservacoes] = useState<DailyProductionObservation[]>([]);
   const [observacoesError, setObservacoesError] = useState('');
@@ -244,8 +251,10 @@ export function ProducaoDiariaPage() {
     (data?.setores || []).filter((row) => setoresSelecionados === null || setoresSelecionados.includes(row.setor)),
   ), [data, setoresSelecionados]);
   const setoresVisiveis = useMemo(() => situacao === 'BELOW'
-    ? metrics.setores.filter(isBelowDailyProgramming)
-    : metrics.setores, [metrics.setores, situacao]);
+    ? metrics.setores.filter((row) => showSector
+      ? row.programado > 0 && row.produzido < row.programado
+      : isBelowDailyProgramming(row))
+    : metrics.setores, [metrics.setores, situacao, showSector]);
   const ranking = useMemo(() => [...setoresVisiveis].sort((a, b) => {
     if (a.aderencia === null && b.aderencia !== null) return 1;
     if (a.aderencia !== null && b.aderencia === null) return -1;
@@ -329,9 +338,9 @@ export function ProducaoDiariaPage() {
         <Field label="Data final" error={invalidPeriod ? 'Revise o período informado.' : undefined}>
           <input className="field-control" type="date" value={dataFim} min={dataInicio || undefined} onChange={(event) => setDataFim(event.target.value)} />
         </Field>
-        <Field label="Linha">
+        {!showSector && <Field label="Linha">
           <CustomSelect ariaLabel="Linha" value={linha} options={lineOptions} onChange={setLinha} />
-        </Field>
+        </Field>}
         <Field label="Setores">
           <SectorMultiSelect options={setoresDisponiveis} selected={setoresSelecionados} onChange={setSetoresSelecionados} />
         </Field>
@@ -367,9 +376,27 @@ export function ProducaoDiariaPage() {
             <div className="daily-section-heading">
               <div>
                 <h2 id="setores-producao-diaria">Desempenho por setor</h2>
-                <p>Aderência individual por linha, com totais consolidados do setor.</p>
+                <p>{showSector
+                  ? 'Aderência total de cada setor, considerando todas as linhas.'
+                  : 'Aderência individual por linha, com quantidades programadas e produzidas.'}</p>
               </div>
-              <span>{setoresVisiveis.length} setor(es)</span>
+              <div className="daily-section-controls">
+                <label className="daily-view-toggle">
+                  <span>Visão por setor</span>
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    checked={showSector}
+                    onChange={(event) => {
+                      const enabled = event.currentTarget.checked;
+                      setShowSector(enabled);
+                      if (enabled) setLinha('ALL');
+                    }}
+                  />
+                  <span className="daily-view-toggle__track" aria-hidden="true"><span /></span>
+                </label>
+                <span className="daily-section-count">{setoresVisiveis.length} setor(es)</span>
+              </div>
             </div>
             {!singleDay && <p className="daily-observation-hint">Os detalhes abrangem o período filtrado. Para registrar observações, selecione apenas um dia.</p>}
             {observacoesError && <p className="daily-observation-hint" role="alert">{observacoesError}</p>}
@@ -380,16 +407,19 @@ export function ProducaoDiariaPage() {
                   row={row}
                   observacoes={observacoes}
                   onOpen={openDetails}
+                  showSector={showSector}
                 />)}
               </div>
             ) : (
               <p className="daily-sector-filter-empty" role="status">
-                Nenhum setor abaixo do programado nas linhas consultadas.
+                {showSector
+                  ? 'Nenhum setor abaixo do programado no consolidado.'
+                  : 'Nenhum setor abaixo do programado nas linhas consultadas.'}
               </p>
             )}
           </section>
 
-          {setoresVisiveis.length > 0 && <SectionCard
+          {showSector && setoresVisiveis.length > 0 && <SectionCard
             title="Ranking de Aderência por Setor"
             description="Ordenado da maior para a menor aderência. Setores sem programação aparecem ao final."
             icon={<BarChart3 className="size-4" aria-hidden="true" />}
@@ -403,7 +433,7 @@ export function ProducaoDiariaPage() {
                   <Tooltip content={<RankingTooltip />} cursor={{ fill: 'rgba(255,255,255,0.025)' }} />
                   <Bar dataKey={(row: DailyProductionSectorMetric) => row.aderencia || 0} radius={[0, 7, 7, 0]} maxBarSize={24}>
                     <LabelList dataKey={(row: DailyProductionSectorMetric) => row.aderencia === null ? '—' : formatPct(row.aderencia)} position="right" fill="#e5eee9" fontSize={12} fontWeight={800} />
-                    {ranking.map((row) => <Cell key={row.setor} fill={sectorPresentation(row).color} fillOpacity={0.9} />)}
+                    {ranking.map((row) => <Cell key={row.setor} fill={sectorPresentation(row, showSector).color} fillOpacity={0.9} />)}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>

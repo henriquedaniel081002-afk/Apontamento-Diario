@@ -101,7 +101,7 @@ describe('Produção Diária', () => {
     expect(tri).toHaveTextContent('30');
     expect(within(epo).getByRole('img', { name: 'Aderência da linha EPO: 100,00%' })).toBeInTheDocument();
     expect(card).toHaveTextContent('Prog. 100 · Prod. 100');
-    expect(within(card).getByRole('img', { name: 'Aderência do setor BOBINA AT: 100,00%' })).toBeInTheDocument();
+    expect(within(card).queryByRole('img', { name: /Aderência do setor/ })).not.toBeInTheDocument();
     expect(screen.getAllByText('100 unidades')).toHaveLength(2);
   });
 
@@ -134,6 +134,9 @@ describe('Produção Diária', () => {
     expect(within(card).getByRole('img', { name: 'Aderência da linha EPO: sem programação' })).toBeInTheDocument();
     expect(within(card).getByText('—')).toBeInTheDocument();
     expect(card).toHaveTextContent('Prog. 0 · Prod. 5');
+    expect(within(card).queryByRole('img', { name: /Aderência do setor/ })).not.toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('switch', { name: 'Visão por setor' }));
     expect(within(card).getByRole('img', { name: 'Aderência do setor EPOXI: sem programação' })).toBeInTheDocument();
   });
 
@@ -151,7 +154,7 @@ describe('Produção Diária', () => {
     expect(within(card).getByRole('button', { name: 'Ver detalhes de PINTURA' })).toBeInTheDocument();
   });
 
-  it('exibe aderência consolidada ponderada do setor abaixo das linhas sem alterar as aderências individuais', async () => {
+  it('alterna entre círculos por linha e a aderência consolidada ponderada do setor', async () => {
     getDataMock.mockResolvedValue({
       geradoEm: '2026-11-12T12:00:00.000Z',
       filtros: { linhas: ['MON', 'TRI'] },
@@ -166,8 +169,17 @@ describe('Produção Diária', () => {
     expect(within(card).getByRole('img', { name: 'Aderência da linha TRI: 49,33%' })).toBeInTheDocument();
     const resumo = within(card).getByRole('region', { name: 'Total do setor BOBINA AT' });
     expect(resumo).toHaveTextContent('Prog. 215 · Prod. 79');
-    expect(within(resumo).getByRole('img', { name: 'Aderência do setor BOBINA AT: 36,74%' })).toBeInTheDocument();
+    expect(within(card).queryByRole('img', { name: /Aderência do setor/ })).not.toBeInTheDocument();
+    expect(screen.queryByText('Ranking de Aderência por Setor')).not.toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('switch', { name: 'Visão por setor' }));
+    expect(within(card).queryByRole('img', { name: /Aderência da linha/ })).not.toBeInTheDocument();
+    expect(within(card).getByRole('img', { name: 'Aderência do setor BOBINA AT: 36,74%' })).toBeInTheDocument();
+    expect(screen.getByText('Ranking de Aderência por Setor')).toBeInTheDocument();
     expect(within(card).getByRole('button', { name: 'Ver detalhes de BOBINA AT' })).toBeInTheDocument();
+    await user.click(screen.getByRole('switch', { name: 'Visão por setor' }));
+    expect(within(card).getByRole('img', { name: 'Aderência da linha MON: 30,00%' })).toBeInTheDocument();
+    expect(within(card).queryByRole('img', { name: /Aderência do setor/ })).not.toBeInTheDocument();
     expect(getDataMock).toHaveBeenCalledTimes(1);
   });
 
@@ -181,8 +193,68 @@ describe('Produção Diária', () => {
     });
     render(<ProducaoDiariaPage />);
     const card = await screen.findByRole('article', { name: 'Produção de SOLDA' });
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('switch', { name: 'Visão por setor' }));
     expect(within(card).getByRole('img', { name: 'Aderência do setor SOLDA: 120,00%' })).toBeInTheDocument();
     expect(card).toHaveTextContent('Prog. 15 · Prod. 18');
+  });
+
+  it('usa critérios diferentes para o filtro abaixo do programado em cada visão', async () => {
+    getDataMock.mockResolvedValue({
+      geradoEm: '2026-11-12T12:00:00.000Z',
+      filtros: { linhas: ['MON', 'TRI'] },
+      setores: [
+        { setor: 'BOBINA AT', programado: 80, produzido: 80, linhas: [
+          { linha: 'MON', programado: 40, produzido: 50, potencias: [] },
+          { linha: 'TRI', programado: 40, produzido: 30, potencias: [] },
+        ] },
+        { setor: 'BOBINA BT', programado: 100, produzido: 75, linhas: [
+          { linha: 'MON', programado: 60, produzido: 45, potencias: [] },
+          { linha: 'TRI', programado: 40, produzido: 30, potencias: [] },
+        ] },
+        { setor: 'PINTURA', programado: 0, produzido: 1, linhas: [
+          { linha: 'MON', programado: 0, produzido: 1, potencias: [] },
+        ] },
+      ],
+    });
+    const user = userEvent.setup();
+    render(<ProducaoDiariaPage />);
+    await screen.findByRole('article', { name: 'Produção de BOBINA AT' });
+    await user.click(screen.getByRole('combobox', { name: 'Situação' }));
+    await user.click(screen.getByRole('option', { name: 'Abaixo do programado' }));
+    expect(screen.getAllByRole('article', { name: /Produção de / })).toHaveLength(2);
+    expect(screen.getByRole('article', { name: 'Produção de BOBINA AT' })).toHaveTextContent('Linha abaixo do programado');
+    await user.click(screen.getByRole('switch', { name: 'Visão por setor' }));
+    expect(screen.getAllByRole('article', { name: /Produção de / })).toHaveLength(1);
+    expect(screen.getByRole('article', { name: 'Produção de BOBINA BT' })).toHaveTextContent('Setor abaixo do programado');
+    expect(screen.getByText('180 unidades')).toBeInTheDocument();
+    expect(screen.getByText('156 unidades')).toBeInTheDocument();
+    expect(getDataMock).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole('switch', { name: 'Visão por setor' }));
+    expect(screen.getAllByRole('article', { name: /Produção de / })).toHaveLength(2);
+  });
+
+  it('ao ativar visão por setor, remove filtro individual de linha e consulta ALL', async () => {
+    getDataMock.mockResolvedValue({
+      geradoEm: '2026-11-12T12:00:00.000Z',
+      filtros: { linhas: ['MON', 'TRI'] },
+      setores: [{ setor: 'BOBINA AT', programado: 100, produzido: 75, linhas: [
+        { linha: 'MON', programado: 60, produzido: 50, potencias: [] },
+        { linha: 'TRI', programado: 40, produzido: 25, potencias: [] },
+      ] }],
+    });
+    const user = userEvent.setup();
+    render(<ProducaoDiariaPage />);
+    await screen.findByRole('article', { name: 'Produção de BOBINA AT' });
+    await user.click(screen.getByRole('combobox', { name: 'Linha' }));
+    await user.click(screen.getByRole('option', { name: 'MON' }));
+    await waitFor(() => expect(getDataMock).toHaveBeenLastCalledWith(expect.any(String), expect.any(String), 'MON'));
+    await user.click(screen.getByRole('switch', { name: 'Visão por setor' }));
+    expect(screen.queryByRole('combobox', { name: 'Linha' })).not.toBeInTheDocument();
+    await waitFor(() => expect(getDataMock).toHaveBeenLastCalledWith(expect.any(String), expect.any(String), 'ALL'));
+    await user.click(screen.getByRole('switch', { name: 'Visão por setor' }));
+    expect(screen.getByRole('combobox', { name: 'Linha' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Linha' })).toHaveTextContent('Todas as linhas');
   });
 
   it('filtra por qualquer linha pendente sem alterar totais nem refazer consulta', async () => {

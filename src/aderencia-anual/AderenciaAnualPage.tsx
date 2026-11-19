@@ -23,6 +23,7 @@ import {
 import { CustomSelect } from '../components/common/CustomSelect';
 import { AderenciaAnualChart } from './components/AderenciaAnualChart';
 import { AderenciaAnualImport } from './components/AderenciaAnualImport';
+import { isSupabasePreviewReadOnly } from '../productivity/lib/supabase';
 import { aderenciaAnualService } from './services/aderenciaAnualService';
 import type { AderenciaAnualRecord, AderenciaAnualUpsertRow } from './types';
 import {
@@ -90,7 +91,7 @@ export function AderenciaAnualPage() {
         title="Aderência Anual"
         description="Acompanhe os indicadores do ano selecionado e compare a produção realizada entre todos os anos disponíveis."
         icon={<ChartColumnIncreasing className="size-6" aria-hidden="true" />}
-        actions={<AderenciaAnualImport onImport={handleImport} />}
+        actions={!isSupabasePreviewReadOnly && <AderenciaAnualImport onImport={handleImport} />}
         metadata={(
           <>
             <Badge variant="success">Supabase</Badge>
@@ -98,6 +99,12 @@ export function AderenciaAnualPage() {
           </>
         )}
       />
+
+      {isSupabasePreviewReadOnly && (
+        <p className="mt-4 rounded-xl border border-amber-400/25 px-4 py-3 text-sm text-amber-100">
+          Prévia de homologação. Os dados desta tela estão disponíveis somente para consulta.
+        </p>
+      )}
 
       <div className="mt-6 grid gap-5 sm:mt-7">
         {successMessage && (

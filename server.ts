@@ -6,6 +6,7 @@ import jwt from 'jsonwebtoken';
 import { registerGestaoAtrasosRoutes } from './server.gestaoAtrasos.js';
 import { registerProducaoDiariaObservacoesRoutes } from './server.producaoDiariaObservacoes.js';
 import { registerProducaoDiariaAcoesRoutes } from './server.producaoDiariaAcoes.js';
+import { registerSupabasePreviewRead } from './server.supabasePreviewRead.js';
 import { buildDailyProductionDetail } from './server.producaoDiariaDetalhamento.js';
 
 dotenv.config();
@@ -3180,6 +3181,11 @@ app.delete('/api/coordenacao/apontamentos/:id', auth, requireCoordenacao, async 
 // Localmente, o servidor continua funcionando em http://localhost:3001.
 // Novo módulo isolado: utiliza a conexão de Atrasos já existente, sem alterar pools ou endpoints antigos.
 registerGestaoAtrasosRoutes(app, atrasoPool, auth, requireCoordenacao, getUserAccess);
+registerSupabasePreviewRead(app, auth, getUserAccess, {
+  environment: process.env.VERCEL_ENV,
+  origin: process.env.SUPABASE_PREVIEW_READ_ORIGIN,
+  anonKey: process.env.SUPABASE_PREVIEW_READ_KEY,
+});
 
 if (!process.env.VERCEL) {
   app.listen(PORT, () => console.log(`ITAM API em http://localhost:${PORT}`));

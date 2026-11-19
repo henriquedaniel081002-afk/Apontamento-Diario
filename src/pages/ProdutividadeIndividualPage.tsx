@@ -9,7 +9,7 @@ import { SettingsView } from '../productivity/components/SettingsView';
 import { EmployeeDetailView } from '../productivity/components/EmployeeDetailView';
 import { ConsolidatedEmployeeDay, Employee, FilterState, ProductionRecord, WorkdayConfig } from '../productivity/types';
 import { calculateKPIs, consolidateEmployeeDays, productionDateRange } from '../productivity/utils/calculations';
-import { isSupabaseConfigured } from '../productivity/lib/supabase';
+import { isSupabaseConfigured, isSupabasePreviewReadOnly } from '../productivity/lib/supabase';
 import { loadDashboardData, replaceOfficialWorkdays } from '../productivity/services/dashboardService';
 import '../productivity/productivity.css';
 
@@ -211,6 +211,12 @@ export function ProdutividadeIndividualPage() {
           </div>
         )}
       />
+
+      {isSupabasePreviewReadOnly && (
+        <p className="mt-4 rounded-xl border border-amber-400/25 px-4 py-3 text-sm text-amber-100">
+          Prévia de homologação. Os dados desta tela estão disponíveis somente para consulta.
+        </p>
+      )}
 
       {!isSupabaseConfigured && (
         <div className="flex items-start gap-3 rounded-2xl border border-amber-400/25 bg-amber-400/[0.08] p-4 text-sm text-amber-100">

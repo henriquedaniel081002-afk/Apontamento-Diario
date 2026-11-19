@@ -3,11 +3,12 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { producaoDiariaService } from '../services/producaoDiariaService';
+import { ApiError } from '../services/apiClient';
 import { previousLocalDate } from '../producao-diaria/observacoes';
 import { ProducaoDiariaPage } from './ProducaoDiariaPage';
 
 vi.mock('../services/producaoDiariaService', () => ({
-  producaoDiariaService: { getData: vi.fn(), getObservacoes: vi.fn(), saveObservacao: vi.fn(), getAcoes: vi.fn(), createAcao: vi.fn(), updateAcao: vi.fn(), getAcaoHistorico: vi.fn() },
+  producaoDiariaService: { getData: vi.fn(), getObservacoes: vi.fn(), saveObservacao: vi.fn(), getAcoes: vi.fn(), getAcao: vi.fn(), createAcao: vi.fn(), updateAcao: vi.fn(), getAcaoHistorico: vi.fn() },
 }));
 
 vi.mock('recharts', () => ({
@@ -30,6 +31,10 @@ vi.mock('./DashboardPage', () => ({
   },
 }));
 
+async function choose(user: ReturnType<typeof userEvent.setup>, trigger: HTMLElement, label: string) {
+  await user.click(trigger);
+  await user.click(within(screen.getByRole('listbox')).getByRole('option', { name: label }));
+}
 const getAcoesMock = vi.mocked(producaoDiariaService.getAcoes);
 const createAcaoMock = vi.mocked(producaoDiariaService.createAcao);
 const getDataMock = vi.mocked(producaoDiariaService.getData);
@@ -321,7 +326,7 @@ describe('Produção Diária', () => {
     expect(screen.getByText('25 unidades')).toBeInTheDocument();
   });
 
-  it('usa um único olho e uma observação geral; exibe MON, TRI e quantidades por potência', async () => {
+  it('preserva as métricas e salva observação e plano com um único envio', async () => {
     getDataMock.mockResolvedValue({
       geradoEm:'2026-11-09T12:00:00.000Z',
       filtros:{linhas:['MON','TRI','EPO']},
@@ -343,12 +348,23 @@ describe('Produção Diária', () => {
     expect(dlg).toHaveTextContent('25 un.');
     expect(dlg).toHaveTextContent('75,00%');
     expect(screen.getAllByRole('textbox',{name:'Observação'})).toHaveLength(1);
-    saveObservacaoMock.mockImplementation(async(data,setor,linha,observacao)=>({
-      data,setor,linha,observacao,atualizado_em:'2026-11-09T14:00:00Z',atualizado_por_login:'COORDENACAO',versao:1,
+    const ui = within(dlg);
+    const save = ui.getByRole('button', { name: 'Salvar ocorrência e plano' });
+    expect(save).toBeDisabled();
+    expect(ui.queryByRole('button', { name: 'Salvar observação' })).not.toBeInTheDocument();
+    createAcaoMock.mockResolvedValueOnce({} as Awaited<ReturnType<typeof producaoDiariaService.createAcao>>);
+    await user.type(ui.getByRole('textbox', { name: 'Observação' }), 'Faltou colaborador.');
+    await user.type(ui.getByRole('textbox', { name: 'Plano de ação' }), 'Solicitar remanejamento.');
+    await user.type(ui.getByRole('textbox', { name: 'Responsável' }), 'Líder MON');
+    fireEvent.change(ui.getByLabelText(/^Prazo/), { target: { value: '2026-11-20' } });
+    await user.dblClick(save);
+    expect(await ui.findByText('Ocorrência registrada.')).toBeInTheDocument();
+    expect(createAcaoMock).toHaveBeenCalledTimes(1);
+    expect(createAcaoMock).toHaveBeenCalledWith(expect.objectContaining({
+      data_origem: expect.any(String), setor: 'MPA', linha: 'GERAL', observacao: 'Faltou colaborador.',
+      plano_acao: 'Solicitar remanejamento.', responsavel: 'Líder MON', prazo: '2026-11-20', situacao: 'PENDENTE',
     }));
-    await user.type(screen.getByRole('textbox',{name:'Observação'}),'Produção antecipada.');
-    await user.click(screen.getByRole('button',{name:'Salvar observação'}));
-    await waitFor(()=>expect(saveObservacaoMock).toHaveBeenCalledWith(expect.any(String),'MPA','GERAL','Produção antecipada.',null));
+    expect(saveObservacaoMock).not.toHaveBeenCalled();
   });
 
   it('mantém rascunhos por linha e ao reabrir, sem carregar o mensal antes do clique', async () => {
@@ -368,14 +384,16 @@ describe('Produção Diária', () => {
     let dialog = within(screen.getByRole('dialog'));
     const line = dialog.getByRole('combobox', { name: 'Linha da observação e do plano' });
     expect(renderMonthly).not.toHaveBeenCalled();
-    expect(dialog.getByRole('textbox', { name: 'Observação' })).toHaveValue('Nota geral');
-    await user.selectOptions(line, 'MON');
+    expect(dialog.getByRole('textbox', { name: 'Observação' })).toHaveValue('');
+    await user.click(dialog.getByText('Observação legada sem plano vinculado'));
+    expect(dialog.getByText('Nota geral')).toBeVisible();
+    await choose(user, line, 'MON');
     const note = dialog.getByRole('textbox', { name: 'Observação' });
-    expect(note).toHaveValue('Nota MON');
-    fireEvent.change(note, { target: { value: 'Rascunho MON' } });
-    await user.selectOptions(line, 'TRI');
     expect(note).toHaveValue('');
-    await user.selectOptions(line, 'MON');
+    fireEvent.change(note, { target: { value: 'Rascunho MON' } });
+    await choose(user, line, 'TRI');
+    expect(note).toHaveValue('');
+    await choose(user, line, 'MON');
     expect(note).toHaveValue('Rascunho MON');
     await user.click(dialog.getByRole('button', { name: 'Aderência Mensal' }));
     expect(await dialog.findByText('Conteúdo mensal compartilhado')).toBeInTheDocument();
@@ -388,14 +406,14 @@ describe('Produção Diária', () => {
     expect(open).toHaveFocus();
     await user.click(open);
     dialog = within(screen.getByRole('dialog'));
-    await user.selectOptions(dialog.getByRole('combobox', { name: 'Linha da observação e do plano' }), 'MON');
+    await choose(user, dialog.getByRole('combobox', { name: 'Linha da observação e do plano' }), 'MON');
     expect(dialog.getByRole('textbox', { name: 'Observação' })).toHaveValue('Rascunho MON');
   });
 
   it('mostra acompanhamento sem produção, filtra encerradas e mantém ação geral no filtro de linha', async () => {
     const action = {
       id: '5ae3c3d0-f4df-487c-a706-02687b97fbc8', data_origem: '2026-01-02', setor: 'MPA', linha: 'GERAL' as const,
-      plano_acao: 'Rever dispositivo', prazo: '2026-01-03', responsavel: 'Manutenção', situacao: 'PENDENTE' as const,
+      observacao: 'Dispositivo com folga', plano_acao: 'Rever dispositivo', prazo: '2026-01-03', responsavel: 'Manutenção', situacao: 'PENDENTE' as const,
       versao: 1, criado_em: '', atualizado_em: '', concluido_em: null, criado_por_login: 'COORD', atualizado_por_login: 'COORD',
     };
     getDataMock.mockResolvedValue({ geradoEm: '2026-11-09T12:00:00Z', filtros: { linhas: [] }, setores: [] });
@@ -406,10 +424,15 @@ describe('Produção Diária', () => {
     render(<ProducaoDiariaPage />);
     expect(await screen.findByText('Rever dispositivo')).toBeInTheDocument();
     expect(screen.getByText('Prazo vencido')).toBeInTheDocument();
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Linha no acompanhamento' }), 'MON');
+    const lineFilter = screen.getByRole('combobox', { name: 'Linha no acompanhamento' });
+    await choose(user, lineFilter, 'Ações gerais do setor');
+    await waitFor(() => expect(getAcoesMock).toHaveBeenLastCalledWith(expect.objectContaining({ linha: 'GERAL' })));
+    await choose(user, lineFilter, 'Todas as linhas');
+    await waitFor(() => expect(getAcoesMock).toHaveBeenLastCalledWith(expect.objectContaining({ linha: undefined })));
+    await choose(user, lineFilter, 'MON');
     expect(await screen.findByText('Rever dispositivo')).toBeInTheDocument();
     expect(getAcoesMock).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'ABERTAS', linha: 'MON' }));
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Situação no acompanhamento' }), 'CONCLUIDA');
+    await choose(user, screen.getByRole('combobox', { name: 'Situação no acompanhamento' }), 'Concluídas');
     expect(await screen.findByText('Concluída')).toBeInTheDocument();
     expect(screen.queryByText('Prazo vencido')).not.toBeInTheDocument();
   });
@@ -425,16 +448,53 @@ describe('Produção Diária', () => {
     await user.click(await screen.findByRole('button', { name: 'Ver detalhes de EPOXI' }));
     const dialog = within(screen.getByRole('dialog'));
     const line = dialog.getByRole('combobox', { name: 'Linha da observação e do plano' });
-    expect(within(line).getAllByRole('option').map((item) => item.textContent)).toEqual(['Todas as linhas', 'EPO']);
-    await user.selectOptions(line, 'EPO');
+    await user.click(line);
+    const menu = within(dialog.getByRole('listbox'));
+    expect(menu.getAllByRole('option').map((item) => item.textContent)).toEqual(['Todas as linhas', 'EPO']);
+    await user.keyboard('{Escape}');
+    expect(dialog.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(line).toHaveFocus();
+    await user.keyboard('{ArrowDown}{ArrowDown}{Enter}');
+    expect(line).toHaveTextContent('EPO');
+    await user.type(dialog.getByRole('textbox', { name: 'Observação' }), 'Falha no banho');
     await user.type(dialog.getByRole('textbox', { name: 'Plano de ação' }), 'Ajustar banho');
     await user.type(dialog.getByRole('textbox', { name: 'Responsável' }), 'Processos');
-    fireEvent.change(dialog.getByLabelText('Prazo'), { target: { value: '2026-11-20' } });
-    await user.click(dialog.getByRole('button', { name: 'Criar ação' }));
+    fireEvent.change(dialog.getByLabelText(/^Prazo/), { target: { value: '2026-11-20' } });
+    await user.click(dialog.getByRole('button', { name: 'Salvar ocorrência e plano' }));
     expect(await dialog.findByRole('alert')).toHaveTextContent('Falha de rede');
     expect(dialog.getByRole('textbox', { name: 'Plano de ação' })).toHaveValue('Ajustar banho');
-    await user.click(dialog.getByRole('button', { name: 'Criar ação' }));
-    expect(await dialog.findByText('Ação criada.')).toBeInTheDocument();
+    await user.click(dialog.getByRole('button', { name: 'Salvar ocorrência e plano' }));
+    expect(await dialog.findByText('Ocorrência registrada.')).toBeInTheDocument();
     expect(createAcaoMock.mock.calls[0][0]).toEqual(createAcaoMock.mock.calls[1][0]);
+  });
+  it('recarrega a versão sem perder a observação em edição após conflito', async () => {
+    const action = {
+      id: '05b49b77-04db-4b04-808a-0036e062515f', data_origem: '2026-01-02', setor: 'MPA', linha: 'MON' as const,
+      observacao: 'Observação original', plano_acao: 'Inspecionar máquina', prazo: '2026-12-23',
+      responsavel: 'Manutenção', situacao: 'PENDENTE' as const, versao: 1,
+      criado_em: '', atualizado_em: '', concluido_em: null, criado_por_login: 'COORD', atualizado_por_login: 'COORD',
+    };
+    getDataMock.mockResolvedValue({ geradoEm: '2026-11-09T12:00:00Z', filtros: { linhas: [] }, setores: [] });
+    getAcoesMock.mockResolvedValue({ acoes: [action], proximoCursor: null });
+    vi.mocked(producaoDiariaService.getAcao).mockResolvedValue({ ...action, versao: 2, observacao: 'Versão do servidor', prazo: '2026-12-26' });
+    const patch = vi.mocked(producaoDiariaService.updateAcao);
+    patch.mockRejectedValueOnce(new ApiError('Recarregue', 409, undefined)).mockResolvedValueOnce({ ...action, versao: 3 });
+    const user = userEvent.setup();
+    render(<ProducaoDiariaPage />);
+    await user.click(await screen.findByRole('button', { name: 'Editar ação' }));
+    const dialog = within(screen.getByRole('dialog', { name: 'Editar ação' }));
+    const observation = dialog.getByRole('textbox', { name: 'Observação' });
+    fireEvent.change(observation, { target: { value: 'Meu rascunho' } });
+    const submit = dialog.getByRole('button', { name: 'Salvar alterações' });
+    await user.click(submit);
+    expect(await dialog.findByRole('alert')).toHaveTextContent('Recarregue');
+    expect(submit).toBeDisabled();
+    await user.click(dialog.getByRole('button', { name: 'Recarregar ação' }));
+    await waitFor(() => expect(observation).toHaveValue('Meu rascunho'));
+    expect(await dialog.findByText(/Versão do servidor/)).toBeVisible();
+    expect(dialog.getByLabelText(/^Prazo/)).toHaveValue('2026-12-26');
+    await user.click(submit);
+    expect(patch).toHaveBeenLastCalledWith(action.id, expect.objectContaining({ versao: 2, observacao: 'Meu rascunho', prazo: '2026-12-26' }));
   });
 });

@@ -1,7 +1,7 @@
 import type { Application, Request, RequestHandler, Response } from 'express';
 import type { Pool } from 'pg';
 import {
-  ACTION_PLAN_LIMIT, ACTION_RESPONSIBLE_LIMIT, isActionStatus,
+  ACTION_OBSERVATION_LIMIT, ACTION_PLAN_LIMIT, ACTION_RESPONSIBLE_LIMIT, isActionStatus,
   type ActionFields, type DailyAction,
 } from './src/producao-diaria/acoes.js';
 import {
@@ -11,11 +11,11 @@ import {
 const route = '/api/coordenacao/producao-diaria/acoes';
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const columns = `
-  a.id, a.data_origem::text, a.setor, a.linha, a.plano_acao, a.responsavel,
+  a.id, a.data_origem::text, a.setor, a.linha, a.observacao, a.plano_acao, a.responsavel,
   a.prazo::text, a.situacao, a.criado_por_login, a.atualizado_por_login,
   a.criado_em, a.atualizado_em, a.concluido_em, a.versao
 `;
-const editable = ['setor', 'linha', 'plano_acao', 'responsavel', 'prazo', 'situacao'] as const;
+const editable = ['setor', 'linha', 'observacao', 'plano_acao', 'responsavel', 'prazo', 'situacao'] as const;
 type Actor = { userId: number; login: string };
 type Cursor = [string, string, string];
 
@@ -45,13 +45,15 @@ function parseLimit(value: unknown): number | null {
 }
 
 function readFields(value: Record<string, unknown>): ActionFields | null {
-  const { setor, linha, plano_acao, responsavel, prazo, situacao } = value;
+  const { setor, linha, observacao, plano_acao, responsavel, prazo, situacao } = value;
   if (!isDailySector(setor) || !isDailyLine(linha) || !isValidDailyObservationScope(setor, linha)
     || !isValidDailyObservationDate(prazo) || !isActionStatus(situacao)
+    || (observacao !== null && (typeof observacao !== 'string' || !observacao.trim()
+      || observacao.trim().length > ACTION_OBSERVATION_LIMIT || observacao.includes('\u0000')))
     || typeof plano_acao !== 'string' || !plano_acao.trim() || plano_acao.trim().length > ACTION_PLAN_LIMIT
     || typeof responsavel !== 'string' || !responsavel.trim() || responsavel.trim().length > ACTION_RESPONSIBLE_LIMIT
     || plano_acao.includes('\u0000') || responsavel.includes('\u0000')) return null;
-  return { setor, linha, plano_acao: plano_acao.trim(), responsavel: responsavel.trim(), prazo, situacao };
+  return { setor, linha, observacao: typeof observacao === 'string' ? observacao.trim() : null, plano_acao: plano_acao.trim(), responsavel: responsavel.trim(), prazo, situacao };
 }
 
 function readActor(req: Request): Actor | null {
@@ -98,10 +100,8 @@ export function registerProducaoDiariaAcoesRoutes(
     }
     try {
       const { rows } = await pool.query<DailyAction>(`
-        SELECT ${columns}, o.observacao AS observacao_contexto
+        SELECT ${columns}
         FROM public.producao_diaria_acoes a
-        LEFT JOIN public.producao_diaria_observacoes o
-          ON (o.data, o.setor, o.linha) = (a.data_origem, a.setor, a.linha)
         ${conditions.length ? 'WHERE ' + conditions.join(' AND ') : ''}
         ORDER BY a.prazo, a.data_origem, a.id
         LIMIT ${bind(pageSize + 1)}
@@ -117,22 +117,22 @@ export function registerProducaoDiariaAcoesRoutes(
     const { data_origem, chave_requisicao } = body;
     const fields = readFields({ ...body, situacao: body.situacao === undefined ? 'PENDENTE' : body.situacao });
     if (!actor) { res.status(401).json({ error: 'Sessão inválida.' }); return; }
-    if (!fields || !isValidDailyObservationDate(data_origem)
+    if (!fields?.observacao || !isValidDailyObservationDate(data_origem)
       || (chave_requisicao !== undefined && !isUuid(chave_requisicao))) {
-      res.status(400).json({ error: 'Informe origem, setor, linha, plano, responsável, prazo e situação válidos.' });
+      res.status(400).json({ error: 'Informe origem, setor, linha, observação, plano, responsável, prazo e situação válidos.' });
       return;
     }
     try {
       const result = await pool.query<DailyAction>(`
         INSERT INTO public.producao_diaria_acoes AS a
           (id, data_origem, setor, linha, plano_acao, responsavel, prazo, situacao, concluido_em,
-           criado_por_id, criado_por_login, atualizado_por_id, atualizado_por_login)
+           criado_por_id, criado_por_login, atualizado_por_id, atualizado_por_login, observacao)
         VALUES (coalesce($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8,
-                CASE WHEN $8 = 'CONCLUIDA' THEN now() END, $9, $10, $9, $10)
+                CASE WHEN $8 = 'CONCLUIDA' THEN now() END, $9, $10, $9, $10, $11)
         ON CONFLICT (id) DO NOTHING
         RETURNING ${columns}
       `, [chave_requisicao ?? null, data_origem, fields.setor, fields.linha, fields.plano_acao,
-        fields.responsavel, fields.prazo, fields.situacao, actor.userId, actor.login]);
+        fields.responsavel, fields.prazo, fields.situacao, actor.userId, actor.login, fields.observacao]);
       if (result.rows[0]) { res.status(201).json({ acao: result.rows[0] }); return; }
 
       // A repetição de uma solicitação confirmada não duplica a ação nem o evento.
@@ -171,7 +171,8 @@ export function registerProducaoDiariaAcoesRoutes(
     const updates = Object.fromEntries(editable.filter((key) => Object.hasOwn(body, key)).map((key) => [key, body[key]]));
     if (!actor) { res.status(401).json({ error: 'Sessão inválida.' }); return; }
     if (!isUuid(id) || !Number.isInteger(body.versao) || body.versao < 1 || body.versao > 2147483647
-      || !Object.keys(updates).length || Object.hasOwn(body, 'data_origem')) {
+      || !Object.keys(updates).length || Object.hasOwn(body, 'data_origem')
+      || (Object.hasOwn(body, 'observacao') && body.observacao === null)) {
       res.status(400).json({ error: 'Informe a ação, sua versão e os campos a editar.' });
       return;
     }
@@ -181,18 +182,18 @@ export function registerProducaoDiariaAcoesRoutes(
       const conflict = () => res.status(409).json({ error: 'A ação foi atualizada. Recarregue a versão atual antes de salvar.' });
       if (current.versao !== body.versao) { conflict(); return; }
       const next = readFields({ ...current, ...updates });
-      if (!next) { res.status(400).json({ error: 'Informe setor, linha, plano, responsável, prazo e situação válidos.' }); return; }
+      if (!next) { res.status(400).json({ error: 'Informe setor, linha, observação, plano, responsável, prazo e situação válidos.' }); return; }
       if (editable.every((key) => next[key] === current[key])) { res.json({ acao: current }); return; }
 
       const { rows: [updated] } = await pool.query<DailyAction>(`
         UPDATE public.producao_diaria_acoes a
            SET setor = $3, linha = $4, plano_acao = $5, responsavel = $6, prazo = $7, situacao = $8,
                concluido_em = CASE WHEN $8 = 'CONCLUIDA' THEN coalesce(a.concluido_em, now()) END,
-               atualizado_por_id = $9, atualizado_por_login = $10, atualizado_em = now(), versao = versao + 1
+               atualizado_por_id = $9, atualizado_por_login = $10, atualizado_em = now(), versao = versao + 1, observacao = $11
          WHERE a.id = $1 AND a.versao = $2
          RETURNING ${columns}
       `, [id, current.versao, next.setor, next.linha, next.plano_acao, next.responsavel,
-        next.prazo, next.situacao, actor.userId, actor.login]);
+        next.prazo, next.situacao, actor.userId, actor.login, next.observacao]);
       if (!updated) { conflict(); return; }
       res.json({ acao: updated });
     } catch { unexpected(res); }

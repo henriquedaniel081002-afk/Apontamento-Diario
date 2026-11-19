@@ -22,7 +22,6 @@ interface Props {
   productionLine: string;
   observacoes: DailyProductionObservation[];
   observacoesError: string;
-  onObservationSaved: (note: DailyProductionObservation) => void;
   revision: number;
   onActionChanged: () => void;
   onClose: () => void;
@@ -37,13 +36,13 @@ function potencyLabel(potencia: string) {
 
 export function DailySectorDetailModal({
   sector, metric, dataInicio, dataFim, productionLine, observacoes, observacoesError,
-  onObservationSaved, revision, onActionChanged, onClose,
+  revision, onActionChanged, onClose,
 }: Props) {
   const singleDay = dataInicio === dataFim;
   const [line, setLine] = useState<DailyObservationLine>('GERAL');
   const [view, setView] = useState<'details' | 'monthly'>('details');
   const [busy, setBusy] = useState(false);
-  const drafts = useRef<ManagementDrafts>({ notes: {}, plans: {}, requests: {} }).current;
+  const drafts = useRef<ManagementDrafts>({ occurrences: {}, requests: {} }).current;
   const close = () => {
     setLine('GERAL');
     setView('details');
@@ -117,7 +116,7 @@ export function DailySectorDetailModal({
 
         {singleDay && sector ? (
           <DailySectorManagement data={dataInicio} setor={sector} linha={line} onLineChange={setLine} drafts={drafts}
-            observacoes={observacoes} observacoesError={observacoesError} onObservationSaved={onObservationSaved}
+            observacoes={observacoes} observacoesError={observacoesError}
             revision={revision} onActionChanged={onActionChanged} setBusy={setBusy} />
         ) : <p className="daily-observation-hint">Selecione uma única data para consultar ou registrar observações e planos deste setor.</p>}
       </div>

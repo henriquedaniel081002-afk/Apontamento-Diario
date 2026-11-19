@@ -9,14 +9,14 @@ import { todayInManaus } from './observacoes';
 
 const historyFields: Array<[keyof ActionFields, string]> = [
   ['situacao', 'Situação'], ['prazo', 'Prazo'], ['responsavel', 'Responsável'],
-  ['plano_acao', 'Plano'], ['setor', 'Setor'], ['linha', 'Linha'],
+  ['observacao', 'Observação'], ['plano_acao', 'Plano'], ['setor', 'Setor'], ['linha', 'Linha'],
 ];
 
-function historyValue(field: keyof ActionFields, value: ActionFields) {
+function historyValue(field: keyof ActionFields, value: ActionEvent['depois'] | ActionFields) {
   if (field === 'situacao') return ACTION_STATUS_LABELS[value.situacao];
   if (field === 'prazo') return actionDateLabel(value.prazo);
   if (field === 'linha') return actionLineLabel(value.linha);
-  return value[field];
+  return value[field] ?? 'Sem observação vinculada';
 }
 
 function ActionHistory({ action, onClose }: { action: DailyAction; onClose: () => void }) {
@@ -47,7 +47,7 @@ function ActionHistory({ action, onClose }: { action: DailyAction; onClose: () =
             <strong>{event.tipo === 'CRIACAO' ? 'Criação' : 'Alteração'} · {event.autor_login}</strong>
             <time dateTime={event.criado_em}>{new Date(event.criado_em).toLocaleString('pt-BR', { timeZone: 'America/Manaus' })}</time>
             <dl>
-              {historyFields.filter(([key]) => !event.antes || event.antes[key] !== event.depois[key]).map(([key, label]) => (
+              {historyFields.filter(([key]) => !event.antes || (event.antes[key] ?? null) !== (event.depois[key] ?? null)).map(([key, label]) => (
                 <div key={key}>
                   <dt>{label}</dt>
                   <dd>{event.antes && <><del>{historyValue(key, event.antes)}</del>{' → '}</>}{historyValue(key, event.depois)}</dd>
@@ -78,9 +78,9 @@ function ActionEditor({ action, onClose, onChanged }: {
     setBusy(true);
     setError('');
     try {
-      const { setor, linha, plano_acao, responsavel, prazo, situacao } = draft;
+      const { setor, linha, observacao, plano_acao, responsavel, prazo, situacao } = draft;
       await producaoDiariaService.updateAcao(action.id, {
-        setor, linha, plano_acao, responsavel, prazo, situacao, versao: current.versao,
+        setor, linha, observacao: observacao?.trim() || undefined, plano_acao, responsavel, prazo, situacao, versao: current.versao,
       });
       onClose();
       onChanged();
@@ -118,7 +118,7 @@ function ActionEditor({ action, onClose, onChanged }: {
         </div>
       )}
       <DailyActionForm value={draft} onChange={setDraft} onSubmit={() => { if (!conflict) void save(); }}
-        editing busy={busy} error={error} onRefresh={conflict ? () => void reload() : undefined} />
+        editing observationRequired={current.observacao != null} busy={busy} error={error} onRefresh={conflict ? () => void reload() : undefined} />
     </ModalShell>
   );
 }
@@ -162,16 +162,18 @@ export function DailyActionList({ filters, onChanged }: {
             <span>{ACTION_STATUS_LABELS[action.situacao]}</span>
             {isOverdue(action, today) && <span className="daily-action-overdue">Prazo vencido</span>}
           </div>
-          <p className="daily-action-text">{action.plano_acao}</p>
+          {action.observacao
+            ? <p className="daily-action-text"><strong>Observação</strong> {action.observacao}</p>
+            : <p className="daily-observation-hint">Ação legada sem observação vinculada.</p>}
+          <p className="daily-action-text"><strong>Plano de ação</strong> <span>{action.plano_acao}</span></p>
           <dl className="daily-action-facts">
             <div><dt>Origem</dt><dd>{actionDateLabel(action.data_origem)}</dd></div>
             <div><dt>Responsável</dt><dd>{action.responsavel}</dd></div>
             <div><dt>Prazo</dt><dd>{actionDateLabel(action.prazo)}</dd></div>
             <div><dt>Autor</dt><dd>{action.criado_por_login}</dd></div>
           </dl>
-          {action.observacao_contexto && <p className="daily-action-text"><strong>Observação do escopo</strong> {action.observacao_contexto}</p>}
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="secondary" onClick={() => setEditor(action)}>Editar situação e plano</Button>
+            <Button size="sm" variant="secondary" onClick={() => setEditor(action)}>Editar ação</Button>
             <Button size="sm" variant="ghost" onClick={() => setHistory(action)}>Ver histórico</Button>
           </div>
         </article>

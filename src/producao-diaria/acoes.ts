@@ -8,12 +8,14 @@ export const ACTION_STATUS_LABELS: Record<ActionStatus, string> = {
   CONCLUIDA: 'Concluída',
   CANCELADA: 'Cancelada',
 };
+export const ACTION_OBSERVATION_LIMIT = 3000;
 export const ACTION_PLAN_LIMIT = 3000;
 export const ACTION_RESPONSIBLE_LIMIT = 200;
 
 export interface ActionFields {
   setor: string;
   linha: DailyObservationLine;
+  observacao: string | null;
   plano_acao: string;
   responsavel: string;
   prazo: string;
@@ -29,7 +31,6 @@ export interface DailyAction extends ActionFields {
   concluido_em: string | null;
   criado_por_login: string;
   atualizado_por_login: string;
-  observacao_contexto?: string | null;
 }
 
 export type ActionFilterStatus = 'ABERTAS' | 'TODAS' | ActionStatus;
@@ -42,13 +43,18 @@ export interface ActionFilters {
   cursor?: string;
 }
 
+type ActionEventSnapshot = Omit<ActionFields, 'observacao'> & {
+  data_origem: string;
+  observacao?: string | null;
+};
+
 export interface ActionEvent {
   id: string;
   tipo: 'CRIACAO' | 'ALTERACAO';
   autor_login: string;
   criado_em: string;
-  antes: (ActionFields & { data_origem: string }) | null;
-  depois: ActionFields & { data_origem: string };
+  antes: ActionEventSnapshot | null;
+  depois: ActionEventSnapshot;
 }
 
 export interface ActionPage {

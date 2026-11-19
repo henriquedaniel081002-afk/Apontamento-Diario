@@ -275,12 +275,6 @@ export function ProducaoDiariaPage() {
   };
 
   const refreshActions = () => setActionRevision((value) => value + 1);
-  const onObservationSaved = (saved: DailyProductionObservation) => {
-    setObservacoes((current) => [...current.filter((item) => (
-      item.data !== saved.data || item.setor !== saved.setor || item.linha !== saved.linha
-    )), saved]);
-    refreshActions();
-  };
   const modalMetric = metrics.setores.find((item) => item.setor === modal);
   const singleDay = dataInicio === dataFim;
 
@@ -435,7 +429,6 @@ export function ProducaoDiariaPage() {
         productionLine={linha}
         observacoes={observacoes}
         observacoesError={observacoesError}
-        onObservationSaved={onObservationSaved}
         revision={actionRevision}
         onActionChanged={refreshActions}
         onClose={() => setModal(null)}

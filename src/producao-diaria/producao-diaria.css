@@ -116,16 +116,12 @@
   gap: .75rem;
 }
 .daily-detail-observation > .field { max-width: 20rem; }
-.daily-action-form, .daily-action-create, .daily-action-list, .daily-action-history {
+.daily-action-form, .daily-action-list, .daily-action-history {
   display: grid;
   min-width: 0;
   gap: .75rem;
 }
 .daily-action-list > button, .daily-action-form button { justify-self: start; }
-.daily-action-create {
-  border-block: 1px solid rgba(226, 232, 240, .12);
-  padding-block: 1rem;
-}
 .daily-detail-observation h4 { color: #e5eee9; font-weight: 750; }
 .daily-action-card, .daily-action-history li {
   display: grid;

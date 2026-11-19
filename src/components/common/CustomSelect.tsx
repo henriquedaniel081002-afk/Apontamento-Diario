@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useRef, useState } from 'react';
+import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Check, ChevronDown } from 'lucide-react';
 import { cx } from './ui';
 
@@ -26,6 +26,7 @@ interface CustomSelectProps {
   className?: string;
   menuClassName?: string;
   placeholder?: string;
+  floating?: boolean;
 }
 
 export function CustomSelect({
@@ -45,16 +46,27 @@ export function CustomSelect({
   className,
   menuClassName,
   placeholder = 'Selecione',
+  floating = false,
 }: CustomSelectProps) {
   const generatedId = useId();
   const buttonId = id || generatedId;
   const listboxId = `${buttonId}-listbox`;
   const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const floats = floating && typeof HTMLElement !== 'undefined' && typeof HTMLElement.prototype.showPopover === 'function';
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [open, setOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [placement, setPlacement] = useState<'up' | 'down'>('down');
   const [menuMaxHeight, setMenuMaxHeight] = useState(288);
+  const [anchor, setAnchor] = useState({ left: 0, top: 0, width: 0 });
+
+  useLayoutEffect(() => {
+    if (!open || !floats || !menuRef.current) return;
+    const menu = menuRef.current;
+    menu.showPopover();
+    return () => { menu.hidePopover(); };
+  }, [open, floats]);
 
   const selectedIndex = options.findIndex((option) => option.value === value);
   const selectedOption = selectedIndex >= 0 ? options[selectedIndex] : null;
@@ -70,15 +82,37 @@ export function CustomSelect({
 
   useEffect(() => {
     if (!open) return;
-    optionRefs.current[highlightedIndex]?.scrollIntoView({ block: 'nearest' });
-  }, [highlightedIndex, open]);
+    const option = optionRefs.current[highlightedIndex];
+    const menu = menuRef.current;
+    if (!option || !menu) return;
+    if (!floats) {
+      option.scrollIntoView({ block: 'nearest' });
+      return;
+    }
+    const menuRect = menu.getBoundingClientRect();
+    const optionRect = option.getBoundingClientRect();
+    if (optionRect.top < menuRect.top) menu.scrollTop += optionRect.top - menuRect.top;
+    else if (optionRect.bottom > menuRect.bottom) menu.scrollTop += optionRect.bottom - menuRect.bottom;
+  }, [highlightedIndex, open, floats]);
 
   useEffect(() => {
     if (!open) return undefined;
-    const handleViewportChange = () => resolvePlacement();
+    const handleViewportChange = (event: Event) => {
+      if (event.target === menuRef.current) return;
+      resolvePlacement();
+    };
+    const viewport = floats ? window.visualViewport : null;
     window.addEventListener('resize', handleViewportChange);
-    return () => window.removeEventListener('resize', handleViewportChange);
-  }, [open, options.length]);
+    if (floats) window.addEventListener('scroll', handleViewportChange, { capture: true, passive: true });
+    viewport?.addEventListener('resize', handleViewportChange);
+    viewport?.addEventListener('scroll', handleViewportChange);
+    return () => {
+      window.removeEventListener('resize', handleViewportChange);
+      if (floats) window.removeEventListener('scroll', handleViewportChange, true);
+      viewport?.removeEventListener('resize', handleViewportChange);
+      viewport?.removeEventListener('scroll', handleViewportChange);
+    };
+  }, [open, options.length, floats]);
 
   const resolvePlacement = () => {
     const root = rootRef.current;
@@ -93,8 +127,17 @@ export function CustomSelect({
     }
     const fallbackScroll = root.closest<HTMLElement>('[data-modal-scroll="true"]');
     const clippingBounds = (clippingAncestor && clippingAncestor !== document.body ? clippingAncestor : fallbackScroll)?.getBoundingClientRect();
-    const topBoundary = Math.max(8, clippingBounds?.top ?? 8);
-    const bottomBoundary = Math.min(window.innerHeight - 8, clippingBounds?.bottom ?? window.innerHeight - 8);
+    const viewport = floats ? window.visualViewport : null;
+    const viewportTop = viewport?.offsetTop ?? 0;
+    const viewportBottom = viewportTop + (viewport?.height ?? window.innerHeight);
+    if (floats && rect.height > 0 &&
+        (rect.bottom <= Math.max(viewportTop, clippingBounds?.top ?? viewportTop)
+          || rect.top >= Math.min(viewportBottom, clippingBounds?.bottom ?? viewportBottom))) {
+      setOpen(false);
+      return;
+    }
+    const topBoundary = floats ? viewportTop + 8 : Math.max(8, clippingBounds?.top ?? 8);
+    const bottomBoundary = floats ? viewportBottom - 8 : Math.min(window.innerHeight - 8, clippingBounds?.bottom ?? window.innerHeight - 8);
     const spaceBelow = Math.max(0, bottomBoundary - rect.bottom - 8);
     const spaceAbove = Math.max(0, rect.top - topBoundary - 8);
     const estimatedMenuHeight = Math.min(288, Math.max(52, options.length * 46 + 12));
@@ -102,7 +145,17 @@ export function CustomSelect({
     const available = openUp ? spaceAbove : spaceBelow;
 
     setPlacement(openUp ? 'up' : 'down');
-    setMenuMaxHeight(Math.max(72, Math.min(288, available || 72)));
+    setMenuMaxHeight(floats ? Math.min(288, available) : Math.max(72, Math.min(288, available || 72)));
+    if (floats) {
+      const viewportLeft = viewport?.offsetLeft ?? 0;
+      const viewportWidth = viewport?.width ?? window.innerWidth;
+      const width = Math.min(rect.width, viewportWidth - 16);
+      setAnchor({
+        width,
+        left: Math.max(viewportLeft + 8, Math.min(rect.left, viewportLeft + viewportWidth - width - 8)),
+        top: openUp ? rect.top - 8 : rect.bottom + 8,
+      });
+    }
   };
 
   const getNextEnabledIndex = (start: number, direction: 1 | -1) => {
@@ -134,9 +187,12 @@ export function CustomSelect({
   const handleKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
     if (disabled) return;
 
+    if (event.key === 'Tab' && floating) setOpen(false);
+
     if (event.key === 'Escape') {
       if (open) {
         event.preventDefault();
+        if (floating) event.stopPropagation();
         setOpen(false);
       }
       return;
@@ -218,14 +274,17 @@ export function CustomSelect({
 
       {open && (
         <div
+          ref={menuRef}
+          popover={floats ? 'manual' : undefined}
           id={listboxId}
           role="listbox"
           aria-label={ariaLabel}
           aria-labelledby={ariaLabelledBy}
-          style={{ maxHeight: `${menuMaxHeight}px` }}
+          style={{ maxHeight: menuMaxHeight, ...(floats ? { inset: 'auto', margin: 0, ...anchor } : {}) }}
           className={cx(
-            'absolute z-[70] w-full overflow-y-auto rounded-xl border border-[var(--border-strong)] bg-[var(--surface-overlay)] p-1.5 shadow-[var(--shadow-overlay)] ring-1 ring-black/30',
-            placement === 'up' ? 'bottom-full mb-2' : 'mt-2',
+            'z-[70] w-full overflow-y-auto rounded-xl border border-[var(--border-strong)] bg-[var(--surface-overlay)] p-1.5 shadow-[var(--shadow-overlay)] ring-1 ring-black/30',
+            floats ? (placement === 'up' ? 'fixed -translate-y-full' : 'fixed')
+              : (placement === 'up' ? 'absolute bottom-full mb-2' : 'absolute mt-2'),
             menuClassName,
           )}
         >
@@ -240,6 +299,8 @@ export function CustomSelect({
                 type="button"
                 role="option"
                 aria-selected={isSelected}
+                tabIndex={floating ? -1 : undefined}
+                onMouseDown={floating ? (event) => event.preventDefault() : undefined}
                 disabled={option.disabled}
                 onMouseEnter={() => !option.disabled && setHighlightedIndex(index)}
                 onClick={() => choose(option)}

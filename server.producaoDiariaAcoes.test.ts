@@ -26,7 +26,9 @@ const coordination: RequestHandler = (req, res, next) => {
   else next();
 };
 const legacySql = 'SELECT data::text, setor, linha, observacao, atualizado_por_id, atualizado_por_login, criado_em, atualizado_em FROM producao_diaria_observacoes ORDER BY data, setor, linha';
+const legacyActionId = '39f94045-3d96-4596-93b4-215f2572b99a';
 const fixture = {
+  observacao: 'Gabarito apresentou folga',
   data_origem: '2026-10-20', setor: 'MONTAGEM FINAL', linha: 'GERAL', plano_acao: 'Inspecionar gabarito',
   responsavel: 'Manutenção', prazo: '2026-10-25',
 };
@@ -64,7 +66,16 @@ beforeAll(async () => {
   legacy = (await db.query(legacySql)).rows;
   const migration = await readFile('migrations/2026-11-19_producao_diaria_acoes.sql', 'utf8');
   await db.exec(migration);
-  await db.exec(migration);
+  await db.query(`
+    INSERT INTO producao_diaria_acoes
+      (id, data_origem, setor, linha, plano_acao, responsavel, prazo,
+       criado_por_id, criado_por_login, atualizado_por_id, atualizado_por_login)
+    VALUES ($1, '2026-11-09', 'MONTAGEM FINAL', 'GERAL', 'Plano histórico', 'PCP', '2026-11-12',
+            1, 'COORD-FIXTURE', 1, 'COORD-FIXTURE')
+  `, [legacyActionId]);
+  const occurrenceMigration = await readFile('migrations/2026-11-19_producao_diaria_ocorrencias.sql', 'utf8');
+  await db.exec(occurrenceMigration);
+  await db.exec(occurrenceMigration);
   const app = express();
   app.use(express.json());
   const pool = db as unknown as Pool;
@@ -114,7 +125,7 @@ describe('API e persistência da Produção Diária', () => {
   it('cria ações simultâneas GERAL, MON e TRI com IDs distintos, preservando ação geral única', async () => {
     const geral = await create();
     const mon = await create({ linha: 'MON' });
-    const mon2 = await create({ linha: 'MON', plano_acao: 'Plano adicional' });
+    const mon2 = await create({ linha: 'MON', observacao: 'Equipe reduzida', plano_acao: 'Plano adicional' });
     const tri = await create({ linha: 'TRI' });
     expect(new Set([geral.id, mon.id, mon2.id, tri.id]).size).toBe(4);
     const first = await call('/acoes?linha=MON&limit=2&dataOrigem=2026-10-20');
@@ -123,6 +134,9 @@ describe('API e persistência da Produção Diária', () => {
     const page2 = await next.json();
     expect([...page1.acoes, ...page2.acoes].map((item) => item.id).sort()).toEqual([geral.id, mon.id, mon2.id].sort());
     expect(page2.proximoCursor).toBeNull();
+    const byId = new Map([...page1.acoes, ...page2.acoes].map((item) => [item.id, item.observacao]));
+    expect(byId.get(mon.id)).toBe(fixture.observacao);
+    expect(byId.get(mon2.id)).toBe('Equipe reduzida');
     const exactScope = await call('/acoes?linha=TRI&incluirGeral=false&dataOrigem=2026-10-20');
     expect((await exactScope.json()).acoes.map((item: { id: string }) => item.id)).toEqual([tri.id]);
   });
@@ -131,7 +145,7 @@ describe('API e persistência da Produção Diária', () => {
     const action = await create({ data_origem: '2026-09-10', usuario_id: 2, criado_por_login: 'IGNORAR' });
     expect(action).toMatchObject({ situacao: 'PENDENTE', versao: 1, criado_por_login: 'COORD-FIXTURE' });
     const finish = await call('/acoes/' + action.id, 'PATCH', {
-      versao: 1, situacao: 'EM_ANDAMENTO', prazo: '2026-11-01', linha: 'TRI', responsavel: 'Processos', plano_acao: 'Plano revisto',
+      versao: 1, situacao: 'EM_ANDAMENTO', prazo: '2026-11-01', linha: 'TRI', responsavel: 'Processos', plano_acao: 'Plano revisto', observacao: 'Falha revisada',
     });
     expect(finish.status).toBe(200);
     for (const [versao, situacao] of [[2, 'CONCLUIDA'], [3, 'PENDENTE'], [4, 'CANCELADA']]) {
@@ -152,7 +166,8 @@ describe('API e persistência da Produção Diária', () => {
     const old = await call('/acoes/' + action.id + '/historico?cursor=' + page.proximoCursor);
     const earlier = (await old.json()).eventos;
     expect(earlier[0]).toMatchObject({ tipo: 'ALTERACAO', autor_login: 'COORD-FIXTURE',
-      antes: { prazo: '2026-10-25', linha: 'GERAL' }, depois: { prazo: '2026-11-01', linha: 'TRI', situacao: 'EM_ANDAMENTO' } });
+      antes: { prazo: '2026-10-25', linha: 'GERAL', observacao: fixture.observacao },
+      depois: { prazo: '2026-11-01', linha: 'TRI', situacao: 'EM_ANDAMENTO', observacao: 'Falha revisada' } });
     expect(earlier[1]).toMatchObject({ tipo: 'CRIACAO', antes: null });
     expect((await call('/acoes/' + action.id, 'PATCH', { versao: 5, data_origem: '2027-01-01', situacao: 'PENDENTE' })).status).toBe(400);
   });
@@ -189,7 +204,36 @@ describe('API e persistência da Produção Diária', () => {
     expect((await fresh.json()).acao.versao).toBe(2);
     const history = await call(path + '/historico');
     expect((await history.json()).eventos).toHaveLength(2);
-    expect((await call('/acoes', 'POST', { ...fields, responsavel: 'Outro' })).status).toBe(409);
+    expect((await call('/acoes', 'POST', { ...fields, observacao: 'Outro problema' })).status).toBe(409);
+  });
+
+  it('mantém plano legado separado da nota coincidente e permite vincular texto explicitamente', async () => {
+    const path = '/acoes/' + legacyActionId;
+    const initial = (await (await call(path)).json()).acao;
+    expect(initial).toMatchObject({ id: legacyActionId, observacao: null, plano_acao: 'Plano histórico', versao: 1 });
+    const scoped = await (await call('/acoes?dataOrigem=2026-11-09&setor=MONTAGEM+FINAL')).json();
+    expect(scoped.acoes).toEqual([initial]);
+    const status = await call(path, 'PATCH', { versao: 1, situacao: 'EM_ANDAMENTO' });
+    expect((await status.json()).acao).toMatchObject({ id: legacyActionId, observacao: null, versao: 2 });
+    const link = await call(path, 'PATCH', { versao: 2, observacao: '  Investigação retrospectiva  ' });
+    expect((await link.json()).acao).toMatchObject({ id: legacyActionId, observacao: 'Investigação retrospectiva', versao: 3 });
+    expect((await call(path, 'PATCH', { versao: 3, observacao: null })).status).toBe(400);
+    const history = (await (await call(path + '/historico')).json()).eventos;
+    expect(history[0]).toMatchObject({ antes: { observacao: null }, depois: { observacao: 'Investigação retrospectiva' } });
+    expect(history[2].depois).not.toHaveProperty('observacao');
+  });
+
+  it('rejeita ocorrência incompleta e não cria ação nem trilha parcial', async () => {
+    const before = await db.query('SELECT count(*) total FROM producao_diaria_acoes_historico');
+    const id = randomUUID();
+    const payload = { ...fixture, chave_requisicao: id };
+    for (const observacao of [undefined, null, '   ', 'x'.repeat(3001)]) {
+      expect((await call('/acoes', 'POST', { ...payload, observacao })).status).toBe(400);
+    }
+    const brokenActor = 'Bearer ' + jwt.sign({ userId: 999, login: 'INEXISTENTE', perfil: 'COORDENACAO' }, secret);
+    expect((await call('/acoes', 'POST', payload, brokenActor)).status).toBe(500);
+    expect((await call('/acoes/' + id)).status).toBe(404);
+    expect((await db.query('SELECT count(*) total FROM producao_diaria_acoes_historico')).rows).toEqual(before.rows);
   });
 
   it('reverte mutação e evento juntos e impede reescrita do histórico pelo banco', async () => {

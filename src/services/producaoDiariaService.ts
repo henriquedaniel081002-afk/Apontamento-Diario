@@ -34,7 +34,7 @@ export const producaoDiariaService = {
     }
     return apiRequest<ActionPage>(`${route}/acoes?${params}`, { cache: 'no-store' });
   },
-  async createAcao(payload: ActionFields & { data_origem: string; chave_requisicao: string }): Promise<DailyAction> {
+  async createAcao(payload: ActionFields & { observacao: string; data_origem: string; chave_requisicao: string }): Promise<DailyAction> {
     const response = await apiRequest<{ acao: DailyAction }>(
       `${route}/acoes`, { method: 'POST', body: JSON.stringify(payload) }, { globalLoading: false },
     );

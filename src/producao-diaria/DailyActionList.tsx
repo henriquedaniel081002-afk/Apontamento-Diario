@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../components/common/ui';
+import { ConfirmModal } from '../components/common/ConfirmModal';
 import { ModalShell } from '../components/common/ModalShell';
 import { ApiError } from '../services/apiClient';
 import { producaoDiariaService } from '../services/producaoDiariaService';
@@ -11,6 +12,7 @@ const historyFields: Array<[keyof ActionFields, string]> = [
   ['situacao', 'Situação'], ['prazo', 'Prazo'], ['responsavel', 'Responsável'],
   ['observacao', 'Observação'], ['plano_acao', 'Plano'], ['setor', 'Setor'], ['linha', 'Linha'],
 ];
+const eventLabels = { CRIACAO: 'Criação', ALTERACAO: 'Alteração', EXCLUSAO: 'Exclusão' };
 
 function historyValue(field: keyof ActionFields, value: ActionEvent['depois'] | ActionFields) {
   if (field === 'situacao') return ACTION_STATUS_LABELS[value.situacao];
@@ -44,7 +46,7 @@ function ActionHistory({ action, onClose }: { action: DailyAction; onClose: () =
       <ol className="daily-action-history">
         {events.map((event) => (
           <li key={event.id}>
-            <strong>{event.tipo === 'CRIACAO' ? 'Criação' : 'Alteração'} · {event.autor_login}</strong>
+            <strong>{eventLabels[event.tipo]} · {event.autor_login}</strong>
             <time dateTime={event.criado_em}>{new Date(event.criado_em).toLocaleString('pt-BR', { timeZone: 'America/Manaus' })}</time>
             <dl>
               {historyFields.filter(([key]) => !event.antes || (event.antes[key] ?? null) !== (event.depois[key] ?? null)).map(([key, label]) => (
@@ -74,6 +76,7 @@ function ActionEditor({ action, onClose, onChanged }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [conflict, setConflict] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const save = async () => {
     setBusy(true);
     setError('');
@@ -108,18 +111,45 @@ function ActionEditor({ action, onClose, onChanged }: {
       setBusy(false);
     }
   };
+  const remove = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      await producaoDiariaService.deleteAcao(action.id, current.versao);
+      onClose();
+      onChanged();
+    } catch (reason) {
+      if (reason instanceof ApiError && reason.status === 404) {
+        onClose();
+        onChanged();
+        return;
+      }
+      setConfirmDelete(false);
+      setError(actionError(reason));
+      setConflict(reason instanceof ApiError && reason.status === 409);
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
-    <ModalShell isOpen title="Editar ação" description={`Origem ${actionDateLabel(action.data_origem)} · Criada por ${action.criado_por_login}`}
-      onClose={onClose} busy={busy}>
-      {latestChanges.length > 0 && (
-        <div className="daily-observation-hint mb-3" role="status">
-          <strong>Alterações no servidor</strong>
-          <ul>{latestChanges.map(([key, label]) => <li key={key}>{label} · {historyValue(key, current)}</li>)}</ul>
-        </div>
-      )}
-      <DailyActionForm value={draft} onChange={setDraft} onSubmit={() => { if (!conflict) void save(); }}
-        editing busy={busy} error={error} onRefresh={conflict ? () => void reload() : undefined} />
-    </ModalShell>
+    <>
+      <ModalShell isOpen title="Editar ação" description={`Origem ${actionDateLabel(action.data_origem)} · Criada por ${action.criado_por_login}`}
+        onClose={onClose} busy={busy}
+        footer={<Button variant="danger" disabled={busy || conflict} onClick={() => setConfirmDelete(true)}>Excluir ação</Button>}>
+        {latestChanges.length > 0 && (
+          <div className="daily-observation-hint mb-3" role="status">
+            <strong>Alterações no servidor</strong>
+            <ul>{latestChanges.map(([key, label]) => <li key={key}>{label} · {historyValue(key, current)}</li>)}</ul>
+          </div>
+        )}
+        <DailyActionForm value={draft} onChange={setDraft} onSubmit={() => { if (!conflict) void save(); }}
+          editing busy={busy} error={error} onRefresh={conflict ? () => void reload() : undefined} />
+      </ModalShell>
+      <ConfirmModal isOpen={confirmDelete} title="Excluir ação?"
+        description={`A ação de ${actionDateLabel(current.data_origem)}, no setor ${current.setor} · ${actionLineLabel(current.linha)}, será retirada do acompanhamento. O histórico será preservado.`}
+        confirmLabel="Excluir ação" onConfirm={() => void remove()}
+        onCancel={() => setConfirmDelete(false)} isBusy={busy} />
+    </>
   );
 }
 

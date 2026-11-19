@@ -23,6 +23,10 @@ function isUuid(value: unknown): value is string {
   return typeof value === 'string' && uuidPattern.test(value);
 }
 
+function isActionVersion(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 2147483647;
+}
+
 function parseCursor(value: unknown): Cursor | null {
   if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{1,160}$/.test(value)) return null;
   try {
@@ -93,7 +97,7 @@ export function registerProducaoDiariaAcoesRoutes(
     }
     const values: unknown[] = [];
     const bind = (value: unknown) => '$' + values.push(value);
-    const conditions: string[] = [];
+    const conditions = ['a.excluida_em IS NULL'];
     if (status === 'ABERTAS') conditions.push("a.situacao IN ('PENDENTE', 'EM_ANDAMENTO')");
     if (isActionStatus(status)) conditions.push(`a.situacao = ${bind(status)}`);
     if (setor) conditions.push(`a.setor = ${bind(setor)}`);
@@ -113,7 +117,7 @@ export function registerProducaoDiariaAcoesRoutes(
       const { rows } = await pool.query<DailyAction>(`
         SELECT ${columns}
         FROM public.producao_diaria_acoes a
-        ${conditions.length ? 'WHERE ' + conditions.join(' AND ') : ''}
+        WHERE ${conditions.join(' AND ')}
         ORDER BY a.prazo NULLS LAST, a.data_origem, a.id
         LIMIT ${bind(pageSize + 1)}
       `, values);
@@ -151,7 +155,7 @@ export function registerProducaoDiariaAcoesRoutes(
         SELECT ${columns}
           FROM public.producao_diaria_acoes a
           JOIN public.producao_diaria_acoes_historico h ON h.acao_id = a.id AND h.tipo = 'CRIACAO'
-         WHERE a.id = $1 AND a.criado_por_id = $2 AND h.depois @> $3::jsonb
+         WHERE a.id = $1 AND a.criado_por_id = $2 AND a.excluida_em IS NULL AND h.depois @> $3::jsonb
       `, [chave_requisicao, actor.userId, JSON.stringify({ ...fields, data_origem })]);
       if (original.rows[0]) { res.json({ acao: original.rows[0] }); return; }
       res.status(409).json({ error: 'A chave desta solicitação já foi usada para outra ação.' });
@@ -160,7 +164,7 @@ export function registerProducaoDiariaAcoesRoutes(
 
   const findAction = async (id: string) => {
     const { rows } = await pool.query<DailyAction>(
-      `SELECT ${columns} FROM public.producao_diaria_acoes a WHERE a.id = $1`, [id],
+      `SELECT ${columns} FROM public.producao_diaria_acoes a WHERE a.id = $1 AND a.excluida_em IS NULL`, [id],
     );
     return rows[0];
   };
@@ -181,7 +185,7 @@ export function registerProducaoDiariaAcoesRoutes(
     const body = req.body || {};
     const updates = Object.fromEntries(editable.filter((key) => Object.hasOwn(body, key)).map((key) => [key, body[key]]));
     if (!actor) { res.status(401).json({ error: 'Sessão inválida.' }); return; }
-    if (!isUuid(id) || !Number.isInteger(body.versao) || body.versao < 1 || body.versao > 2147483647
+    if (!isUuid(id) || !isActionVersion(body.versao)
       || !Object.keys(updates).length || Object.hasOwn(body, 'data_origem')) {
       res.status(400).json({ error: 'Informe a ação, sua versão e os campos a editar.' });
       return;
@@ -200,12 +204,38 @@ export function registerProducaoDiariaAcoesRoutes(
            SET setor = $3, linha = $4, plano_acao = $5, responsavel = $6, prazo = $7, situacao = $8,
                concluido_em = CASE WHEN $8 = 'CONCLUIDA' THEN coalesce(a.concluido_em, now()) END,
                atualizado_por_id = $9, atualizado_por_login = $10, atualizado_em = now(), versao = versao + 1, observacao = $11
-         WHERE a.id = $1 AND a.versao = $2
+         WHERE a.id = $1 AND a.versao = $2 AND a.excluida_em IS NULL
          RETURNING ${columns}
       `, [id, current.versao, next.setor, next.linha, next.plano_acao, next.responsavel,
         next.prazo, next.situacao, actor.userId, actor.login, next.observacao]);
       if (!updated) { conflict(); return; }
       res.json({ acao: updated });
+    } catch { unexpected(res); }
+  });
+
+  app.delete(route + '/:id', ...authorization, async (req, res) => {
+    const actor = readActor(req);
+    const { id } = req.params;
+    const { versao } = req.body || {};
+    if (!actor) { res.status(401).json({ error: 'Sessão inválida.' }); return; }
+    if (!isUuid(id) || !isActionVersion(versao)) {
+      res.status(400).json({ error: 'Informe a ação e sua versão.' });
+      return;
+    }
+    try {
+      const { rows } = await pool.query(`
+        UPDATE public.producao_diaria_acoes
+           SET excluida_em = now(), atualizado_em = now(), versao = versao + 1,
+               atualizado_por_id = $3, atualizado_por_login = $4
+         WHERE id = $1 AND versao = $2 AND excluida_em IS NULL
+         RETURNING id
+      `, [id, versao, actor.userId, actor.login]);
+      if (rows.length) { res.status(204).end(); return; }
+      if (await findAction(id)) {
+        res.status(409).json({ error: 'A ação foi atualizada. Recarregue a versão atual antes de excluir.' });
+        return;
+      }
+      res.status(404).json({ error: 'Ação não encontrada ou já excluída.' });
     } catch { unexpected(res); }
   });
 
@@ -221,7 +251,10 @@ export function registerProducaoDiariaAcoesRoutes(
     }
     try {
       const { rows } = await pool.query(`
-        SELECT h.id::text, h.tipo, h.autor_login, h.criado_em, h.antes, h.depois
+        SELECT h.id::text,
+               CASE WHEN h.antes->>'excluida_em' IS NULL AND h.depois->>'excluida_em' IS NOT NULL
+                    THEN 'EXCLUSAO' ELSE h.tipo END AS tipo,
+               h.autor_login, h.criado_em, h.antes, h.depois
           FROM public.producao_diaria_acoes a
           LEFT JOIN LATERAL (
             SELECT * FROM public.producao_diaria_acoes_historico

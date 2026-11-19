@@ -50,6 +50,11 @@ export const producaoDiariaService = {
     );
     return response.acao;
   },
+  async deleteAcao(id: string, versao: number): Promise<void> {
+    await apiRequest<void>(
+      `${route}/acoes/${id}`, { method: 'DELETE', body: JSON.stringify({ versao }) }, { globalLoading: false },
+    );
+  },
   getAcaoHistorico(id: string, cursor?: string): Promise<ActionHistoryPage> {
     const params = new URLSearchParams(cursor ? { cursor } : {});
     return apiRequest<ActionHistoryPage>(`${route}/acoes/${id}/historico?${params}`, { cache: 'no-store' });

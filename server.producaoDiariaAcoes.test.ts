@@ -79,6 +79,9 @@ beforeAll(async () => {
   const optionalMigration = await readFile('migrations/2026-11-19_producao_diaria_campos_opcionais.sql', 'utf8');
   await db.exec(optionalMigration);
   await db.exec(optionalMigration);
+  const deleteMigration = await readFile('migrations/2026-11-19_producao_diaria_exclusao_acoes.sql', 'utf8');
+  await db.exec(deleteMigration);
+  await db.exec(deleteMigration);
   const app = express();
   app.use(express.json());
   const pool = db as unknown as Pool;
@@ -178,7 +181,8 @@ describe('API e persistência da Produção Diária', () => {
   it('recusa escopo/data/paginação inválidos e exige perfil de Coordenação em todas as rotas', async () => {
     const id = randomUUID();
     const cases = [
-      ['/acoes', 'GET'], ['/acoes', 'POST'], ['/acoes/' + id, 'GET'], ['/acoes/' + id, 'PATCH'], ['/acoes/' + id + '/historico', 'GET'],
+      ['/acoes', 'GET'], ['/acoes', 'POST'], ['/acoes/' + id, 'GET'], ['/acoes/' + id, 'PATCH'],
+      ['/acoes/' + id, 'DELETE'], ['/acoes/' + id + '/historico', 'GET'],
       ['/observacoes', 'GET'], ['/observacoes', 'PUT'],
     ];
     for (const [path, method] of cases) {
@@ -274,5 +278,28 @@ describe('API e persistência da Produção Diária', () => {
     await expect(db.exec('UPDATE producao_diaria_acoes_historico SET autor_login = autor_login')).rejects.toThrow('só permite inclusão');
     await expect(db.exec('DELETE FROM producao_diaria_observacoes_historico WHERE false')).rejects.toThrow('só permite inclusão');
     await expect(db.query("UPDATE producao_diaria_acoes SET data_origem='2026-01-01' WHERE id=$1", [action.id])).rejects.toThrow('origem e a autoria');
+  });
+
+  it('exclui apenas a ação selecionada, preserva o histórico e protege contra versões antigas', async () => {
+    const scope = { data_origem: '2026-10-27', setor: 'SOLDA', linha: 'MON' };
+    const action = await create(scope);
+    const other = await create(scope);
+    const path = '/acoes/' + action.id;
+    expect((await call(path, 'DELETE', { versao: 0 })).status).toBe(400);
+    expect((await call(path, 'DELETE', { versao: 2 })).status).toBe(409);
+    expect((await call(path, 'GET')).status).toBe(200);
+    const deletes = await Promise.all([call(path, 'DELETE', { versao: 1 }), call(path, 'DELETE', { versao: 1 })]);
+    expect(deletes.map(res => res.status).sort()).toEqual([204, 404]);
+    expect((await call(path)).status).toBe(404);
+    expect((await call(path, 'PATCH', { versao: 2, situacao: 'CONCLUIDA' })).status).toBe(404);
+    const page = await (await call('/acoes?status=TODAS&dataOrigem=2026-10-27')).json();
+    expect(page.acoes.map((row: { id: string }) => row.id)).toEqual([other.id]);
+    const history = await (await call(path + '/historico')).json();
+    expect(history.eventos.map((event: { tipo: string }) => event.tipo)).toEqual(['EXCLUSAO', 'CRIACAO']);
+    expect(history.eventos[0]).toMatchObject({
+      autor_login: 'COORD-FIXTURE',
+      antes: { excluida_em: null, versao: 1 },
+      depois: { excluida_em: expect.any(String), versao: 2, observacao: fixture.observacao },
+    });
   });
 });

@@ -50,7 +50,7 @@ type ActionEventSnapshot = Omit<ActionFields, 'observacao'> & {
 
 export interface ActionEvent {
   id: string;
-  tipo: 'CRIACAO' | 'ALTERACAO';
+  tipo: 'CRIACAO' | 'ALTERACAO' | 'EXCLUSAO';
   autor_login: string;
   criado_em: string;
   antes: ActionEventSnapshot | null;

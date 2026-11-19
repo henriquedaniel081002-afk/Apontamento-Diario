@@ -176,4 +176,19 @@ describe('MonthlyDashboard', () => {
     expect(screen.getByRole('combobox', { name: 'Linha' })).toHaveTextContent('Todos');
     expect(within(screen.getByRole('region', { name: 'Gráfico mensal isolado' })).getByText('Fevereiro de 2024')).toBeInTheDocument();
   });
+  it('iguala a visualização principal e a embutida usando mês, setor, linha e turno idênticos', async () => {
+    const user = userEvent.setup();
+    const main = render(<MonthlyDashboard dados={dados} />);
+    await selectCustomOption(user, 'Linha', 'MON');
+    await selectCustomOption(user, 'Turno', 'Primeiro');
+    const snapshot = screen.getByRole('region', { name: 'Indicadores e evolução mensal' }).textContent;
+    main.unmount();
+
+    render(<MonthlyDashboard dados={dados} embedded initialFilters={{ mes: '2024-02', linha: 'MON', setor: 'MONTAGEM FINAL' }} />);
+    await selectCustomOption(user, 'Turno', 'Primeiro');
+    expect(screen.getByRole('region', { name: 'Indicadores e evolução mensal' }).textContent).toBe(snapshot);
+    expect(screen.queryByRole('heading', { name: 'Aderência Mensal' })).not.toBeInTheDocument();
+    await selectCustomOption(user, 'Setor', 'EPOXI');
+    expect(screen.getByRole('region', { name: 'Painel EPOXI isolado' })).toHaveTextContent('2024-02|Primeiro');
+  });
 });

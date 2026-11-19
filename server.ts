@@ -5,6 +5,7 @@ import pg from 'pg';
 import jwt from 'jsonwebtoken';
 import { registerGestaoAtrasosRoutes } from './server.gestaoAtrasos.js';
 import { registerProducaoDiariaObservacoesRoutes } from './server.producaoDiariaObservacoes.js';
+import { registerProducaoDiariaAcoesRoutes } from './server.producaoDiariaAcoes.js';
 import { buildDailyProductionDetail } from './server.producaoDiariaDetalhamento.js';
 
 dotenv.config();
@@ -70,7 +71,8 @@ app.use('/api', (req, _res, next) => {
   // Login não altera dados operacionais. As demais mutações invalidam os caches
   // curtos de leitura para manter as telas coerentes sem repetir consultas caras.
   if (req.method !== 'GET' && !(req.method === 'POST' && req.path === '/auth/login')
-    && !req.path.startsWith('/gestao-atrasos/')) {
+    && !req.path.startsWith('/gestao-atrasos/')
+    && !/^\/coordenacao\/producao-diaria\/(acoes|observacoes)(\/|$)/.test(req.path)) {
     invalidateNeonReadCaches();
     _res.once('finish',invalidateNeonReadCaches);
   }
@@ -2540,6 +2542,7 @@ app.get('/api/coordenacao/producao-diaria', auth, requireCoordenacao, async (req
 
 // Observações gerenciais independentes; não modifica a consulta original nem as ocorrências.
 registerProducaoDiariaObservacoesRoutes(app, pool, auth, requireCoordenacao);
+registerProducaoDiariaAcoesRoutes(app, pool, auth, requireCoordenacao);
 
 // Visão somente leitura. A aprovação continua exclusivamente no PATCH existente,
 // por apontamento inteiro; produção isolada não compõe esta fila.

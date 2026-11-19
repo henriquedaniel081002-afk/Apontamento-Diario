@@ -1,21 +1,31 @@
-import { CheckCircle2, ClipboardList, Gauge, Save } from 'lucide-react';
+import { lazy, Suspense, useRef, useState } from 'react';
+import { CheckCircle2, ClipboardList, Gauge } from 'lucide-react';
 import { ModalShell } from '../components/common/ModalShell';
-import { Button, Field, MetricCard } from '../components/common/ui';
+import { Button, MetricCard } from '../components/common/ui';
 import { formatNum, formatPct } from '../dashboard/lib/formatters';
 import type { DailyProductionSectorMetric } from './types';
+
+import { DailySectorManagement, type ManagementDrafts } from './DailySectorManagement';
+import type { DailyObservationLine } from './escopo';
+import type { DailyProductionObservation } from './observacoes';
+import { actionDateLabel } from './DailyActionForm';
+
+const EmbeddedMonthlyDashboard = lazy(() => import('../pages/DashboardPage').then(
+  ({ DashboardPage }) => ({ default: DashboardPage }),
+));
 
 interface Props {
   sector: string | null;
   metric?: DailyProductionSectorMetric;
   dataInicio: string;
   dataFim: string;
+  productionLine: string;
+  observacoes: DailyProductionObservation[];
   observacoesError: string;
-  textoObservacao: string;
-  onTextoObservacaoChange: (text: string) => void;
+  onObservationSaved: (note: DailyProductionObservation) => void;
+  revision: number;
+  onActionChanged: () => void;
   onClose: () => void;
-  onSave: () => void;
-  salvando: boolean;
-  saveError: string;
 }
 
 function potencyLabel(potencia: string) {
@@ -26,31 +36,36 @@ function potencyLabel(potencia: string) {
 }
 
 export function DailySectorDetailModal({
-  sector, metric, dataInicio, dataFim, observacoesError, textoObservacao,
-  onTextoObservacaoChange, onClose, onSave, salvando, saveError,
+  sector, metric, dataInicio, dataFim, productionLine, observacoes, observacoesError,
+  onObservationSaved, revision, onActionChanged, onClose,
 }: Props) {
   const singleDay = dataInicio === dataFim;
-  const dateLabel = (date: string) => date.split('-').reverse().join('/');
-
+  const [line, setLine] = useState<DailyObservationLine>('GERAL');
+  const [view, setView] = useState<'details' | 'monthly'>('details');
+  const [busy, setBusy] = useState(false);
+  const drafts = useRef<ManagementDrafts>({ notes: {}, plans: {}, requests: {} }).current;
+  const close = () => {
+    setLine('GERAL');
+    setView('details');
+    onClose();
+  };
   return (
     <ModalShell
       isOpen={Boolean(sector)}
-      onClose={onClose}
+      onClose={close}
       title={`Detalhes · ${sector || ''}`}
-      description={`Programação e produção no período de ${dateLabel(dataInicio)} a ${dateLabel(dataFim)}.`}
-      size="lg"
-      busy={salvando}
-      footer={<div className="flex flex-wrap justify-end gap-2">
-        <Button variant="secondary" onClick={onClose} disabled={salvando}>Fechar</Button>
-        {singleDay && !observacoesError && (
-          <Button leftIcon={<Save className="size-4" aria-hidden="true" />}
-            onClick={onSave} disabled={salvando || !textoObservacao.trim()} isLoading={salvando}>
-            Salvar observação
-          </Button>
-        )}
-      </div>}
+      description={`Programação e produção no período de ${actionDateLabel(dataInicio)} a ${actionDateLabel(dataFim)}.`}
+      size={view === 'monthly' ? '2xl' : 'lg'}
+      busy={busy}
+      footer={<div className="flex justify-end"><Button variant="secondary" onClick={close} disabled={busy}>Fechar</Button></div>}
     >
-      <div className="space-y-5">
+      <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label="Visões de detalhes">
+        <Button size="sm" variant={view === 'details' ? 'secondary' : 'ghost'} aria-pressed={view === 'details'}
+          disabled={busy} onClick={() => setView('details')}>Produção e ações</Button>
+        <Button size="sm" variant={view === 'monthly' ? 'secondary' : 'ghost'} aria-pressed={view === 'monthly'}
+          disabled={busy} onClick={() => setView('monthly')}>Aderência Mensal</Button>
+      </div>
+      <div className="space-y-5" hidden={view !== 'details'} inert={view !== 'details'}>
         <div className="daily-observation-metrics">
           <MetricCard label="Programado" value={formatNum(metric?.programado || 0)}
             icon={<ClipboardList className="size-5" aria-hidden="true" />} tone="info" />
@@ -100,22 +115,19 @@ export function DailySectorDetailModal({
           ) : <p className="daily-observation-hint">Não há detalhamento por linha disponível para este período.</p>}
         </section>
 
-        <section className="daily-detail-observation" aria-label="Observação do setor">
-          <h3>Observação do setor</h3>
-          {!singleDay ? (
-            <p className="daily-observation-hint">Selecione uma única data para consultar ou registrar a observação deste setor.</p>
-          ) : observacoesError ? (
-            <p className="daily-observation-hint" role="alert">{observacoesError}</p>
-          ) : (
-            <Field label="Observação" hint="Uma observação geral por setor e data, independente da linha. Exclusivo da Coordenação.">
-              <textarea className="field-control min-h-32 resize-y" maxLength={3000}
-                value={textoObservacao} onChange={(event) => onTextoObservacaoChange(event.target.value)}
-                placeholder="Registre os motivos do desempenho da produção..." />
-            </Field>
-          )}
-          {saveError && <p role="alert" className="text-sm text-rose-300">{saveError}</p>}
-        </section>
+        {singleDay && sector ? (
+          <DailySectorManagement data={dataInicio} setor={sector} linha={line} onLineChange={setLine} drafts={drafts}
+            observacoes={observacoes} observacoesError={observacoesError} onObservationSaved={onObservationSaved}
+            revision={revision} onActionChanged={onActionChanged} setBusy={setBusy} />
+        ) : <p className="daily-observation-hint">Selecione uma única data para consultar ou registrar observações e planos deste setor.</p>}
       </div>
+      {view === 'monthly' && sector && (
+        <Suspense fallback={<p role="status">Carregando Aderência Mensal…</p>}>
+          <EmbeddedMonthlyDashboard embedded initialFilters={{
+            mes: dataInicio.slice(0, 7), setor: sector, linha: line === 'GERAL' ? productionLine : line,
+          }} />
+        </Suspense>
+      )}
     </ModalShell>
   );
 }

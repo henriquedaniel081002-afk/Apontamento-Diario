@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { FilterBar, FilterSelect } from '../components/FilterBar';
 import { formatNum, formatPct } from '../lib/formatters';
 import { MetricPanels } from '../components/MetricPanels';
@@ -18,10 +18,23 @@ export interface DashboardScope {
   label?: string;
 }
 
-export function MonthlyDashboard({ dados, scope }: { dados: DashboardData; scope?: DashboardScope }) {
+export interface MonthlyInitialFilters {
+  mes?: string;
+  setor?: string;
+  linha?: string;
+}
+
+const epoxiSectors = ['EPOXI', 'BOBINAGEM EPOXI', 'ENCAPSULAMENTO'];
+
+export function MonthlyDashboard({ dados, scope, embedded, initialFilters }: {
+  dados: DashboardData; scope?: DashboardScope; embedded?: boolean; initialFilters?: MonthlyInitialFilters;
+}) {
+  const embeddedId = useId();
+  const fieldId = (field: string) => embedded ? `${embeddedId}-${field}` : field;
   const hoje = new Date();
   const atual = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
-  const defaultMes = dados.periodo.meses.includes(atual) ? atual : (dados.periodo.meses[dados.periodo.meses.length-1] || atual);
+  const defaultMes = initialFilters?.mes && dados.periodo.meses.includes(initialFilters.mes)
+    ? initialFilters.mes : dados.periodo.meses.includes(atual) ? atual : (dados.periodo.meses[dados.periodo.meses.length-1] || atual);
   const globalSetorOptions = useMemo(() => {
     const visible = dados.filtros.setores.filter((item) => item.trim().toUpperCase() !== 'ESTAMPARIA');
     return visible.includes('EPOXI') ? visible : [...visible, 'EPOXI'];
@@ -31,11 +44,14 @@ export function MonthlyDashboard({ dados, scope }: { dados: DashboardData; scope
     const available = scope.setores.filter((item) => globalSetorOptions.includes(item));
     return available.length ? available : scope.setores;
   }, [globalSetorOptions, scope]);
-  const defaultSetor = scope?.setores?.find((item) => setorOptions.includes(item))
+  const defaultSetor = (initialFilters?.setor && setorOptions.includes(initialFilters.setor) ? initialFilters.setor : undefined)
+    || scope?.setores?.find((item) => setorOptions.includes(item))
     || (dados.filtros.setores.includes('MONTAGEM FINAL') ? 'MONTAGEM FINAL' : (setorOptions[0] || dados.filtros.setores[0] || 'MONTAGEM FINAL'));
   const scopedLineOptions = scope?.linhas?.length ? scope.linhas : [];
   const fixedLine = scopedLineOptions.length === 1 ? scopedLineOptions[0] : null;
-  const defaultLinha = fixedLine || 'Todas';
+  const contextLine = initialFilters?.linha && dados.filtros.linhas.includes(initialFilters.linha)
+    ? initialFilters.linha : 'Todas';
+  const defaultLinha = fixedLine || (initialFilters && epoxiSectors.includes(defaultSetor) ? 'EPO' : contextLine);
   const [mes, setMes] = useState(defaultMes);
   const [setor, setSetor] = useState(defaultSetor);
   const [linha, setLinha] = useState(defaultLinha);
@@ -55,12 +71,12 @@ export function MonthlyDashboard({ dados, scope }: { dados: DashboardData; scope
   }, [fixedLine, linha]);
 
   const isEpoxi = setor === 'EPOXI';
-  const isEpoxiArea = ['EPOXI', 'BOBINAGEM EPOXI', 'ENCAPSULAMENTO'].includes(setor);
+  const isEpoxiArea = epoxiSectors.includes(setor);
   const handleSetor = (value:string) => {
     if (!setorOptions.includes(value)) return;
     setSetor(value);
     setDiaSelecionado(null);
-    if (['EPOXI', 'BOBINAGEM EPOXI', 'ENCAPSULAMENTO'].includes(value)) setLinha('EPO');
+    if (epoxiSectors.includes(value)) setLinha('EPO');
     else if (fixedLine) setLinha(fixedLine);
     else if (isEpoxiArea) setLinha('Todas');
   };
@@ -104,21 +120,21 @@ export function MonthlyDashboard({ dados, scope }: { dados: DashboardData; scope
       : ['Todas', ...dados.filtros.linhas];
 
   return (
-    <div className="dashboard-shell">
-      <div className="dashboard-scrollbar min-h-0 flex-1 overflow-y-auto">
+    <div className={embedded ? 'dashboard-shell dashboard-shell--embedded' : 'dashboard-shell'}>
+      <div className={embedded ? undefined : "dashboard-scrollbar min-h-0 flex-1 overflow-y-auto"}>
         <div className="dashboard-content">
-          <PageHeader
+          {!embedded && <PageHeader
             eyebrow="Visão integrada"
             title="Aderência Mensal"
             description={scope?.label ? `Acompanhamento do programado e produzido restrito a ${scope.label}.` : "Acompanhamento do programado e produzido com os mesmos critérios operacionais do sistema."}
             actions={<p className="dashboard-heading__updated">Atualizado em <time dateTime={dados.geradoEm}>{new Date(dados.geradoEm).toLocaleString('pt-BR')}</time></p>}
-          />
+          />}
 
           <FilterBar onClear={limpar} clearDisabled={!filtrosAtivos} note={scope?.label ? `Visão restrita: ${scope.label}` : undefined}>
-            <FilterSelect id="filtro-mes" label="Mês" options={dados.periodo.meses.length ? dados.periodo.meses : [defaultMes]} selected={mes} onSelect={setMes} formatOption={mesLabel} active={mes !== defaultMes} />
-            <FilterSelect id="filtro-linha" label="Linha" options={linhaOptions} selected={isEpoxi ? 'EPO' : linha} onSelect={setLinha} formatOption={(option) => option === 'Todas' ? 'Todos' : option} active={isEpoxi || linha !== defaultLinha} compact disabled={Boolean(fixedLine) || isEpoxi} />
-            <FilterSelect id="filtro-setor" label="Setor" options={setorOptions} selected={setor} onSelect={handleSetor} defaultValue={defaultSetor} disabled={setorLocked} />
-            <FilterSelect id="filtro-turno" label="Turno" options={['Todos',...dados.filtros.turnos]} selected={turno} onSelect={setTurno} active={turno !== 'Todos'} compact />
+            <FilterSelect id={fieldId('filtro-mes')} label="Mês" options={dados.periodo.meses.length ? dados.periodo.meses : [defaultMes]} selected={mes} onSelect={setMes} formatOption={mesLabel} active={mes !== defaultMes} />
+            <FilterSelect id={fieldId('filtro-linha')} label="Linha" options={linhaOptions} selected={isEpoxi ? 'EPO' : linha} onSelect={setLinha} formatOption={(option) => option === 'Todas' ? 'Todos' : option} active={isEpoxi || linha !== defaultLinha} compact disabled={Boolean(fixedLine) || isEpoxi} />
+            <FilterSelect id={fieldId('filtro-setor')} label="Setor" options={setorOptions} selected={setor} onSelect={handleSetor} defaultValue={defaultSetor} disabled={setorLocked} />
+            <FilterSelect id={fieldId('filtro-turno')} label="Turno" options={['Todos',...dados.filtros.turnos]} selected={turno} onSelect={setTurno} active={turno !== 'Todos'} compact />
           </FilterBar>
 
           {isEpoxi ? (

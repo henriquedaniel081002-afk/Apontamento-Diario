@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BarChart3, RefreshCw } from 'lucide-react';
 import { Button, EmptyState, ErrorState, PageContainer, ProgressLoadingState } from '../components/common/ui';
-import { MonthlyDashboard, type DashboardScope } from '../dashboard/dashboards/MonthlyDashboard';
+import { MonthlyDashboard, type DashboardScope, type MonthlyInitialFilters } from '../dashboard/dashboards/MonthlyDashboard';
 import type { DashboardData } from '../dashboard/types';
 import type { User } from '../types';
 import { dashboardService } from '../services/dashboardService';
@@ -10,6 +10,8 @@ import '../dashboard/dashboard.css';
 
 interface DashboardPageProps {
   user?: User;
+  embedded?: boolean;
+  initialFilters?: MonthlyInitialFilters;
 }
 
 function getUserDashboardScope(user?: User): DashboardScope | undefined {
@@ -40,7 +42,7 @@ function getUserDashboardScope(user?: User): DashboardScope | undefined {
   return { setores: [setor], label: setor };
 }
 
-export function DashboardPage({ user }: DashboardPageProps) {
+export function DashboardPage({ user, embedded, initialFilters }: DashboardPageProps) {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -95,5 +97,5 @@ export function DashboardPage({ user }: DashboardPageProps) {
     </PageContainer>;
   }
 
-  return <MonthlyDashboard dados={data} scope={scope} />;
+  return <MonthlyDashboard dados={data} scope={scope} embedded={embedded} initialFilters={initialFilters} />;
 }

@@ -109,3 +109,57 @@
 .daily-sector-filter-empty{margin:0;border:1px dashed var(--border-strong);border-radius:var(--radius-lg);padding:1.3rem;color:var(--text-secondary);font-size:.85rem}
 
 @media(max-width:640px){.daily-section-controls{width:100%;justify-content:space-between}}
+
+.daily-action-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+  gap: .75rem;
+}
+.daily-detail-observation > .field { max-width: 20rem; }
+.daily-action-form, .daily-action-create, .daily-action-list, .daily-action-history {
+  display: grid;
+  min-width: 0;
+  gap: .75rem;
+}
+.daily-action-list > button, .daily-action-form button { justify-self: start; }
+.daily-action-create {
+  border-block: 1px solid rgba(226, 232, 240, .12);
+  padding-block: 1rem;
+}
+.daily-detail-observation h4 { color: #e5eee9; font-weight: 750; }
+.daily-action-card, .daily-action-history li {
+  display: grid;
+  min-width: 0;
+  gap: .5rem;
+  border: 1px solid rgba(226, 232, 240, .13);
+  border-radius: .75rem;
+  padding: .8rem;
+  background: rgba(255, 255, 255, .035);
+}
+.daily-action-card__header {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: .35rem .75rem;
+  color: #e6efe9;
+}
+.daily-action-card__header > span {
+  font-size: .8rem;
+  color: #a7f3d0;
+}
+.daily-action-card__header > .daily-action-overdue { color: #fda4af; font-weight: 750; }
+.daily-action-text, .daily-action-facts dd, .daily-action-history dd {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #e5eee9;
+}
+.daily-action-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem 1.25rem;
+}
+.daily-action-facts dt, .daily-action-history dt, .daily-action-history time {
+  font-size: .8rem;
+  color: #b5c4bb;
+}
+.daily-action-history dd del { color: #b5c4bb; }

@@ -77,7 +77,8 @@ export function ModalShell({
 
     const focusTimer = window.setTimeout(() => {
       const initialTarget = initialFocusRef?.current;
-      const firstFocusable = dialogRef.current?.querySelector<HTMLElement>(focusableSelector);
+      const firstFocusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(focusableSelector) || [])
+        .find((element) => !element.closest('[hidden], [inert]'));
       (initialTarget || firstFocusable || dialogRef.current)?.focus();
     }, 0);
 
@@ -96,7 +97,7 @@ export function ModalShell({
 
       const focusableElements = Array.from(
         dialogRef.current.querySelectorAll<HTMLElement>(focusableSelector),
-      );
+      ).filter((element) => !element.closest('[hidden], [inert]'));
 
       if (focusableElements.length === 0) {
         event.preventDefault();

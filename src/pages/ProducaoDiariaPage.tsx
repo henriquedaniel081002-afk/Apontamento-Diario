@@ -21,6 +21,7 @@ import {
   YAxis,
 } from 'recharts';
 import { CustomSelect } from '../components/common/CustomSelect';
+import { DailyActionPanel } from '../producao-diaria/DailyActionPanel';
 import { DailySectorDetailModal } from '../producao-diaria/DailySectorDetailModal';
 import {
   Button,
@@ -181,7 +182,7 @@ function SectorCard({
         >
           <Eye className="size-4" aria-hidden="true" />
           <span>Detalhes</span>
-          {observacoes.some((note) => note.setor === row.setor && note.linha === 'GERAL') && (
+          {observacoes.some((note) => note.setor === row.setor) && (
             <span className="daily-sector-details-note" aria-label="Há observação registrada" title="Há observação registrada" />
           )}
         </button>
@@ -201,9 +202,7 @@ export function ProducaoDiariaPage() {
   const [observacoes, setObservacoes] = useState<DailyProductionObservation[]>([]);
   const [observacoesError, setObservacoesError] = useState('');
   const [modal, setModal] = useState<string | null>(null);
-  const [textoObservacao, setTextoObservacao] = useState('');
-  const [salvando, setSalvando] = useState(false);
-  const [saveError, setSaveError] = useState('');
+  const [actionRevision, setActionRevision] = useState(0);
   const [data, setData] = useState<Awaited<ReturnType<typeof producaoDiariaService.getData>> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -275,26 +274,12 @@ export function ProducaoDiariaPage() {
     setSetoresSelecionados(null);
   };
 
-  const openDetails = (setor: string) => {
-    const note = observacoes.find((item) => item.data === dataInicio && item.setor === setor && item.linha === 'GERAL');
-    setTextoObservacao(note?.observacao || '');
-    setSaveError('');
-    setModal(setor);
-  };
-
-  const saveObservation = async () => {
-    if (!modal || !textoObservacao.trim() || salvando || dataInicio !== dataFim || observacoesError) return;
-    setSalvando(true);
-    setSaveError('');
-    try {
-      const saved = await producaoDiariaService.saveObservacao(dataInicio, modal, 'GERAL', textoObservacao.trim());
-      setObservacoes((current) => [...current.filter((item) => !(item.data === saved.data && item.setor === saved.setor && item.linha === saved.linha)), saved]);
-      setModal(null);
-    } catch (reason) {
-      setSaveError(reason instanceof Error ? reason.message : 'Não foi possível salvar a observação.');
-    } finally {
-      setSalvando(false);
-    }
+  const refreshActions = () => setActionRevision((value) => value + 1);
+  const onObservationSaved = (saved: DailyProductionObservation) => {
+    setObservacoes((current) => [...current.filter((item) => (
+      item.data !== saved.data || item.setor !== saved.setor || item.linha !== saved.linha
+    )), saved]);
+    refreshActions();
   };
   const modalMetric = metrics.setores.find((item) => item.setor === modal);
   const singleDay = dataInicio === dataFim;
@@ -406,7 +391,7 @@ export function ProducaoDiariaPage() {
                   key={row.setor}
                   row={row}
                   observacoes={observacoes}
-                  onOpen={openDetails}
+                  onOpen={setModal}
                   showSector={showSector}
                 />)}
               </div>
@@ -441,18 +426,19 @@ export function ProducaoDiariaPage() {
           </SectionCard>}
         </>
       )}
+      <DailyActionPanel revision={actionRevision} onChanged={refreshActions} />
       <DailySectorDetailModal
         sector={modal}
         metric={modalMetric}
         dataInicio={dataInicio}
         dataFim={dataFim}
+        productionLine={linha}
+        observacoes={observacoes}
         observacoesError={observacoesError}
-        textoObservacao={textoObservacao}
-        onTextoObservacaoChange={setTextoObservacao}
+        onObservationSaved={onObservationSaved}
+        revision={actionRevision}
+        onActionChanged={refreshActions}
         onClose={() => setModal(null)}
-        onSave={() => void saveObservation()}
-        salvando={salvando}
-        saveError={saveError}
       />
     </PageContainer>
   );

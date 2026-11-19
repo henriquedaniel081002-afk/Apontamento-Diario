@@ -25,5 +25,10 @@
       "src": "/(.*)",
       "dest": "/index.html"
     }
-  ]
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "feat/producao-diaria-planos-acao": false
+    }
+  }
 }

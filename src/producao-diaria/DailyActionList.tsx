@@ -16,7 +16,7 @@ function historyValue(field: keyof ActionFields, value: ActionEvent['depois'] | 
   if (field === 'situacao') return ACTION_STATUS_LABELS[value.situacao];
   if (field === 'prazo') return actionDateLabel(value.prazo);
   if (field === 'linha') return actionLineLabel(value.linha);
-  return value[field] ?? 'Sem observação vinculada';
+  return value[field] ?? '—';
 }
 
 function ActionHistory({ action, onClose }: { action: DailyAction; onClose: () => void }) {
@@ -80,7 +80,7 @@ function ActionEditor({ action, onClose, onChanged }: {
     try {
       const { setor, linha, observacao, plano_acao, responsavel, prazo, situacao } = draft;
       await producaoDiariaService.updateAcao(action.id, {
-        setor, linha, observacao: observacao?.trim() || undefined, plano_acao, responsavel, prazo, situacao, versao: current.versao,
+        setor, linha, observacao, plano_acao, responsavel, prazo, situacao, versao: current.versao,
       });
       onClose();
       onChanged();
@@ -118,7 +118,7 @@ function ActionEditor({ action, onClose, onChanged }: {
         </div>
       )}
       <DailyActionForm value={draft} onChange={setDraft} onSubmit={() => { if (!conflict) void save(); }}
-        editing observationRequired={current.observacao != null} busy={busy} error={error} onRefresh={conflict ? () => void reload() : undefined} />
+        editing busy={busy} error={error} onRefresh={conflict ? () => void reload() : undefined} />
     </ModalShell>
   );
 }
@@ -162,13 +162,11 @@ export function DailyActionList({ filters, onChanged }: {
             <span>{ACTION_STATUS_LABELS[action.situacao]}</span>
             {isOverdue(action, today) && <span className="daily-action-overdue">Prazo vencido</span>}
           </div>
-          {action.observacao
-            ? <p className="daily-action-text"><strong>Observação</strong> {action.observacao}</p>
-            : <p className="daily-observation-hint">Ação legada sem observação vinculada.</p>}
-          <p className="daily-action-text"><strong>Plano de ação</strong> <span>{action.plano_acao}</span></p>
+          {action.observacao && <p className="daily-action-text"><strong>Observação</strong> {action.observacao}</p>}
+          {action.plano_acao && <p className="daily-action-text"><strong>Plano de ação</strong> <span>{action.plano_acao}</span></p>}
           <dl className="daily-action-facts">
             <div><dt>Origem</dt><dd>{actionDateLabel(action.data_origem)}</dd></div>
-            <div><dt>Responsável</dt><dd>{action.responsavel}</dd></div>
+            <div><dt>Responsável</dt><dd>{action.responsavel ?? '—'}</dd></div>
             <div><dt>Prazo</dt><dd>{actionDateLabel(action.prazo)}</dd></div>
             <div><dt>Autor</dt><dd>{action.criado_por_login}</dd></div>
           </dl>

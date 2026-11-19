@@ -16,9 +16,9 @@ export interface ActionFields {
   setor: string;
   linha: DailyObservationLine;
   observacao: string | null;
-  plano_acao: string;
-  responsavel: string;
-  prazo: string;
+  plano_acao: string | null;
+  responsavel: string | null;
+  prazo: string | null;
   situacao: ActionStatus;
 }
 
@@ -72,5 +72,5 @@ export function isActionStatus(value: unknown): value is ActionStatus {
 }
 
 export function isOverdue(action: Pick<DailyAction, 'prazo' | 'situacao'>, today: string): boolean {
-  return (action.situacao === 'PENDENTE' || action.situacao === 'EM_ANDAMENTO') && action.prazo < today;
+  return action.prazo !== null && (action.situacao === 'PENDENTE' || action.situacao === 'EM_ANDAMENTO') && action.prazo < today;
 }

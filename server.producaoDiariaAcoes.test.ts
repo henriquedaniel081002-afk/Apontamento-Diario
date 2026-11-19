@@ -76,6 +76,9 @@ beforeAll(async () => {
   const occurrenceMigration = await readFile('migrations/2026-11-19_producao_diaria_ocorrencias.sql', 'utf8');
   await db.exec(occurrenceMigration);
   await db.exec(occurrenceMigration);
+  const optionalMigration = await readFile('migrations/2026-11-19_producao_diaria_campos_opcionais.sql', 'utf8');
+  await db.exec(optionalMigration);
+  await db.exec(optionalMigration);
   const app = express();
   app.use(express.json());
   const pool = db as unknown as Pool;
@@ -217,18 +220,43 @@ describe('API e persistência da Produção Diária', () => {
     expect((await status.json()).acao).toMatchObject({ id: legacyActionId, observacao: null, versao: 2 });
     const link = await call(path, 'PATCH', { versao: 2, observacao: '  Investigação retrospectiva  ' });
     expect((await link.json()).acao).toMatchObject({ id: legacyActionId, observacao: 'Investigação retrospectiva', versao: 3 });
-    expect((await call(path, 'PATCH', { versao: 3, observacao: null })).status).toBe(400);
+    expect((await call(path, 'PATCH', { versao: 3, observacao: null })).status).toBe(200);
     const history = (await (await call(path + '/historico')).json()).eventos;
-    expect(history[0]).toMatchObject({ antes: { observacao: null }, depois: { observacao: 'Investigação retrospectiva' } });
-    expect(history[2].depois).not.toHaveProperty('observacao');
+    expect(history[0]).toMatchObject({ antes: { observacao: 'Investigação retrospectiva' }, depois: { observacao: null } });
+    expect(history[1]).toMatchObject({ antes: { observacao: null }, depois: { observacao: 'Investigação retrospectiva' } });
+    expect(history[3].depois).not.toHaveProperty('observacao');
   });
 
-  it('rejeita ocorrência incompleta e não cria ação nem trilha parcial', async () => {
+  it('salva com campos opcionais e pagina do prazo preenchido aos registros sem prazo', async () => {
+    const scope = { data_origem: '2026-10-26', setor: 'MPA', linha: 'GERAL' };
+    const empty = { observacao: null, plano_acao: null, responsavel: null, prazo: null };
+    const request = { ...scope, chave_requisicao: randomUUID() };
+    const response = await call('/acoes', 'POST', request);
+    expect(response.status).toBe(201);
+    const { acao } = await response.json();
+    expect(acao).toMatchObject({ ...empty, situacao: 'PENDENTE' });
+    expect((await call('/acoes', 'POST', request)).status).toBe(200);
+    const note = await create({ ...scope, ...empty, observacao: '  Só observação  ' });
+    expect(note).toMatchObject({ ...empty, observacao: 'Só observação' });
+    const withDate = await create({ ...scope, ...empty, prazo: '2026-10-30' });
+    const page = '/acoes?dataOrigem=2026-10-26&setor=MPA&limit=1';
+    const first = await (await call(page)).json();
+    const second = await (await call(page + '&cursor=' + first.proximoCursor)).json();
+    const third = await (await call(page + '&cursor=' + second.proximoCursor)).json();
+    expect(first.acoes[0].id).toBe(withDate.id);
+    expect([second.acoes[0].id, third.acoes[0].id].sort()).toEqual([note.id, acao.id].sort());
+    expect(third.proximoCursor).toBeNull();
+    const clear = await call('/acoes/' + withDate.id, 'PATCH', { versao: 1, ...empty, prazo: '' });
+    expect(clear.status).toBe(200);
+    expect((await clear.json()).acao).toMatchObject(empty);
+  });
+
+  it('rejeita campos inválidos e não cria ação nem trilha parcial', async () => {
     const before = await db.query('SELECT count(*) total FROM producao_diaria_acoes_historico');
     const id = randomUUID();
     const payload = { ...fixture, chave_requisicao: id };
-    for (const observacao of [undefined, null, '   ', 'x'.repeat(3001)]) {
-      expect((await call('/acoes', 'POST', { ...payload, observacao })).status).toBe(400);
+    for (const invalid of [{ observacao: 'x'.repeat(3001) }, { plano_acao: 2 }, { responsavel: 'x'.repeat(201) }, { prazo: '2026-02-29' }]) {
+      expect((await call('/acoes', 'POST', { ...payload, ...invalid })).status).toBe(400);
     }
     const brokenActor = 'Bearer ' + jwt.sign({ userId: 999, login: 'INEXISTENTE', perfil: 'COORDENACAO' }, secret);
     expect((await call('/acoes', 'POST', payload, brokenActor)).status).toBe(500);

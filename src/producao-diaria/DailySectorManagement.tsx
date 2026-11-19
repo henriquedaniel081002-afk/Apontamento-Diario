@@ -36,9 +36,10 @@ export function DailySectorManagement({
   const filters = useMemo(() => ({ status: 'TODAS' as const, setor, linha, dataOrigem: data, incluirGeral: false }), [setor, linha, data]);
 
   const create = async () => {
-    if (sending.current || !draft.observacao?.trim()) return;
+    if (sending.current) return;
     const payload = {
-      ...draft, observacao: draft.observacao.trim(), plano_acao: draft.plano_acao.trim(), responsavel: draft.responsavel.trim(),
+      ...draft, observacao: draft.observacao?.trim() || null, plano_acao: draft.plano_acao?.trim() || null,
+      responsavel: draft.responsavel?.trim() || null, prazo: draft.prazo || null,
       data_origem: data, setor, linha,
     };
     const content = JSON.stringify(payload);
@@ -84,7 +85,7 @@ export function DailySectorManagement({
     <section className="daily-detail-observation" aria-label="Observações e Planos">
       <h3>Observações e Planos</h3>
       <DailyActionForm value={{ ...draft, setor, linha }} onChange={update} onSubmit={() => void create()}
-        observationRequired busy={working} error={currentFeedback?.error || ''} />
+        busy={working} error={currentFeedback?.error || ''} />
       {currentFeedback && !currentFeedback.error && <p role="status" className="text-sm text-emerald-300">Ocorrência registrada.</p>}
       {observacoesError && <p role="alert" className="daily-observation-hint">{observacoesError}</p>}
       {note && (

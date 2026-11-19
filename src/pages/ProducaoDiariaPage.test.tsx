@@ -350,7 +350,7 @@ describe('Produção Diária', () => {
     expect(screen.getAllByRole('textbox',{name:'Observação'})).toHaveLength(1);
     const ui = within(dlg);
     const save = ui.getByRole('button', { name: 'Salvar ocorrência e plano' });
-    expect(save).toBeDisabled();
+    expect(save).toBeEnabled();
     expect(ui.queryByRole('button', { name: 'Salvar observação' })).not.toBeInTheDocument();
     createAcaoMock.mockResolvedValueOnce({} as Awaited<ReturnType<typeof producaoDiariaService.createAcao>>);
     await user.type(ui.getByRole('textbox', { name: 'Observação' }), 'Faltou colaborador.');

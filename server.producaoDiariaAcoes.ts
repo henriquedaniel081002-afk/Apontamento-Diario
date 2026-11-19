@@ -17,7 +17,7 @@ const columns = `
 `;
 const editable = ['setor', 'linha', 'observacao', 'plano_acao', 'responsavel', 'prazo', 'situacao'] as const;
 type Actor = { userId: number; login: string };
-type Cursor = [string, string, string];
+type Cursor = [string | null, string, string];
 
 function isUuid(value: unknown): value is string {
   return typeof value === 'string' && uuidPattern.test(value);
@@ -29,7 +29,7 @@ function parseCursor(value: unknown): Cursor | null {
     const cursor: unknown = JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
     if (!Array.isArray(cursor) || cursor.length !== 3) return null;
     const [prazo, origem, id] = cursor;
-    if (isValidDailyObservationDate(prazo) && isValidDailyObservationDate(origem) && isUuid(id)) return [prazo, origem, id];
+    if ((prazo === null || isValidDailyObservationDate(prazo)) && isValidDailyObservationDate(origem) && isUuid(id)) return [prazo, origem, id];
   } catch { /* O cliente receberá 400. */ }
   return null;
 }
@@ -44,16 +44,23 @@ function parseLimit(value: unknown): number | null {
   return Number(value);
 }
 
+function readOptionalText(value: unknown, limit: number): string | null | undefined {
+  if (value == null) return null;
+  if (typeof value !== 'string' || value.includes('\u0000')) return undefined;
+  const text = value.trim();
+  return text.length <= limit ? text || null : undefined;
+}
+
 function readFields(value: Record<string, unknown>): ActionFields | null {
-  const { setor, linha, observacao, plano_acao, responsavel, prazo, situacao } = value;
+  const { setor, linha, situacao } = value;
+  const observacao = readOptionalText(value.observacao, ACTION_OBSERVATION_LIMIT);
+  const plano_acao = readOptionalText(value.plano_acao, ACTION_PLAN_LIMIT);
+  const responsavel = readOptionalText(value.responsavel, ACTION_RESPONSIBLE_LIMIT);
+  const prazo = readOptionalText(value.prazo, 10);
   if (!isDailySector(setor) || !isDailyLine(linha) || !isValidDailyObservationScope(setor, linha)
-    || !isValidDailyObservationDate(prazo) || !isActionStatus(situacao)
-    || (observacao !== null && (typeof observacao !== 'string' || !observacao.trim()
-      || observacao.trim().length > ACTION_OBSERVATION_LIMIT || observacao.includes('\u0000')))
-    || typeof plano_acao !== 'string' || !plano_acao.trim() || plano_acao.trim().length > ACTION_PLAN_LIMIT
-    || typeof responsavel !== 'string' || !responsavel.trim() || responsavel.trim().length > ACTION_RESPONSIBLE_LIMIT
-    || plano_acao.includes('\u0000') || responsavel.includes('\u0000')) return null;
-  return { setor, linha, observacao: typeof observacao === 'string' ? observacao.trim() : null, plano_acao: plano_acao.trim(), responsavel: responsavel.trim(), prazo, situacao };
+    || !isActionStatus(situacao) || observacao === undefined || plano_acao === undefined || responsavel === undefined
+    || (prazo !== null && !isValidDailyObservationDate(prazo))) return null;
+  return { setor, linha, observacao, plano_acao, responsavel, prazo, situacao };
 }
 
 function readActor(req: Request): Actor | null {
@@ -96,14 +103,18 @@ export function registerProducaoDiariaAcoesRoutes(
     }
     if (dataOrigem) conditions.push(`a.data_origem = ${bind(dataOrigem)}::date`);
     if (position) {
-      conditions.push(`(a.prazo, a.data_origem, a.id) > (${bind(position[0])}::date, ${bind(position[1])}::date, ${bind(position[2])}::uuid)`);
+      const [prazo, origem, id] = position;
+      const suffix = `${bind(origem)}::date, ${bind(id)}::uuid`;
+      conditions.push(prazo === null
+        ? `(a.prazo IS NULL AND (a.data_origem, a.id) > (${suffix}))`
+        : `(a.prazo IS NULL OR (a.prazo, a.data_origem, a.id) > (${bind(prazo)}::date, ${suffix}))`);
     }
     try {
       const { rows } = await pool.query<DailyAction>(`
         SELECT ${columns}
         FROM public.producao_diaria_acoes a
         ${conditions.length ? 'WHERE ' + conditions.join(' AND ') : ''}
-        ORDER BY a.prazo, a.data_origem, a.id
+        ORDER BY a.prazo NULLS LAST, a.data_origem, a.id
         LIMIT ${bind(pageSize + 1)}
       `, values);
       const acoes = rows.slice(0, pageSize);
@@ -117,9 +128,9 @@ export function registerProducaoDiariaAcoesRoutes(
     const { data_origem, chave_requisicao } = body;
     const fields = readFields({ ...body, situacao: body.situacao === undefined ? 'PENDENTE' : body.situacao });
     if (!actor) { res.status(401).json({ error: 'Sessão inválida.' }); return; }
-    if (!fields?.observacao || !isValidDailyObservationDate(data_origem)
+    if (!fields || !isValidDailyObservationDate(data_origem)
       || (chave_requisicao !== undefined && !isUuid(chave_requisicao))) {
-      res.status(400).json({ error: 'Informe origem, setor, linha, observação, plano, responsável, prazo e situação válidos.' });
+      res.status(400).json({ error: 'Verifique a origem, o setor, a linha, a situação e os campos preenchidos.' });
       return;
     }
     try {
@@ -171,8 +182,7 @@ export function registerProducaoDiariaAcoesRoutes(
     const updates = Object.fromEntries(editable.filter((key) => Object.hasOwn(body, key)).map((key) => [key, body[key]]));
     if (!actor) { res.status(401).json({ error: 'Sessão inválida.' }); return; }
     if (!isUuid(id) || !Number.isInteger(body.versao) || body.versao < 1 || body.versao > 2147483647
-      || !Object.keys(updates).length || Object.hasOwn(body, 'data_origem')
-      || (Object.hasOwn(body, 'observacao') && body.observacao === null)) {
+      || !Object.keys(updates).length || Object.hasOwn(body, 'data_origem')) {
       res.status(400).json({ error: 'Informe a ação, sua versão e os campos a editar.' });
       return;
     }
@@ -182,7 +192,7 @@ export function registerProducaoDiariaAcoesRoutes(
       const conflict = () => res.status(409).json({ error: 'A ação foi atualizada. Recarregue a versão atual antes de salvar.' });
       if (current.versao !== body.versao) { conflict(); return; }
       const next = readFields({ ...current, ...updates });
-      if (!next) { res.status(400).json({ error: 'Informe setor, linha, observação, plano, responsável, prazo e situação válidos.' }); return; }
+      if (!next) { res.status(400).json({ error: 'Verifique o setor, a linha, a situação e os campos preenchidos.' }); return; }
       if (editable.every((key) => next[key] === current[key])) { res.json({ acao: current }); return; }
 
       const { rows: [updated] } = await pool.query<DailyAction>(`
